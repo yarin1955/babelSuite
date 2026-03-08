@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  babelsuite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: babelsuite-orchestrator
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  hub-backend:
+    build:
+      context: ./hub-backend
+      dockerfile: Dockerfile
+    container_name: babelsuite-hub-backend
+    ports:
+      - "4000:4000"
+    restart: unless-stopped

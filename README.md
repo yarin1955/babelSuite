@@ -30,18 +30,50 @@ A beautifully-crafted dark-mode **Vite + React** standalone dashboard built excl
 
 ## Getting Started
 
-Start the core engine daemon and hub:
+You can run BabelSuite manually, via `make`, or fully containerized with Docker Compose.
+
+### Option 1: Using Docker Compose (Recommended)
+
+BabelSuite comes with a preconfigured multi-stage `docker-compose.yml` that mounts the host's Docker socket, allowing the engine to orchestrate sibling simulator containers securely.
+
+```bash
+# Build and start the Orchestrator Daemon and Hub Registry
+docker compose up -d
+```
+- Orchestrator API runs on `localhost:3000`
+- Hub Registry API runs on `localhost:4000`
+
+### Option 2: Using Make
+
+We provided a generic `Makefile` to simplify building the binaries.
+
+```bash
+# Compile both backends
+make build
+make build-hub
+
+# Start the backends
+make run      # Runs BabelSuite core engine daemon
+make run-hub  # Runs the Hub Registry
+```
+
+### Option 3: Manual Startup
+
+Start the core engine daemon and hub from source:
 
 ```bash
 # Terminal 1: Core Engine
-./babelsuite.exe daemon
+go build -o babelsuite main.go
+./babelsuite daemon
 
 # Terminal 2: Registry Backend
 cd hub-backend
-./hub-backend.exe start
+go build -o hub-backend main.go
+./hub-backend start
 ```
 
-Start the interactive Web Applications mapping to each API backend:
+### Starting the Web UIs
+Regardless of how you start the backends, start the interactive Web Applications mapping to each API backend:
 
 ```bash
 # Terminal 3: Orchestrator DAG UI
