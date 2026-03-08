@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   babelsuite:
     build:
@@ -19,4 +17,30 @@ services:
     container_name: babelsuite-hub-backend
     ports:
       - "4000:4000"
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: babelsuite-ui
+    ports:
+      - "5173:5173"
+    environment:
+      - API_URL=http://babelsuite:3000
+    depends_on:
+      - babelsuite
+    restart: unless-stopped
+
+  hub-ui:
+    build:
+      context: ./hub-ui
+      dockerfile: Dockerfile
+    container_name: babelsuite-hub-ui
+    ports:
+      - "5174:5174"
+    environment:
+      - API_URL=http://hub-backend:4000
+    depends_on:
+      - hub-backend
     restart: unless-stopped
