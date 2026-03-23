@@ -8,8 +8,9 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"user_id"`
-	OrgID  string `json:"org_id"`
+	UserID  string `json:"user_id"`
+	OrgID   string `json:"org_id"`
+	IsAdmin bool   `json:"is_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -17,10 +18,11 @@ type JWTService struct{ secret []byte }
 
 func NewJWT(secret string) *JWTService { return &JWTService{secret: []byte(secret)} }
 
-func (j *JWTService) Sign(userID, orgID string) (string, error) {
+func (j *JWTService) Sign(userID, orgID string, isAdmin bool) (string, error) {
 	claims := Claims{
-		UserID: userID,
-		OrgID:  orgID,
+		UserID:  userID,
+		OrgID:   orgID,
+		IsAdmin: isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

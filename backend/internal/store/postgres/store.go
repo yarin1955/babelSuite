@@ -58,9 +58,11 @@ CREATE TABLE IF NOT EXISTS users (
   username   TEXT UNIQUE NOT NULL,
   email      TEXT UNIQUE NOT NULL,
   name       TEXT NOT NULL,
+  is_admin   BOOLEAN NOT NULL DEFAULT false,
   pass_hash  TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);`)
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;`)
 	return err
 }
 
@@ -87,28 +89,28 @@ func (s *Store) GetOrgByID(ctx context.Context, id string) (*domain.Org, error) 
 
 func (s *Store) CreateUser(ctx context.Context, u *domain.User) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO users(user_id,org_id,username,email,name,pass_hash,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-		u.UserID, u.OrgID, u.Username, u.Email, u.Name, u.PassHash, u.CreatedAt)
+		`INSERT INTO users(user_id,org_id,username,email,name,is_admin,pass_hash,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+		u.UserID, u.OrgID, u.Username, u.Email, u.Name, u.IsAdmin, u.PassHash, u.CreatedAt)
 	return wrap(err)
 }
 
 func (s *Store) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
 	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,pass_hash,created_at FROM users WHERE user_id=$1`, id).
-		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.PassHash, &u.CreatedAt)
+	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,is_admin,pass_hash,created_at FROM users WHERE user_id=$1`, id).
+		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.PassHash, &u.CreatedAt)
 	return &u, wrap(err)
 }
 
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
 	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,pass_hash,created_at FROM users WHERE username=$1`, username).
-		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.PassHash, &u.CreatedAt)
+	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,is_admin,pass_hash,created_at FROM users WHERE username=$1`, username).
+		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.PassHash, &u.CreatedAt)
 	return &u, wrap(err)
 }
 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,pass_hash,created_at FROM users WHERE email=$1`, email).
-		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.PassHash, &u.CreatedAt)
+	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,is_admin,pass_hash,created_at FROM users WHERE email=$1`, email).
+		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.PassHash, &u.CreatedAt)
 	return &u, wrap(err)
 }

@@ -1,14 +1,15 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-    FaPlay, FaLayerGroup, FaSliders, FaGear,
-    FaChevronLeft, FaChevronRight,
+    FaPlay, FaLayerGroup, FaSliders, FaGear, FaBoxOpen,
+    FaChevronLeft, FaChevronRight, FaArrowRightFromBracket,
 } from 'react-icons/fa6'
 import { useState } from 'react'
 
 const NAV = [
     { path: '/runs',     icon: <FaPlay />,       label: 'Runs'     },
     { path: '/suites',   icon: <FaLayerGroup />, label: 'Suites'   },
-    { path: '/profiles', icon: <FaSliders />,   label: 'Profiles' },
+    { path: '/catalog',  icon: <FaBoxOpen />,    label: 'Catalog'  },
+    { path: '/profiles', icon: <FaSliders />,    label: 'Profiles' },
     { path: '/settings', icon: <FaGear />,        label: 'Settings' },
 ]
 
@@ -16,6 +17,12 @@ export default function Sidebar() {
     const [collapsed, setCollapsed] = useState(false)
     const location = useLocation()
     const nav = useNavigate()
+
+    const logout = () => {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        nav('/login')
+    }
 
     return (
         <div className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
@@ -46,6 +53,13 @@ export default function Sidebar() {
                         </div>
                     )
                 })}
+
+                <div className='sidebar__bottom'>
+                    <div className='sidebar__nav-item sidebar__nav-item--logout' onClick={logout}>
+                        <span className='nav-icon'><FaArrowRightFromBracket /></span>
+                        {!collapsed && 'Sign Out'}
+                    </div>
+                </div>
             </div>
         </div>
     )

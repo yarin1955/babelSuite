@@ -109,7 +109,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.jwt.Sign(user.UserID, org.OrgID)
+	token, err := h.jwt.Sign(user.UserID, org.OrgID, user.IsAdmin)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
@@ -169,7 +169,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.jwt.Sign(user.UserID, org.OrgID)
+	token, err := h.jwt.Sign(user.UserID, org.OrgID, user.IsAdmin)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return

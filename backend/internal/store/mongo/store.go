@@ -13,9 +13,11 @@ import (
 )
 
 type Store struct {
-	client *mongo.Client
-	users  *mongo.Collection
-	orgs   *mongo.Collection
+	client     *mongo.Client
+	users      *mongo.Collection
+	orgs       *mongo.Collection
+	registries *mongo.Collection
+	packages   *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -32,15 +34,18 @@ func New(uri, dbName string) (*Store, error) {
 
 	db := client.Database(dbName)
 	s := &Store{
-		client: client,
-		users:  db.Collection("users"),
-		orgs:   db.Collection("orgs"),
+		client:     client,
+		users:      db.Collection("users"),
+		orgs:       db.Collection("orgs"),
+		registries: db.Collection("registries"),
+		packages:   db.Collection("catalog_packages"),
 	}
 
 	uniq := options.Index().SetUnique(true)
 	s.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "username", Value: 1}}, Options: uniq})
 	s.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "email", Value: 1}}, Options: uniq})
 	s.orgs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "slug", Value: 1}}, Options: uniq})
+	s.packages.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "image_ref", Value: 1}}, Options: uniq})
 	return s, nil
 }
 

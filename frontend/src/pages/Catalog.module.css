@@ -1,0 +1,280 @@
+.layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+/* ── Filter sidebar ──────────────────────────────────────────────────────── */
+.filters {
+    width: 220px;
+    flex-shrink: 0;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: 16px;
+    position: sticky;
+    top: 70px;
+}
+
+.filtersTitle {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6d7f8b;
+    margin: 0 0 10px;
+}
+
+.filterGroup {
+    margin-bottom: 16px;
+}
+
+.filterGroupLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6d7f8b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 6px;
+}
+
+.filterOption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    cursor: pointer;
+    font-size: 13px;
+    color: #374151;
+    user-select: none;
+}
+
+.filterOption input[type='radio'],
+.filterOption input[type='checkbox'] {
+    accent-color: #fe733f;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.filterOption:hover {
+    color: #fe733f;
+}
+
+/* ── Search bar ──────────────────────────────────────────────────────────── */
+.searchWrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.searchInput {
+    flex: 1;
+    height: 36px;
+    padding: 0 12px 0 34px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236d7f8b' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;
+}
+
+.searchInput:focus {
+    border-color: #fe733f;
+    box-shadow: 0 0 0 2px rgba(254,115,63,.15);
+}
+
+.count {
+    font-size: 13px;
+    color: #6d7f8b;
+    white-space: nowrap;
+}
+
+/* ── Package cards grid ──────────────────────────────────────────────────── */
+.list {
+    flex: 1;
+    min-width: 0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+}
+
+/* ── Individual card ─────────────────────────────────────────────────────── */
+.card {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: box-shadow .15s;
+}
+
+.card:hover {
+    box-shadow: 0 3px 10px rgba(0,0,0,.12);
+}
+
+.cardHeader {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.cardIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #6d7f8b;
+    font-size: 20px;
+}
+
+.cardMeta {
+    flex: 1;
+    min-width: 0;
+}
+
+.cardName {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cardPublisher {
+    font-size: 12px;
+    color: #6d7f8b;
+    margin-top: 2px;
+}
+
+.cardDesc {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.cardFooter {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.badgeGhcr {
+    background: #f0f9ff;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+
+.badgeJfrog {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.badgeTag {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+}
+
+.badgeVersion {
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    margin-left: auto;
+}
+
+/* ── Enabled pill ────────────────────────────────────────────────────────── */
+.enabledDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #18be94;
+    flex-shrink: 0;
+}
+
+/* ── Pagination ──────────────────────────────────────────────────────────── */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 24px;
+}
+
+.pageBtn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    background: #fff;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.pageBtn:hover:not(:disabled) {
+    border-color: #fe733f;
+    color: #fe733f;
+}
+
+.pageBtnActive {
+    background: #fe733f;
+    border-color: #fe733f;
+    color: #fff;
+}
+
+.pageBtn:disabled {
+    opacity: .4;
+    cursor: default;
+}
+
+/* ── Loading / empty ─────────────────────────────────────────────────────── */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 0;
+    color: #6d7f8b;
+    font-size: 14px;
+    gap: 10px;
+}
+
+.spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #e5e7eb;
+    border-top-color: #fe733f;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

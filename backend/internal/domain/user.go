@@ -8,6 +8,7 @@ type User struct {
 	Username  string    `json:"username"   bson:"username"`
 	Email     string    `json:"email"      bson:"email"`
 	Name      string    `json:"name"       bson:"name"`
+	IsAdmin   bool      `json:"is_admin"   bson:"is_admin"`
 	PassHash  string    `json:"-"          bson:"pass_hash"`
 	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 }

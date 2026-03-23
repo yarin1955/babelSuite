@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/babelsuite/babelsuite/internal/auth"
+	"github.com/babelsuite/babelsuite/internal/catalog"
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
-	"github.com/babelsuite/babelsuite/internal/store"
 )
 
 func main() {
@@ -46,11 +48,15 @@ func main() {
 		secret = "change-me"
 	}
 
+	auth.Seed(context.Background(), st, os.Getenv("ADMIN_USERNAME"), os.Getenv("ADMIN_PASSWORD"))
+
 	jwtSvc := auth.NewJWT(secret)
 	handler := auth.NewHandler(st, jwtSvc)
+	catalogHandler := catalog.NewHandler(st, jwtSvc)
 
 	mux := http.NewServeMux()
 	handler.Register(mux)
+	catalogHandler.Register(mux)
 
 	// CORS middleware for frontend dev server
 	corsed := corsMiddleware(mux)

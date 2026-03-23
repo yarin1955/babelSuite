@@ -18,6 +18,14 @@ $deselected-text: #818d94;
 
     &__container {
         padding: 0 5px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    &__bottom {
+        margin-top: auto;
+        padding-bottom: 40px;
     }
 
     &__logo-container {
@@ -108,6 +116,16 @@ $deselected-text: #818d94;
         &--active {
             color: white;
             .nav-icon { color: #fe733f; }
+        }
+
+        &--logout {
+            color: #e96d76;
+            .nav-icon { color: #e96d76; }
+            &:hover {
+                background: rgba(233, 109, 118, 0.12);
+                color: #ff8a93;
+                .nav-icon { color: #ff8a93; }
+            }
         }
     }
 
