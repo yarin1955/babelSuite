@@ -36,5 +36,15 @@ type Store interface {
 	SetPackageEnabled(ctx context.Context, id string, enabled bool) error
 	DeletePackage(ctx context.Context, id string) error
 
+	// OIDC providers
+	CreateOIDCProvider(ctx context.Context, p *domain.OIDCProvider) error
+	ListOIDCProviders(ctx context.Context) ([]*domain.OIDCProvider, error)
+	GetOIDCProvider(ctx context.Context, id string) (*domain.OIDCProvider, error)
+	UpdateOIDCProvider(ctx context.Context, p *domain.OIDCProvider) error
+	DeleteOIDCProvider(ctx context.Context, id string) error
+
+	// Users (upsert for SSO-created accounts)
+	UpsertUserByEmail(ctx context.Context, u *domain.User) (*domain.User, error)
+
 	Close(ctx context.Context) error
 }

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login        from './pages/Login'
 import Signup       from './pages/Signup'
+import SSOCallback  from './pages/SSOCallback'
 import Home         from './pages/Home'
 import Runs         from './pages/Runs'
 import Suites       from './pages/Suites'
@@ -26,8 +27,9 @@ export default function App() {
     return (
         <BrowserRouter>
             <Routes>
-                <Route path='/login'  element={<Login />} />
-                <Route path='/signup' element={<Signup />} />
+                <Route path='/login'         element={<Login />} />
+                <Route path='/signup'        element={<Signup />} />
+                <Route path='/auth/callback' element={<SSOCallback />} />
                 <Route path='/'              element={<Guard><Home /></Guard>} />
                 <Route path='/runs'          element={<Guard><Runs /></Guard>} />
                 <Route path='/suites'        element={<Guard><Suites /></Guard>} />

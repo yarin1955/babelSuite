@@ -9,6 +9,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/catalog"
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/sso"
 	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
@@ -50,13 +51,20 @@ func main() {
 
 	auth.Seed(context.Background(), st, os.Getenv("ADMIN_USERNAME"), os.Getenv("ADMIN_PASSWORD"))
 
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+
 	jwtSvc := auth.NewJWT(secret)
 	handler := auth.NewHandler(st, jwtSvc)
 	catalogHandler := catalog.NewHandler(st, jwtSvc)
+	ssoHandler := sso.NewHandler(st, jwtSvc, frontendURL)
 
 	mux := http.NewServeMux()
 	handler.Register(mux)
 	catalogHandler.Register(mux)
+	ssoHandler.Register(mux)
 
 	// CORS middleware for frontend dev server
 	corsed := corsMiddleware(mux)

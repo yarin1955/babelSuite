@@ -62,7 +62,17 @@ CREATE TABLE IF NOT EXISTS users (
   pass_hash  TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;`)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS oidc_providers (
+  provider_id   TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  issuer_url    TEXT NOT NULL,
+  client_id     TEXT NOT NULL,
+  client_secret TEXT NOT NULL,
+  scopes        TEXT NOT NULL DEFAULT '',
+  enabled       BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);`)
 	return err
 }
 

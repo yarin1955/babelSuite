@@ -13,11 +13,12 @@ import (
 )
 
 type Store struct {
-	client     *mongo.Client
-	users      *mongo.Collection
-	orgs       *mongo.Collection
-	registries *mongo.Collection
-	packages   *mongo.Collection
+	client        *mongo.Client
+	users         *mongo.Collection
+	orgs          *mongo.Collection
+	registries    *mongo.Collection
+	packages      *mongo.Collection
+	oidcProviders *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -34,11 +35,12 @@ func New(uri, dbName string) (*Store, error) {
 
 	db := client.Database(dbName)
 	s := &Store{
-		client:     client,
-		users:      db.Collection("users"),
-		orgs:       db.Collection("orgs"),
-		registries: db.Collection("registries"),
-		packages:   db.Collection("catalog_packages"),
+		client:        client,
+		users:         db.Collection("users"),
+		orgs:          db.Collection("orgs"),
+		registries:    db.Collection("registries"),
+		packages:      db.Collection("catalog_packages"),
+		oidcProviders: db.Collection("oidc_providers"),
 	}
 
 	uniq := options.Index().SetUnique(true)
