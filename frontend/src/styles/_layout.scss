@@ -1,0 +1,24 @@
+@use 'config' as *;
+
+.cd-layout {
+    display: flex;
+    height: 100%;
+    width: 100%;
+    background-color: #dee6eb;
+
+    &__content {
+        width: 100%;
+    }
+}
+
+.sb-page-wrapper {
+    padding-left: $sidebar-width;
+
+    &--collapsed {
+        padding-left: $collapsed-sidebar-width;
+
+        .page__top-bar {
+            left: $collapsed-sidebar-width !important;
+        }
+    }
+}

@@ -1,0 +1,109 @@
+@use 'config' as *;
+
+$toolbar-height: 50px;
+
+.page {
+    &--has-toolbar {
+        padding-top: $toolbar-height;
+    }
+
+    &__top-bar {
+        position: fixed;
+        top: 0;
+        left: $sidebar-width;
+        right: 0;
+        height: $toolbar-height;
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        z-index: 1;
+        box-shadow: 0 1px 3px rgba(0,0,0,.06);
+
+        &__title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #111;
+            flex: 1;
+        }
+
+        &__tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    }
+
+    &__body {
+        padding: 20px;
+    }
+}
+
+.white-box {
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    margin-bottom: 16px;
+    overflow: hidden;
+
+    &__details {
+        padding: 16px 20px;
+    }
+
+    &__details-row {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #f0f0f0;
+
+        &:last-child { border-bottom: none; }
+
+        &__name {
+            color: #6d7f8b;
+            font-size: 13px;
+            width: 160px;
+            flex-shrink: 0;
+        }
+
+        &__value {
+            font-size: 13px;
+            color: #111;
+        }
+    }
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+
+    &__icon {
+        position: relative;
+        background-color: #ccd6dd;
+        width: 10em;
+        height: 10em;
+        border-radius: 5em;
+        margin: 0 auto 1.5em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        svg {
+            color: white;
+            width: 5em;
+            height: 5em;
+        }
+    }
+
+    h4 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #555;
+        margin-bottom: 8px;
+    }
+
+    p {
+        color: #888;
+        font-size: 14px;
+    }
+}
