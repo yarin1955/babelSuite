@@ -1,0 +1,29 @@
+// ── Design tokens ─────────────────────────────────────────────────────────────
+$sidebar-width:           230px;
+$collapsed-sidebar-width:  60px;
+
+// sidebar
+$sidebar-bg:      #0f2733;
+$sidebar-active:  #fe733f;
+$sidebar-text:    #818d94;
+
+// status colours
+$color-success:  #18be94;
+$color-warning:  #f4c030;
+$color-failed:   #e96d76;
+$color-running:  #0dadea;
+$color-gray-4:   #ccd6dd;
+$color-gray-6:   #6d7f8b;
+$color-gray-7:   #818d94;
+
+// auth page
+$auth-bg:         #f0f2f5;
+$auth-card-bg:    #ffffff;
+$auth-border:     #e0e0e0;
+$auth-primary:    #1677ff;
+$auth-primary-h:  #0958d9;
+$auth-error:      #e96d76;
+
+// typography
+$font:   'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+$radius: 8px;
