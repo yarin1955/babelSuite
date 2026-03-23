@@ -7,6 +7,7 @@ import Runs         from './pages/Runs'
 import Suites       from './pages/Suites'
 import Catalog      from './pages/Catalog'
 import AdminCatalog from './pages/AdminCatalog'
+import Agents       from './pages/Agents'
 import Profiles     from './pages/Profiles'
 import Settings     from './pages/Settings'
 
@@ -34,6 +35,7 @@ export default function App() {
                 <Route path='/runs'          element={<Guard><Runs /></Guard>} />
                 <Route path='/suites'        element={<Guard><Suites /></Guard>} />
                 <Route path='/catalog'       element={<Guard><Catalog /></Guard>} />
+                <Route path='/agents'        element={<Guard><Agents /></Guard>} />
                 <Route path='/admin/catalog' element={<AdminGuard><AdminCatalog /></AdminGuard>} />
                 <Route path='/profiles'      element={<Guard><Profiles /></Guard>} />
                 <Route path='/settings'      element={<Guard><Settings /></Guard>} />

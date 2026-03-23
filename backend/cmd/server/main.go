@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/babelsuite/babelsuite/internal/agents"
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/catalog"
 	"github.com/babelsuite/babelsuite/internal/envloader"
@@ -60,11 +61,13 @@ func main() {
 	handler := auth.NewHandler(st, jwtSvc)
 	catalogHandler := catalog.NewHandler(st, jwtSvc)
 	ssoHandler := sso.NewHandler(st, jwtSvc, frontendURL)
+	agentsHandler := agents.NewHandler(st, jwtSvc)
 
 	mux := http.NewServeMux()
 	handler.Register(mux)
 	catalogHandler.Register(mux)
 	ssoHandler.Register(mux)
+	agentsHandler.Register(mux)
 
 	// CORS middleware for frontend dev server
 	corsed := corsMiddleware(mux)

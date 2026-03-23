@@ -36,6 +36,14 @@ type Store interface {
 	SetPackageEnabled(ctx context.Context, id string, enabled bool) error
 	DeletePackage(ctx context.Context, id string) error
 
+	// Agents
+	CreateAgent(ctx context.Context, a *domain.Agent) error
+	ListAgents(ctx context.Context, orgID string) ([]*domain.Agent, error)
+	GetAgent(ctx context.Context, id string) (*domain.Agent, error)
+	GetAgentByToken(ctx context.Context, token string) (*domain.Agent, error)
+	UpdateAgent(ctx context.Context, a *domain.Agent) error
+	DeleteAgent(ctx context.Context, id string) error
+
 	// OIDC providers
 	CreateOIDCProvider(ctx context.Context, p *domain.OIDCProvider) error
 	ListOIDCProviders(ctx context.Context) ([]*domain.OIDCProvider, error)

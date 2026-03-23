@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-    FaPlay, FaLayerGroup, FaSliders, FaGear, FaBoxOpen,
+    FaPlay, FaLayerGroup, FaSliders, FaGear, FaBoxOpen, FaRobot,
     FaChevronLeft, FaChevronRight, FaArrowRightFromBracket,
 } from 'react-icons/fa6'
 import { useState } from 'react'
@@ -9,6 +9,7 @@ const NAV = [
     { path: '/runs',     icon: <FaPlay />,       label: 'Runs'     },
     { path: '/suites',   icon: <FaLayerGroup />, label: 'Suites'   },
     { path: '/catalog',  icon: <FaBoxOpen />,    label: 'Catalog'  },
+    { path: '/agents',   icon: <FaRobot />,      label: 'Agents'   },
     { path: '/profiles', icon: <FaSliders />,    label: 'Profiles' },
     { path: '/settings', icon: <FaGear />,        label: 'Settings' },
 ]

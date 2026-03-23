@@ -63,6 +63,20 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS agents (
+  agent_id     TEXT PRIMARY KEY,
+  org_id       TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  token        TEXT UNIQUE NOT NULL,
+  platform     TEXT NOT NULL DEFAULT '',
+  backend      TEXT NOT NULL DEFAULT '',
+  capacity     INT  NOT NULL DEFAULT 1,
+  version      TEXT NOT NULL DEFAULT '',
+  labels       TEXT NOT NULL DEFAULT '{}',
+  last_contact TIMESTAMPTZ NOT NULL DEFAULT now(),
+  no_schedule  BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS oidc_providers (
   provider_id   TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
