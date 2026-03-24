@@ -86,17 +86,17 @@ func (s *Store) NextPendingRun(ctx context.Context, orgID string) (*domain.Run, 
 
 func (s *Store) CreateStep(ctx context.Context, step *domain.Step) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO steps(step_id,run_id,name,status,exit_code,error,started_at,finished_at)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-		step.StepID, step.RunID, step.Name, step.Status, step.ExitCode,
+		`INSERT INTO steps(step_id,run_id,name,position,status,exit_code,error,started_at,finished_at)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		step.StepID, step.RunID, step.Name, step.Position, step.Status, step.ExitCode,
 		step.Error, step.StartedAt, step.FinishedAt)
 	return wrap(err)
 }
 
 func (s *Store) ListSteps(ctx context.Context, runID string) ([]*domain.Step, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT step_id,run_id,name,status,exit_code,error,started_at,finished_at
-		 FROM steps WHERE run_id=$1 ORDER BY started_at ASC NULLS FIRST`, runID)
+		`SELECT step_id,run_id,name,position,status,exit_code,error,started_at,finished_at
+		 FROM steps WHERE run_id=$1 ORDER BY position ASC`, runID)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -104,7 +104,7 @@ func (s *Store) ListSteps(ctx context.Context, runID string) ([]*domain.Step, er
 	var list []*domain.Step
 	for rows.Next() {
 		var step domain.Step
-		if err := rows.Scan(&step.StepID, &step.RunID, &step.Name, &step.Status,
+		if err := rows.Scan(&step.StepID, &step.RunID, &step.Name, &step.Position, &step.Status,
 			&step.ExitCode, &step.Error, &step.StartedAt, &step.FinishedAt); err != nil {
 			return nil, err
 		}

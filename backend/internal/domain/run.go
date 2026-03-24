@@ -29,6 +29,7 @@ type Step struct {
 	StepID     string     `json:"step_id"     bson:"step_id"`
 	RunID      string     `json:"run_id"      bson:"run_id"`
 	Name       string     `json:"name"        bson:"name"`
+	Position   int        `json:"position"    bson:"position"`
 	Status     RunStatus  `json:"status"      bson:"status"`
 	ExitCode   int        `json:"exit_code"   bson:"exit_code"`
 	Error      string     `json:"error"       bson:"error"`

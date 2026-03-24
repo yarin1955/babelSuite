@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS run_logs (
 CREATE INDEX IF NOT EXISTS idx_runs_org_status    ON runs(org_id, status);
 CREATE INDEX IF NOT EXISTS idx_steps_run_id       ON steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_logs_step_line ON run_logs(step_id, line);
+ALTER TABLE steps ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS agents (
   agent_id     TEXT PRIMARY KEY,
   org_id       TEXT NOT NULL,

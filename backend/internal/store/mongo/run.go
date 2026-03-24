@@ -67,7 +67,7 @@ func (s *Store) CreateStep(ctx context.Context, step *domain.Step) error {
 }
 
 func (s *Store) ListSteps(ctx context.Context, runID string) ([]*domain.Step, error) {
-	cur, err := s.steps.Find(ctx, bson.M{"run_id": runID}, options.Find().SetSort(bson.D{{Key: "started_at", Value: 1}}))
+	cur, err := s.steps.Find(ctx, bson.M{"run_id": runID}, options.Find().SetSort(bson.D{{Key: "position", Value: 1}}))
 	if err != nil {
 		return nil, wrap(err)
 	}

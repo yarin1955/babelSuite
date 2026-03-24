@@ -19,6 +19,7 @@ interface Step {
   step_id:     string
   run_id:      string
   name:        string
+  position:    number
   status:      string
   exit_code:   number
   error:       string
@@ -68,7 +69,7 @@ export default function RunDetail() {
   const esRef      = useRef<EventSource | null>(null)
   const linesRef   = useRef<LogLine[]>([])
 
-  // Load run + steps
+  // Load run + steps; pick initial selected step once (first main step, else first step)
   useEffect(() => {
     if (!id) return
     const headers = { Authorization: `Bearer ${token}` }
@@ -78,10 +79,11 @@ export default function RunDetail() {
       fetch(`${API}/api/runs/${id}/steps`, { headers }).then(r => r.json()),
     ]).then(([r, s]) => {
       setRun(r)
-      const stepList: Step[] = Array.isArray(s) ? s : []
-      setSteps(stepList)
-      if (stepList.length > 0 && !selectedStep) {
-        setSelectedStep(stepList[0].step_id)
+      const list: Step[] = Array.isArray(s) ? s : []
+      setSteps(list)
+      if (list.length > 0) {
+        const main = list.find(st => st.position > 0)
+        setSelectedStep((main ?? list[0]).step_id)
       }
     }).catch(() => setErr('Failed to load run'))
   }, [id])

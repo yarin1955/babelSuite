@@ -213,17 +213,19 @@ pytest /tmp/test_fleet_db.py -v --tb=short`, pgName)
 	stepMap := map[string]*domain.Step{} // WorkflowStep.UUID → domain.Step
 
 	// Allocate domain.Step records upfront so SSE clients can subscribe before
-	// the containers start.
+	// the containers start. Position is assigned sequentially across all stages
+	// so the UI always renders steps in execution order.
+	pos := 0
 	for _, stage := range conf.Stages {
 		for _, ws := range stage.Steps {
-			stepNow := time.Now().UTC()
 			ds := &domain.Step{
-				StepID:    uuid.NewString(),
-				RunID:     run.RunID,
-				Name:      ws.Name,
-				Status:    domain.RunPending,
-				StartedAt: &stepNow,
+				StepID:   uuid.NewString(),
+				RunID:    run.RunID,
+				Name:     ws.Name,
+				Position: pos,
+				Status:   domain.RunPending,
 			}
+			pos++
 			_ = h.store.CreateStep(ctx, ds)
 			stepMap[ws.UUID] = ds
 		}
