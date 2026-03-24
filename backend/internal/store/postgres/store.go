@@ -63,6 +63,40 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS runs (
+  run_id      TEXT PRIMARY KEY,
+  org_id      TEXT NOT NULL,
+  package_id  TEXT NOT NULL DEFAULT '',
+  image_ref   TEXT NOT NULL DEFAULT '',
+  agent_id    TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'pending',
+  started_at  TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS steps (
+  step_id     TEXT PRIMARY KEY,
+  run_id      TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'pending',
+  exit_code   INT  NOT NULL DEFAULT 0,
+  error       TEXT NOT NULL DEFAULT '',
+  started_at  TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS run_logs (
+  log_id  TEXT PRIMARY KEY,
+  run_id  TEXT NOT NULL,
+  step_id TEXT NOT NULL,
+  line    INT  NOT NULL,
+  data    TEXT NOT NULL DEFAULT '',
+  time    BIGINT NOT NULL DEFAULT 0,
+  type    INT  NOT NULL DEFAULT 0,
+  UNIQUE(step_id, line)
+);
+CREATE INDEX IF NOT EXISTS idx_runs_org_status    ON runs(org_id, status);
+CREATE INDEX IF NOT EXISTS idx_steps_run_id       ON steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_run_logs_step_line ON run_logs(step_id, line);
 CREATE TABLE IF NOT EXISTS agents (
   agent_id     TEXT PRIMARY KEY,
   org_id       TEXT NOT NULL,

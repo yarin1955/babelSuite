@@ -8,6 +8,7 @@ import Suites       from './pages/Suites'
 import Catalog      from './pages/Catalog'
 import AdminCatalog from './pages/AdminCatalog'
 import Agents       from './pages/Agents'
+import RunDetail    from './pages/RunDetail'
 import Profiles     from './pages/Profiles'
 import Settings     from './pages/Settings'
 
@@ -33,6 +34,7 @@ export default function App() {
                 <Route path='/auth/callback' element={<SSOCallback />} />
                 <Route path='/'              element={<Guard><Home /></Guard>} />
                 <Route path='/runs'          element={<Guard><Runs /></Guard>} />
+                <Route path='/runs/:id'      element={<Guard><RunDetail /></Guard>} />
                 <Route path='/suites'        element={<Guard><Suites /></Guard>} />
                 <Route path='/catalog'       element={<Guard><Catalog /></Guard>} />
                 <Route path='/agents'        element={<Guard><Agents /></Guard>} />

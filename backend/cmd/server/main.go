@@ -9,7 +9,9 @@ import (
 	"github.com/babelsuite/babelsuite/internal/agents"
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/catalog"
+	"github.com/babelsuite/babelsuite/internal/demo"
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/runs"
 	"github.com/babelsuite/babelsuite/internal/sso"
 	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
@@ -62,12 +64,19 @@ func main() {
 	catalogHandler := catalog.NewHandler(st, jwtSvc)
 	ssoHandler := sso.NewHandler(st, jwtSvc, frontendURL)
 	agentsHandler := agents.NewHandler(st, jwtSvc)
+	runsHandler := runs.NewHandler(st, jwtSvc)
 
 	mux := http.NewServeMux()
 	handler.Register(mux)
 	catalogHandler.Register(mux)
 	ssoHandler.Register(mux)
 	agentsHandler.Register(mux)
+	runsHandler.Register(mux)
+
+	if os.Getenv("DEMO_ENABLED") == "true" {
+		demo.NewHandler(st, jwtSvc, runsHandler).Register(mux)
+		log.Println("demo mode enabled")
+	}
 
 	// CORS middleware for frontend dev server
 	corsed := corsMiddleware(mux)

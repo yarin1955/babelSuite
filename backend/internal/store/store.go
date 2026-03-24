@@ -36,6 +36,22 @@ type Store interface {
 	SetPackageEnabled(ctx context.Context, id string, enabled bool) error
 	DeletePackage(ctx context.Context, id string) error
 
+	// Runs
+	CreateRun(ctx context.Context, r *domain.Run) error
+	ListRuns(ctx context.Context, orgID string, page, pageSize int) ([]*domain.Run, int64, error)
+	GetRun(ctx context.Context, id string) (*domain.Run, error)
+	UpdateRun(ctx context.Context, r *domain.Run) error
+	NextPendingRun(ctx context.Context, orgID string) (*domain.Run, error)
+
+	// Steps
+	CreateStep(ctx context.Context, s *domain.Step) error
+	ListSteps(ctx context.Context, runID string) ([]*domain.Step, error)
+	UpdateStep(ctx context.Context, s *domain.Step) error
+
+	// Logs
+	AppendLogs(ctx context.Context, entries []*domain.LogEntry) error
+	GetLogs(ctx context.Context, stepID string) ([]*domain.LogEntry, error)
+
 	// Agents
 	CreateAgent(ctx context.Context, a *domain.Agent) error
 	ListAgents(ctx context.Context, orgID string) ([]*domain.Agent, error)

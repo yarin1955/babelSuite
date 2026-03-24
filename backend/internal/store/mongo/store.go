@@ -20,6 +20,9 @@ type Store struct {
 	packages      *mongo.Collection
 	oidcProviders *mongo.Collection
 	agents        *mongo.Collection
+	runs          *mongo.Collection
+	steps         *mongo.Collection
+	logs          *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -43,6 +46,9 @@ func New(uri, dbName string) (*Store, error) {
 		packages:      db.Collection("catalog_packages"),
 		oidcProviders: db.Collection("oidc_providers"),
 		agents:        db.Collection("agents"),
+		runs:          db.Collection("runs"),
+		steps:         db.Collection("steps"),
+		logs:          db.Collection("run_logs"),
 	}
 
 	uniq := options.Index().SetUnique(true)
@@ -51,6 +57,8 @@ func New(uri, dbName string) (*Store, error) {
 	s.orgs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "slug", Value: 1}}, Options: uniq})
 	s.packages.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "image_ref", Value: 1}}, Options: uniq})
 	s.agents.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "token", Value: 1}}, Options: uniq})
+	s.steps.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "run_id", Value: 1}}})
+	s.logs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "step_id", Value: 1}, {Key: "line", Value: 1}}})
 	return s, nil
 }
 
