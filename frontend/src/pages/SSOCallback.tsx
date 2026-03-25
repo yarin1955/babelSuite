@@ -8,7 +8,7 @@ export default function SSOCallback() {
     const hash = window.location.hash.slice(1)
     const params = new URLSearchParams(hash)
     const token = params.get('token')
-    const returnURL = params.get('return_url') || '/'
+    const returnURL = params.get('return_url') || '/runs'
 
     if (!token) {
       nav('/login?sso_error=missing_token', { replace: true })

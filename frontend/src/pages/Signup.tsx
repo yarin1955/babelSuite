@@ -27,7 +27,7 @@ export default function Signup() {
       if (!res.ok) { setErr(data.error || 'Registration failed'); return }
       localStorage.setItem('token', data.token)
       localStorage.setItem('user',  JSON.stringify(data.user))
-      nav('/')
+      nav('/runs')
     } catch {
       setErr('Cannot reach server')
     } finally {

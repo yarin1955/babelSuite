@@ -41,7 +41,7 @@ export default function Login() {
       if (!res.ok) { setErr(data.error || 'Login failed'); return }
       localStorage.setItem('token', data.token)
       localStorage.setItem('user',  JSON.stringify(data.user))
-      nav('/')
+      nav('/runs')
     } catch {
       setErr('Cannot reach server')
     } finally {
@@ -100,7 +100,7 @@ export default function Login() {
               <a
                 key={p.provider_id}
                 className='btn btn--google'
-                href={`${API}/auth/sso/login?provider_id=${p.provider_id}&return_url=/`}
+                href={`${API}/auth/sso/login?provider_id=${p.provider_id}&return_url=/runs`}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none', marginTop: 8 }}
               >
                 Sign in with {p.name}
@@ -130,4 +130,3 @@ function EyeOff() {
     </svg>
   )
 }
-

@@ -1,12 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-    FaHouse, FaPlay, FaLayerGroup, FaSliders, FaGear,
+    FaPlay, FaLayerGroup, FaSliders, FaGear,
     FaChevronLeft, FaChevronRight, FaArrowRightFromBracket,
 } from 'react-icons/fa6'
 import { useState } from 'react'
 
 const USER_NAV = [
-    { path: '/',         icon: <FaHouse />,      label: 'Overview' },
     { path: '/runs',     icon: <FaPlay />,       label: 'Runs'     },
     { path: '/suites',   icon: <FaLayerGroup />, label: 'Suites'   },
     { path: '/profiles', icon: <FaSliders />,    label: 'Profiles' },
@@ -14,7 +13,6 @@ const USER_NAV = [
 ]
 
 const ADMIN_NAV = [
-    { path: '/',         icon: <FaHouse />,      label: 'Overview' },
     { path: '/runs',     icon: <FaPlay />,       label: 'Runs'     },
     { path: '/suites',   icon: <FaLayerGroup />, label: 'Suites'   },
     { path: '/profiles', icon: <FaSliders />,    label: 'Profiles' },
@@ -48,12 +46,10 @@ export default function Sidebar() {
                         {collapsed ? <FaChevronRight /> : <FaChevronLeft />}
                     </div>
                     {!collapsed && (
-                        <div className='sidebar__logo-container' onClick={() => nav('/')}>
+                        <div className='sidebar__logo-container' onClick={() => nav('/runs')}>
                             <div className='sidebar__logo__name'>BabelSuite</div>
-                            <div className='sidebar__version'>container-native suite runner</div>
                         </div>
                     )}
-                    <div className='sidebar__logo__icon' onClick={() => nav('/')}>B</div>
                 </div>
 
                 <div className='sidebar__nav'>

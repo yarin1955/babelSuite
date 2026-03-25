@@ -55,11 +55,6 @@ export default function Settings() {
     },
   ], [])
 
-  const logout = () => {
-    localStorage.clear()
-    nav('/login')
-  }
-
   return (
     <Layout>
       <Page title='Settings'>
@@ -120,15 +115,14 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className={styles.accountActions}>
-                {!isAdmin && (
+              {!isAdmin && (
+                <div className={styles.accountActions}>
                   <button className='app-button app-button--secondary' onClick={() => nav('/profiles')}>
                     <FaSliders />
                     Open profiles
                   </button>
-                )}
-                <button className='app-button app-button--secondary' onClick={logout}>Sign out</button>
-              </div>
+                </div>
+              )}
             </div>
           </section>
         </div>
