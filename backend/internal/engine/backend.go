@@ -6,12 +6,27 @@ import (
 	"io"
 )
 
+type RunnerOptions struct {
+	EndpointURL           string
+	InsecureSkipTLSVerify bool
+	Username              string
+	Password              string
+	BearerToken           string
+	TLSCAData             string
+	TLSCertData           string
+	TLSKeyData            string
+}
+
 // NewRunner creates a Runner by name. Currently supported: the default container backend.
 // Add new cases here as additional backends are implemented.
 func NewRunner(name string) (Runner, error) {
+	return NewRunnerWithOptions(name, RunnerOptions{})
+}
+
+func NewRunnerWithOptions(name string, opts RunnerOptions) (Runner, error) {
 	switch name {
 	case "docker":
-		return NewDocker()
+		return NewDockerWithOptions(opts)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", name)
 	}

@@ -3,11 +3,17 @@ package engine
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -27,11 +33,98 @@ type Docker struct {
 // NewDocker creates a Docker engine using the DOCKER_HOST / DOCKER_TLS*
 // environment variables, falling back to the local daemon socket.
 func NewDocker() (*Docker, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	return NewDockerWithOptions(RunnerOptions{})
+}
+
+func NewDockerWithHost(host string) (*Docker, error) {
+	return NewDockerWithOptions(RunnerOptions{EndpointURL: host})
+}
+
+func NewDockerWithOptions(runnerOpts RunnerOptions) (*Docker, error) {
+	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+
+	httpClient, err := dockerHTTPClient(runnerOpts)
+	if err != nil {
+		return nil, fmt.Errorf("docker client transport: %w", err)
+	}
+	if httpClient != nil {
+		opts = append(opts, client.WithHTTPClient(httpClient))
+	}
+
+	if headers := dockerHTTPHeaders(runnerOpts); len(headers) > 0 {
+		opts = append(opts, client.WithHTTPHeaders(headers))
+	}
+
+	if trimmed := strings.TrimSpace(runnerOpts.EndpointURL); trimmed != "" {
+		opts = append(opts, client.WithHost(trimmed))
+	}
+
+	cli, err := client.NewClientWithOpts(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
 	}
 	return &Docker{client: cli}, nil
+}
+
+func dockerHTTPClient(runnerOpts RunnerOptions) (*http.Client, error) {
+	hasTLSConfig := runnerOpts.InsecureSkipTLSVerify ||
+		strings.TrimSpace(runnerOpts.TLSCAData) != "" ||
+		strings.TrimSpace(runnerOpts.TLSCertData) != "" ||
+		strings.TrimSpace(runnerOpts.TLSKeyData) != ""
+	if !hasTLSConfig {
+		return nil, nil
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: runnerOpts.InsecureSkipTLSVerify,
+	}
+
+	if caData := strings.TrimSpace(runnerOpts.TLSCAData); caData != "" {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM([]byte(caData)) {
+			return nil, fmt.Errorf("invalid tls_ca_data")
+		}
+		tlsConfig.RootCAs = pool
+	}
+
+	certData := strings.TrimSpace(runnerOpts.TLSCertData)
+	keyData := strings.TrimSpace(runnerOpts.TLSKeyData)
+	if certData != "" || keyData != "" {
+		cert, err := tls.X509KeyPair([]byte(certData), []byte(keyData))
+		if err != nil {
+			return nil, fmt.Errorf("invalid tls client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+		MaxIdleConns:    6,
+		IdleConnTimeout: 30 * time.Second,
+	}
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: client.CheckRedirect,
+	}, nil
+}
+
+func dockerHTTPHeaders(runnerOpts RunnerOptions) map[string]string {
+	headers := map[string]string{}
+	if token := strings.TrimSpace(runnerOpts.BearerToken); token != "" {
+		headers["Authorization"] = "Bearer " + token
+		return headers
+	}
+
+	username := strings.TrimSpace(runnerOpts.Username)
+	password := runnerOpts.Password
+	if username != "" && password != "" {
+		headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
 }
 
 func (d *Docker) Close() error { return d.client.Close() }

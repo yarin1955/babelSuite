@@ -13,17 +13,18 @@ import (
 )
 
 type Store struct {
-	client        *mongo.Client
-	users         *mongo.Collection
-	orgs          *mongo.Collection
-	registries    *mongo.Collection
-	packages      *mongo.Collection
-	profiles      *mongo.Collection
-	oidcProviders *mongo.Collection
-	agents        *mongo.Collection
-	runs          *mongo.Collection
-	steps         *mongo.Collection
-	logs          *mongo.Collection
+	client         *mongo.Client
+	users          *mongo.Collection
+	orgs           *mongo.Collection
+	registries     *mongo.Collection
+	packages       *mongo.Collection
+	profiles       *mongo.Collection
+	runtimeTargets *mongo.Collection
+	oidcProviders  *mongo.Collection
+	agents         *mongo.Collection
+	runs           *mongo.Collection
+	steps          *mongo.Collection
+	logs           *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -40,17 +41,18 @@ func New(uri, dbName string) (*Store, error) {
 
 	db := client.Database(dbName)
 	s := &Store{
-		client:        client,
-		users:         db.Collection("users"),
-		orgs:          db.Collection("orgs"),
-		registries:    db.Collection("registries"),
-		packages:      db.Collection("catalog_packages"),
-		profiles:      db.Collection("profiles"),
-		oidcProviders: db.Collection("oidc_providers"),
-		agents:        db.Collection("agents"),
-		runs:          db.Collection("runs"),
-		steps:         db.Collection("steps"),
-		logs:          db.Collection("run_logs"),
+		client:         client,
+		users:          db.Collection("users"),
+		orgs:           db.Collection("orgs"),
+		registries:     db.Collection("registries"),
+		packages:       db.Collection("catalog_packages"),
+		profiles:       db.Collection("profiles"),
+		runtimeTargets: db.Collection("runtime_targets"),
+		oidcProviders:  db.Collection("oidc_providers"),
+		agents:         db.Collection("agents"),
+		runs:           db.Collection("runs"),
+		steps:          db.Collection("steps"),
+		logs:           db.Collection("run_logs"),
 	}
 
 	uniq := options.Index().SetUnique(true)
@@ -60,6 +62,8 @@ func New(uri, dbName string) (*Store, error) {
 	s.packages.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "image_ref", Value: 1}}, Options: uniq})
 	s.profiles.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "name", Value: 1}}, Options: uniq})
 	s.profiles.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "profile_id", Value: 1}}, Options: uniq})
+	s.runtimeTargets.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "name", Value: 1}}, Options: uniq})
+	s.runtimeTargets.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "runtime_target_id", Value: 1}}, Options: uniq})
 	s.agents.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "token", Value: 1}}, Options: uniq})
 	s.steps.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "run_id", Value: 1}}})
 	s.logs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "step_id", Value: 1}, {Key: "line", Value: 1}}})

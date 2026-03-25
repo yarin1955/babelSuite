@@ -43,6 +43,13 @@ type Store interface {
 	UpdateProfile(ctx context.Context, p *domain.Profile) error
 	DeleteProfile(ctx context.Context, id string) error
 
+	// Runtime targets
+	CreateRuntimeTarget(ctx context.Context, t *domain.RuntimeTarget) error
+	ListRuntimeTargets(ctx context.Context, orgID string) ([]*domain.RuntimeTarget, error)
+	GetRuntimeTarget(ctx context.Context, id string) (*domain.RuntimeTarget, error)
+	UpdateRuntimeTarget(ctx context.Context, t *domain.RuntimeTarget) error
+	DeleteRuntimeTarget(ctx context.Context, id string) error
+
 	// Runs
 	CreateRun(ctx context.Context, r *domain.Run) error
 	ListRuns(ctx context.Context, orgID string, page, pageSize int) ([]*domain.Run, int64, error)

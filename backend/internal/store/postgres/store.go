@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS agents (
   org_id       TEXT NOT NULL,
   name         TEXT NOT NULL,
   token        TEXT UNIQUE NOT NULL,
+  runtime_target_id TEXT NOT NULL DEFAULT '',
   desired_backend  TEXT NOT NULL DEFAULT '',
   desired_platform TEXT NOT NULL DEFAULT '',
   desired_target_name TEXT NOT NULL DEFAULT '',
@@ -127,12 +128,40 @@ CREATE TABLE IF NOT EXISTS agents (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_work TIMESTAMPTZ;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS runtime_target_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_backend TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_platform TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_target_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_target_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS target_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS target_url TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS runtime_targets (
+  runtime_target_id TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(org_id),
+  name              TEXT NOT NULL,
+  backend           TEXT NOT NULL DEFAULT 'docker',
+  platform          TEXT NOT NULL DEFAULT '',
+  endpoint_url      TEXT NOT NULL DEFAULT '',
+  namespace         TEXT NOT NULL DEFAULT '',
+  insecure_skip_tls_verify BOOLEAN NOT NULL DEFAULT false,
+  username          TEXT NOT NULL DEFAULT '',
+  password          TEXT NOT NULL DEFAULT '',
+  bearer_token      TEXT NOT NULL DEFAULT '',
+  tls_ca_data       TEXT NOT NULL DEFAULT '',
+  tls_cert_data     TEXT NOT NULL DEFAULT '',
+  tls_key_data      TEXT NOT NULL DEFAULT '',
+  labels            TEXT NOT NULL DEFAULT '{}',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, name)
+);
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS insecure_skip_tls_verify BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT '';
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS bearer_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS tls_ca_data TEXT NOT NULL DEFAULT '';
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS tls_cert_data TEXT NOT NULL DEFAULT '';
+ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS tls_key_data TEXT NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS profiles (
   profile_id       TEXT PRIMARY KEY,
   org_id           TEXT NOT NULL REFERENCES orgs(org_id),

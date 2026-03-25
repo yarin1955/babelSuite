@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,14 +57,60 @@ func main() {
 		}
 	}
 
+	server := babelclient.New(serverURL,
+		babelclient.WithToken(agentToken),
+		babelclient.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
+	)
+
+	bootstrap, err := server.AgentBootstrap(context.Background())
+	if err != nil {
+		log.Fatalf("bootstrap: %v", err)
+	}
+
 	backendName := os.Getenv("BACKEND_ENGINE")
+	if bootstrap != nil && strings.TrimSpace(bootstrap.RunnerBackend) != "" {
+		backendName = strings.TrimSpace(bootstrap.RunnerBackend)
+	}
 	if backendName == "" {
 		backendName = "docker"
 	}
+
 	targetName := os.Getenv("AGENT_TARGET_NAME")
 	targetURL := os.Getenv("AGENT_TARGET_URL")
+	runnerOpts := engine.RunnerOptions{}
+	agentName := ""
+	if bootstrap != nil {
+		if bootstrap.Capacity > 0 {
+			maxWorkflows = bootstrap.Capacity
+		}
+		agentName = strings.TrimSpace(bootstrap.AgentName)
+		if bootstrap.RuntimeTarget != nil {
+			targetName = bootstrap.RuntimeTarget.Name
+			targetURL = bootstrap.RuntimeTarget.EndpointURL
+			runnerOpts.EndpointURL = bootstrap.RuntimeTarget.EndpointURL
+			runnerOpts.InsecureSkipTLSVerify = bootstrap.RuntimeTarget.InsecureSkipTLSVerify
+			runnerOpts.Username = bootstrap.RuntimeTarget.Username
+			runnerOpts.Password = bootstrap.RuntimeTarget.Password
+			runnerOpts.BearerToken = bootstrap.RuntimeTarget.BearerToken
+			runnerOpts.TLSCAData = bootstrap.RuntimeTarget.TLSCAData
+			runnerOpts.TLSCertData = bootstrap.RuntimeTarget.TLSCertData
+			runnerOpts.TLSKeyData = bootstrap.RuntimeTarget.TLSKeyData
+			if !bootstrap.WorkerBootstrapSupported {
+				reason := bootstrap.WorkerBootstrapReason
+				if reason == "" {
+					reason = "the assigned runtime target is not available for worker execution"
+				}
+				log.Fatalf("runtime target %q: %s", bootstrap.RuntimeTarget.Name, reason)
+			}
+		} else if !bootstrap.WorkerBootstrapSupported && bootstrap.WorkerBootstrapReason != "" {
+			log.Fatalf("agent bootstrap: %s", bootstrap.WorkerBootstrapReason)
+		}
+	}
+	if runnerOpts.EndpointURL == "" && strings.TrimSpace(targetURL) != "" {
+		runnerOpts.EndpointURL = strings.TrimSpace(targetURL)
+	}
 
-	runner, err := engine.NewRunner(backendName)
+	runner, err := engine.NewRunnerWithOptions(backendName, runnerOpts)
 	if err != nil {
 		log.Fatalf("backend: %v", err)
 	}
@@ -80,15 +127,13 @@ func main() {
 
 	a := &agent{
 		serverURL:    serverURL,
+		name:         agentName,
 		runner:       runner,
 		platform:     engInfo.Platform,
 		targetName:   targetName,
 		targetURL:    targetURL,
 		maxWorkflows: maxWorkflows,
-		server: babelclient.New(serverURL,
-			babelclient.WithToken(agentToken),
-			babelclient.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
-		),
+		server:       server,
 	}
 
 	if err := a.register(context.Background()); err != nil {
@@ -140,6 +185,7 @@ func main() {
 
 type agent struct {
 	serverURL    string
+	name         string
 	runner       engine.Runner
 	platform     string
 	targetName   string
@@ -153,15 +199,22 @@ func (a *agent) register(ctx context.Context) error {
 	defer span.End()
 
 	hostname, _ := os.Hostname()
-	span.SetAttributes(attribute.String("agent.name", hostname))
+	name := strings.TrimSpace(a.name)
+	if name == "" {
+		name = hostname
+	}
+	span.SetAttributes(attribute.String("agent.name", name))
+	if hostname != "" {
+		span.SetAttributes(attribute.String("agent.hostname", hostname))
+	}
 	_, err := a.server.AgentRegister(ctx, api.AgentRegisterRequest{
-		Name:     hostname,
-		Platform: a.platform,
-		Backend:  a.runner.Name(),
+		Name:       name,
+		Platform:   a.platform,
+		Backend:    a.runner.Name(),
 		TargetName: a.targetName,
 		TargetURL:  a.targetURL,
-		Capacity: a.maxWorkflows,
-		Version:  "0.1.0",
+		Capacity:   a.maxWorkflows,
+		Version:    "0.1.0",
 	})
 	if err != nil {
 		span.RecordError(err)
@@ -267,8 +320,8 @@ func (a *agent) executeSuite(ctx context.Context, run *api.Run, step *api.Step, 
 	defer span.End()
 
 	containerID, err := a.runner.Start(ctx, engine.RunConfig{
-		Name:      "babel-suite-" + run.RunID[:8],
-		Image:     run.ImageRef,
+		Name:  "babel-suite-" + run.RunID[:8],
+		Image: run.ImageRef,
 		Env: map[string]string{
 			"BABELSUITE_RUN_ID":     run.RunID,
 			"BABELSUITE_PACKAGE_ID": run.PackageID,

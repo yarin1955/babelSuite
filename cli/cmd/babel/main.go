@@ -341,10 +341,7 @@ func runAgents(args []string) error {
 		fs := flag.NewFlagSet("agents create", flag.ContinueOnError)
 		server := fs.String("server", "", "")
 		name := fs.String("name", "", "")
-		backend := fs.String("backend", "docker", "")
-		platform := fs.String("platform", "", "")
-		targetName := fs.String("target-name", "", "")
-		targetURL := fs.String("target-url", "", "")
+		runtimeTargetID := fs.String("runtime-target-id", "", "")
 		capacity := fs.Int("capacity", 1, "")
 		paused := fs.Bool("paused", false, "")
 		var labels labelFlags
@@ -355,20 +352,20 @@ func runAgents(args []string) error {
 		if *name == "" {
 			return errors.New("agents create requires --name")
 		}
+		if *runtimeTargetID == "" {
+			return errors.New("agents create requires --runtime-target-id")
+		}
 
 		client, _, err := newClient(*server, true)
 		if err != nil {
 			return err
 		}
 		resp, err := client.CreateAgent(context.Background(), api.CreateAgentRequest{
-			Name:              *name,
-			DesiredBackend:    *backend,
-			DesiredPlatform:   *platform,
-			DesiredTargetName: *targetName,
-			DesiredTargetURL:  *targetURL,
-			Capacity:          *capacity,
-			Labels:            labels.Map(),
-			NoSchedule:        *paused,
+			Name:            *name,
+			RuntimeTargetID: *runtimeTargetID,
+			Capacity:        *capacity,
+			Labels:          labels.Map(),
+			NoSchedule:      *paused,
 		})
 		if err != nil {
 			return err
@@ -378,10 +375,7 @@ func runAgents(args []string) error {
 		fs := flag.NewFlagSet("agents update", flag.ContinueOnError)
 		server := fs.String("server", "", "")
 		name := fs.String("name", "", "")
-		backend := fs.String("backend", "", "")
-		platform := fs.String("platform", "", "")
-		targetName := fs.String("target-name", "", "")
-		targetURL := fs.String("target-url", "", "")
+		runtimeTargetID := fs.String("runtime-target-id", "", "")
 		capacity := fs.Int("capacity", 0, "")
 		paused := fs.String("paused", "", "")
 		clearLabels := fs.Bool("clear-labels", false, "")
@@ -401,21 +395,9 @@ func runAgents(args []string) error {
 			value := *name
 			req.Name = &value
 		}
-		if visited["backend"] {
-			value := *backend
-			req.DesiredBackend = &value
-		}
-		if visited["platform"] {
-			value := *platform
-			req.DesiredPlatform = &value
-		}
-		if visited["target-name"] {
-			value := *targetName
-			req.DesiredTargetName = &value
-		}
-		if visited["target-url"] {
-			value := *targetURL
-			req.DesiredTargetURL = &value
+		if visited["runtime-target-id"] {
+			value := *runtimeTargetID
+			req.RuntimeTargetID = &value
 		}
 		if visited["capacity"] {
 			if *capacity <= 0 {
@@ -539,8 +521,8 @@ func printRunsUsage() {
 func printAgentsUsage() {
 	fmt.Println("babel agents list [--server <url>]")
 	fmt.Println("babel agents get <agent-id> [--server <url>]")
-	fmt.Println("babel agents create --name <name> [--backend docker|kubernetes|local] [--platform <target>] [--target-name <name>] [--target-url <url>] [--capacity <n>] [--paused] [--label key=value] [--server <url>]")
-	fmt.Println("babel agents update <agent-id> [--name <name>] [--backend docker|kubernetes|local|\"\"] [--platform <target>] [--target-name <name>] [--target-url <url>] [--capacity <n>] [--paused true|false] [--label key=value] [--clear-labels] [--server <url>]")
+	fmt.Println("babel agents create --name <name> --runtime-target-id <target-id> [--capacity <n>] [--paused] [--label key=value] [--server <url>]")
+	fmt.Println("babel agents update <agent-id> [--name <name>] [--runtime-target-id <target-id>] [--capacity <n>] [--paused true|false] [--label key=value] [--clear-labels] [--server <url>]")
 	fmt.Println("babel agents delete <agent-id> [--server <url>]")
 }
 

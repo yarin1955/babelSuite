@@ -1,9 +1,13 @@
 package catalog
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,9 +16,11 @@ import (
 )
 
 type ociClient struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	baseURL  string
+	username string
+	password string
+	token    string
+	http     *http.Client
 }
 
 type tagList struct {
@@ -30,20 +36,18 @@ type ociManifest struct {
 }
 
 func newOCIClient(registry *domain.Registry) *ociClient {
-	base := registry.URL
-	if base == "" {
-		switch registry.Kind {
-		case domain.RegistryGHCR:
-			base = "https://ghcr.io"
-		case domain.RegistryJFrog:
-			base = "https://your-org.jfrog.io"
-		}
+	base := resolveRegistryBaseURL(registry)
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	if transport, err := registryHTTPTransport(registry); err == nil && transport != nil {
+		httpClient.Transport = transport
 	}
-	base = strings.TrimRight(base, "/")
+
 	return &ociClient{
-		baseURL: base,
-		token:   registry.Token,
-		http:    &http.Client{Timeout: 15 * time.Second},
+		baseURL:  strings.TrimRight(base, "/"),
+		username: strings.TrimSpace(registry.Username),
+		password: registry.Password,
+		token:    registry.Token,
+		http:     httpClient,
 	}
 }
 
@@ -52,7 +56,9 @@ func (c *ociClient) do(method, path string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.token != "" {
+	if c.username != "" && c.password != "" {
+		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(c.username+":"+c.password)))
+	} else if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	req.Header.Set("Accept", "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json")
@@ -114,12 +120,12 @@ func SyncRepo(registry *domain.Registry, orgID, repo string) ([]*domain.CatalogP
 			parts := strings.Split(repo, "/")
 			name = parts[len(parts)-1]
 		}
-		desc  := ann["org.opencontainers.image.description"]
-		ver   := ann["org.opencontainers.image.version"]
+		desc := ann["org.opencontainers.image.description"]
+		ver := ann["org.opencontainers.image.version"]
 		if ver == "" {
 			ver = tag
 		}
-		pub   := ann["io.babelsuite.publisher"]
+		pub := ann["io.babelsuite.publisher"]
 		if pub == "" {
 			pub = ann["org.opencontainers.image.vendor"]
 		}
@@ -147,21 +153,21 @@ func SyncRepo(registry *domain.Registry, orgID, repo string) ([]*domain.CatalogP
 		}
 
 		pkgs = append(pkgs, &domain.CatalogPackage{
-			PackageID:    uuid.NewString(),
-			OrgID:        orgID,
-			RegistryID:   registry.RegistryID,
-			RegistryKind: registry.Kind,
-			Name:         name,
-			DisplayName:  ann["org.opencontainers.image.title"],
-			Description:  desc,
-			Publisher:    pub,
-			ImageRef:     fmt.Sprintf("%s/%s:%s", strings.TrimPrefix(strings.TrimPrefix(registry.URL, "https://"), "http://"), repo, tag),
-			Version:      ver,
-			Tags:         tags,
-			Profiles:     profiles,
+			PackageID:      uuid.NewString(),
+			OrgID:          orgID,
+			RegistryID:     registry.RegistryID,
+			RegistryKind:   registry.Kind,
+			Name:           name,
+			DisplayName:    ann["org.opencontainers.image.title"],
+			Description:    desc,
+			Publisher:      pub,
+			ImageRef:       fmt.Sprintf("%s/%s:%s", registryImageHost(registry), repo, tag),
+			Version:        ver,
+			Tags:           tags,
+			Profiles:       profiles,
 			DefaultProfile: defaultProfile,
-			Enabled:      false,
-			UpdatedAt:    time.Now().UTC(),
+			Enabled:        false,
+			UpdatedAt:      time.Now().UTC(),
 		})
 	}
 	return pkgs, nil
@@ -174,4 +180,73 @@ func containsString(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func resolveRegistryBaseURL(registry *domain.Registry) string {
+	base := strings.TrimSpace(registry.URL)
+	if base != "" {
+		return base
+	}
+	switch registry.Kind {
+	case domain.RegistryGHCR:
+		return "https://ghcr.io"
+	case domain.RegistryJFrog:
+		return "https://your-org.jfrog.io"
+	default:
+		return ""
+	}
+}
+
+func registryImageHost(registry *domain.Registry) string {
+	base := resolveRegistryBaseURL(registry)
+	if base == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(base); err == nil && parsed.Host != "" {
+		host := parsed.Host
+		path := strings.Trim(parsed.Path, "/")
+		if path != "" {
+			return host + "/" + path
+		}
+		return host
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(base, "https://"), "http://")
+}
+
+func registryHTTPTransport(registry *domain.Registry) (*http.Transport, error) {
+	hasTLSConfig := registry.InsecureSkipTLSVerify ||
+		strings.TrimSpace(registry.TLSCAData) != "" ||
+		strings.TrimSpace(registry.TLSCertData) != "" ||
+		strings.TrimSpace(registry.TLSKeyData) != ""
+	if !hasTLSConfig {
+		return nil, nil
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: registry.InsecureSkipTLSVerify,
+	}
+	if caData := strings.TrimSpace(registry.TLSCAData); caData != "" {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM([]byte(caData)) {
+			return nil, fmt.Errorf("invalid registry tls_ca_data")
+		}
+		tlsConfig.RootCAs = pool
+	}
+
+	certData := strings.TrimSpace(registry.TLSCertData)
+	keyData := strings.TrimSpace(registry.TLSKeyData)
+	if certData != "" || keyData != "" {
+		cert, err := tls.X509KeyPair([]byte(certData), []byte(keyData))
+		if err != nil {
+			return nil, fmt.Errorf("invalid registry client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return &http.Transport{
+		TLSClientConfig: tlsConfig,
+		MaxIdleConns:    6,
+		IdleConnTimeout: 30 * time.Second,
+	}, nil
 }

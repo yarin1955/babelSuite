@@ -67,6 +67,28 @@ type CatalogPackage struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type Registry struct {
+	RegistryID            string    `json:"registry_id"`
+	OrgID                 string    `json:"org_id"`
+	Kind                  string    `json:"kind"`
+	Name                  string    `json:"name"`
+	URL                   string    `json:"url"`
+	InsecureSkipTLSVerify bool      `json:"insecure_skip_tls_verify,omitempty"`
+	Username              string    `json:"username,omitempty"`
+	Password              string    `json:"password,omitempty"`
+	BearerToken           string    `json:"bearer_token,omitempty"`
+	TLSCAData             string    `json:"tls_ca_data,omitempty"`
+	TLSCertData           string    `json:"tls_cert_data,omitempty"`
+	TLSKeyData            string    `json:"tls_key_data,omitempty"`
+	HasPassword           bool      `json:"has_password,omitempty"`
+	HasBearerToken        bool      `json:"has_bearer_token,omitempty"`
+	HasTLSCAData          bool      `json:"has_tls_ca_data,omitempty"`
+	HasTLSCertData        bool      `json:"has_tls_cert_data,omitempty"`
+	HasTLSKeyData         bool      `json:"has_tls_key_data,omitempty"`
+	Enabled               bool      `json:"enabled"`
+	CreatedAt             time.Time `json:"created_at"`
+}
+
 type CatalogListResponse struct {
 	Packages   []*CatalogPackage `json:"packages"`
 	Total      int64             `json:"total"`
@@ -128,6 +150,7 @@ type Agent struct {
 	AgentID           string            `json:"agent_id"`
 	OrgID             string            `json:"org_id"`
 	Name              string            `json:"name"`
+	RuntimeTargetID   string            `json:"runtime_target_id"`
 	DesiredBackend    string            `json:"desired_backend"`
 	DesiredPlatform   string            `json:"desired_platform"`
 	DesiredTargetName string            `json:"desired_target_name"`
@@ -146,30 +169,52 @@ type Agent struct {
 }
 
 type CreateAgentRequest struct {
-	Name              string            `json:"name"`
-	DesiredBackend    string            `json:"desired_backend"`
-	DesiredPlatform   string            `json:"desired_platform"`
-	DesiredTargetName string            `json:"desired_target_name"`
-	DesiredTargetURL  string            `json:"desired_target_url"`
-	Capacity          int               `json:"capacity"`
-	Labels            map[string]string `json:"labels"`
-	NoSchedule        bool              `json:"no_schedule"`
+	Name            string            `json:"name"`
+	RuntimeTargetID string            `json:"runtime_target_id"`
+	Capacity        int               `json:"capacity"`
+	Labels          map[string]string `json:"labels"`
+	NoSchedule      bool              `json:"no_schedule"`
 }
 
 type UpdateAgentRequest struct {
-	Name              *string           `json:"name,omitempty"`
-	DesiredBackend    *string           `json:"desired_backend,omitempty"`
-	DesiredPlatform   *string           `json:"desired_platform,omitempty"`
-	DesiredTargetName *string           `json:"desired_target_name,omitempty"`
-	DesiredTargetURL  *string           `json:"desired_target_url,omitempty"`
-	NoSchedule        *bool             `json:"no_schedule,omitempty"`
-	Capacity          *int              `json:"capacity,omitempty"`
-	Labels            map[string]string `json:"labels,omitempty"`
+	Name            *string           `json:"name,omitempty"`
+	RuntimeTargetID *string           `json:"runtime_target_id,omitempty"`
+	NoSchedule      *bool             `json:"no_schedule,omitempty"`
+	Capacity        *int              `json:"capacity,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
 }
 
 type CreateAgentResponse struct {
 	Agent *Agent `json:"agent"`
 	Token string `json:"token"`
+}
+
+type RuntimeTarget struct {
+	RuntimeTargetID          string            `json:"runtime_target_id"`
+	OrgID                    string            `json:"org_id"`
+	Name                     string            `json:"name"`
+	Backend                  string            `json:"backend"`
+	Platform                 string            `json:"platform"`
+	EndpointURL              string            `json:"endpoint_url"`
+	Namespace                string            `json:"namespace"`
+	RunnerBackend            string            `json:"runner_backend,omitempty"`
+	WorkerBootstrapSupported bool              `json:"worker_bootstrap_supported,omitempty"`
+	WorkerBootstrapReason    string            `json:"worker_bootstrap_reason,omitempty"`
+	InsecureSkipTLSVerify    bool              `json:"insecure_skip_tls_verify,omitempty"`
+	Username                 string            `json:"username,omitempty"`
+	Password                 string            `json:"password,omitempty"`
+	BearerToken              string            `json:"bearer_token,omitempty"`
+	TLSCAData                string            `json:"tls_ca_data,omitempty"`
+	TLSCertData              string            `json:"tls_cert_data,omitempty"`
+	TLSKeyData               string            `json:"tls_key_data,omitempty"`
+	HasPassword              bool              `json:"has_password,omitempty"`
+	HasBearerToken           bool              `json:"has_bearer_token,omitempty"`
+	HasTLSCAData             bool              `json:"has_tls_ca_data,omitempty"`
+	HasTLSCertData           bool              `json:"has_tls_cert_data,omitempty"`
+	HasTLSKeyData            bool              `json:"has_tls_key_data,omitempty"`
+	Labels                   map[string]string `json:"labels"`
+	CreatedAt                time.Time         `json:"created_at"`
+	UpdatedAt                time.Time         `json:"updated_at"`
 }
 
 type AgentRegisterRequest struct {
@@ -185,6 +230,17 @@ type AgentRegisterRequest struct {
 
 type AgentRegisterResponse struct {
 	AgentID string `json:"agent_id"`
+}
+
+type AgentBootstrapResponse struct {
+	AgentID                  string         `json:"agent_id"`
+	AgentName                string         `json:"agent_name"`
+	Capacity                 int            `json:"capacity"`
+	NoSchedule               bool           `json:"no_schedule"`
+	RunnerBackend            string         `json:"runner_backend"`
+	RuntimeTarget            *RuntimeTarget `json:"runtime_target,omitempty"`
+	WorkerBootstrapSupported bool           `json:"worker_bootstrap_supported"`
+	WorkerBootstrapReason    string         `json:"worker_bootstrap_reason,omitempty"`
 }
 
 type WaitRunResponse struct {

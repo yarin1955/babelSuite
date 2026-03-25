@@ -10,14 +10,20 @@ const (
 )
 
 type Registry struct {
-	RegistryID string       `json:"registry_id" bson:"registry_id"`
-	OrgID      string       `json:"org_id"      bson:"org_id"`
-	Kind       RegistryKind `json:"kind"        bson:"kind"`
-	Name       string       `json:"name"        bson:"name"`
-	URL        string       `json:"url"         bson:"url"`
-	Token      string       `json:"token,omitempty" bson:"token"`
-	Enabled    bool         `json:"enabled"     bson:"enabled"`
-	CreatedAt  time.Time    `json:"created_at"  bson:"created_at"`
+	RegistryID            string       `json:"registry_id" bson:"registry_id"`
+	OrgID                 string       `json:"org_id"      bson:"org_id"`
+	Kind                  RegistryKind `json:"kind"        bson:"kind"`
+	Name                  string       `json:"name"        bson:"name"`
+	URL                   string       `json:"url"         bson:"url"`
+	InsecureSkipTLSVerify bool         `json:"-"           bson:"insecure_skip_tls_verify"`
+	Username              string       `json:"-"           bson:"username"`
+	Token                 string       `json:"-"           bson:"token"`
+	Password              string       `json:"-"           bson:"password"`
+	TLSCAData             string       `json:"-"           bson:"tls_ca_data"`
+	TLSCertData           string       `json:"-"           bson:"tls_cert_data"`
+	TLSKeyData            string       `json:"-"           bson:"tls_key_data"`
+	Enabled               bool         `json:"enabled"     bson:"enabled"`
+	CreatedAt             time.Time    `json:"created_at"  bson:"created_at"`
 }
 
 type CatalogPackage struct {

@@ -223,6 +223,14 @@ func (c *Client) AgentRegister(ctx context.Context, req api.AgentRegisterRequest
 	return &resp, nil
 }
 
+func (c *Client) AgentBootstrap(ctx context.Context) (*api.AgentBootstrapResponse, error) {
+	var resp api.AgentBootstrapResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/agent/bootstrap", nil, &resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *Client) AgentHealth(ctx context.Context) error {
 	return c.doJSON(ctx, http.MethodPost, "/api/agent/health", nil, nil, http.StatusNoContent)
 }

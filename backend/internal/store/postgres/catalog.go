@@ -18,7 +18,13 @@ CREATE TABLE IF NOT EXISTS registries (
   kind        TEXT NOT NULL,
   name        TEXT NOT NULL,
   url         TEXT,
+  insecure_skip_tls_verify BOOLEAN NOT NULL DEFAULT false,
+  username    TEXT NOT NULL DEFAULT '',
   token       TEXT,
+  password    TEXT NOT NULL DEFAULT '',
+  tls_ca_data TEXT NOT NULL DEFAULT '',
+  tls_cert_data TEXT NOT NULL DEFAULT '',
+  tls_key_data TEXT NOT NULL DEFAULT '',
   enabled     BOOLEAN NOT NULL DEFAULT true,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -41,7 +47,13 @@ CREATE TABLE IF NOT EXISTS catalog_packages (
   UNIQUE(org_id, image_ref)
 );
 ALTER TABLE catalog_packages ADD COLUMN IF NOT EXISTS profiles TEXT[];
-ALTER TABLE catalog_packages ADD COLUMN IF NOT EXISTS default_profile TEXT;`)
+ALTER TABLE catalog_packages ADD COLUMN IF NOT EXISTS default_profile TEXT;
+ALTER TABLE registries ADD COLUMN IF NOT EXISTS insecure_skip_tls_verify BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE registries ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
+ALTER TABLE registries ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT '';
+ALTER TABLE registries ADD COLUMN IF NOT EXISTS tls_ca_data TEXT NOT NULL DEFAULT '';
+ALTER TABLE registries ADD COLUMN IF NOT EXISTS tls_cert_data TEXT NOT NULL DEFAULT '';
+ALTER TABLE registries ADD COLUMN IF NOT EXISTS tls_key_data TEXT NOT NULL DEFAULT '';`)
 	return err
 }
 
@@ -49,14 +61,14 @@ ALTER TABLE catalog_packages ADD COLUMN IF NOT EXISTS default_profile TEXT;`)
 
 func (s *Store) CreateRegistry(ctx context.Context, r *domain.Registry) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO registries(registry_id,org_id,kind,name,url,token,enabled,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-		r.RegistryID, r.OrgID, r.Kind, r.Name, r.URL, r.Token, r.Enabled, r.CreatedAt)
+		`INSERT INTO registries(registry_id,org_id,kind,name,url,insecure_skip_tls_verify,username,token,password,tls_ca_data,tls_cert_data,tls_key_data,enabled,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		r.RegistryID, r.OrgID, r.Kind, r.Name, r.URL, r.InsecureSkipTLSVerify, r.Username, r.Token, r.Password, r.TLSCAData, r.TLSCertData, r.TLSKeyData, r.Enabled, r.CreatedAt)
 	return wrap(err)
 }
 
 func (s *Store) ListRegistries(ctx context.Context, orgID string) ([]*domain.Registry, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT registry_id,org_id,kind,name,url,token,enabled,created_at FROM registries WHERE org_id=$1 ORDER BY created_at`, orgID)
+		`SELECT registry_id,org_id,kind,name,url,insecure_skip_tls_verify,username,token,password,tls_ca_data,tls_cert_data,tls_key_data,enabled,created_at FROM registries WHERE org_id=$1 ORDER BY created_at`, orgID)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -64,7 +76,7 @@ func (s *Store) ListRegistries(ctx context.Context, orgID string) ([]*domain.Reg
 	var out []*domain.Registry
 	for rows.Next() {
 		var r domain.Registry
-		if err := rows.Scan(&r.RegistryID, &r.OrgID, &r.Kind, &r.Name, &r.URL, &r.Token, &r.Enabled, &r.CreatedAt); err != nil {
+		if err := rows.Scan(&r.RegistryID, &r.OrgID, &r.Kind, &r.Name, &r.URL, &r.InsecureSkipTLSVerify, &r.Username, &r.Token, &r.Password, &r.TLSCAData, &r.TLSCertData, &r.TLSKeyData, &r.Enabled, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)
@@ -75,15 +87,15 @@ func (s *Store) ListRegistries(ctx context.Context, orgID string) ([]*domain.Reg
 func (s *Store) GetRegistry(ctx context.Context, id string) (*domain.Registry, error) {
 	var r domain.Registry
 	err := s.pool.QueryRow(ctx,
-		`SELECT registry_id,org_id,kind,name,url,token,enabled,created_at FROM registries WHERE registry_id=$1`, id).
-		Scan(&r.RegistryID, &r.OrgID, &r.Kind, &r.Name, &r.URL, &r.Token, &r.Enabled, &r.CreatedAt)
+		`SELECT registry_id,org_id,kind,name,url,insecure_skip_tls_verify,username,token,password,tls_ca_data,tls_cert_data,tls_key_data,enabled,created_at FROM registries WHERE registry_id=$1`, id).
+		Scan(&r.RegistryID, &r.OrgID, &r.Kind, &r.Name, &r.URL, &r.InsecureSkipTLSVerify, &r.Username, &r.Token, &r.Password, &r.TLSCAData, &r.TLSCertData, &r.TLSKeyData, &r.Enabled, &r.CreatedAt)
 	return &r, wrap(err)
 }
 
 func (s *Store) UpdateRegistry(ctx context.Context, r *domain.Registry) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE registries SET kind=$1,name=$2,url=$3,token=$4,enabled=$5 WHERE registry_id=$6`,
-		r.Kind, r.Name, r.URL, r.Token, r.Enabled, r.RegistryID)
+		`UPDATE registries SET kind=$1,name=$2,url=$3,insecure_skip_tls_verify=$4,username=$5,token=$6,password=$7,tls_ca_data=$8,tls_cert_data=$9,tls_key_data=$10,enabled=$11 WHERE registry_id=$12`,
+		r.Kind, r.Name, r.URL, r.InsecureSkipTLSVerify, r.Username, r.Token, r.Password, r.TLSCAData, r.TLSCertData, r.TLSKeyData, r.Enabled, r.RegistryID)
 	return wrap(err)
 }
 
