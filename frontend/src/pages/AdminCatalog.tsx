@@ -22,7 +22,13 @@ interface Registry {
     kind:        string
     name:        string
     url:         string
-    token:       string
+    insecure_skip_tls_verify?: boolean
+    username?: string
+    has_password?: boolean
+    has_bearer_token?: boolean
+    has_tls_ca_data?: boolean
+    has_tls_cert_data?: boolean
+    has_tls_key_data?: boolean
     enabled:     boolean
     created_at:  string
 }
@@ -61,7 +67,45 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 }
 
 /* ── Registry modal ──────────────────────────────────────────────────────── */
-interface RegistryForm { name: string; kind: string; url: string; token: string; enabled: boolean }
+interface RegistryForm {
+    name: string
+    kind: string
+    url: string
+    username: string
+    password: string
+    bearer_token: string
+    tls_ca_data: string
+    tls_cert_data: string
+    tls_key_data: string
+    clear_password: boolean
+    clear_bearer_token: boolean
+    clear_tls_ca_data: boolean
+    clear_tls_cert_data: boolean
+    clear_tls_key_data: boolean
+    insecure_skip_tls_verify: boolean
+    enabled: boolean
+}
+
+function connectionSummary(registry: Registry) {
+    const items: string[] = []
+    if (registry.username && registry.has_password) items.push('Basic auth')
+    if (registry.has_bearer_token) items.push('Token')
+    if (registry.has_tls_ca_data) items.push('Custom CA')
+    if (registry.has_tls_cert_data && registry.has_tls_key_data) items.push('Client cert')
+    if (registry.insecure_skip_tls_verify) items.push('TLS verify off')
+    return items.length ? items.join(' · ') : 'None'
+}
+
+function connectionDetailsSummary(registry: Registry) {
+    void connectionSummary(registry)
+    const items: string[] = []
+    if (registry.username && registry.has_password) items.push('Basic auth')
+    if (registry.has_bearer_token) items.push('Token')
+    if (registry.has_tls_ca_data) items.push('Custom CA')
+    if (registry.has_tls_cert_data && registry.has_tls_key_data) items.push('Client cert')
+    if (registry.insecure_skip_tls_verify) items.push('TLS verify off')
+    return items.length ? items.join(' | ') : 'None'
+}
 
 function RegistryModal({
     initial, onSave, onClose,
@@ -74,7 +118,18 @@ function RegistryModal({
         name: initial?.name ?? '',
         kind: initial?.kind ?? 'ghcr',
         url:  initial?.url  ?? '',
-        token: '',
+        username: initial?.username ?? '',
+        password: '',
+        bearer_token: '',
+        tls_ca_data: '',
+        tls_cert_data: '',
+        tls_key_data: '',
+        clear_password: false,
+        clear_bearer_token: false,
+        clear_tls_ca_data: false,
+        clear_tls_cert_data: false,
+        clear_tls_key_data: false,
+        insecure_skip_tls_verify: initial?.insecure_skip_tls_verify ?? false,
         enabled: initial?.enabled ?? true,
     })
     const [saving, setSaving] = useState(false)
@@ -110,9 +165,59 @@ function RegistryModal({
                         <input className={styles.fieldInput} value={form.url} onChange={set('url')} placeholder='https://registry.example.com' />
                     </div>
                     <div className={styles.field}>
-                        <label className={styles.fieldLabel}>Token {initial && '(leave blank to keep existing)'}</label>
-                        <input className={styles.fieldInput} type='password' value={form.token} onChange={set('token')} placeholder='ghp_...' />
+                        <label className={styles.fieldLabel}>Username</label>
+                        <input className={styles.fieldInput} value={form.username} onChange={set('username')} placeholder='optional' />
                     </div>
+                    <div className={styles.field}>
+                        <label className={styles.fieldLabel}>Password {initial?.has_password && '(leave blank to keep existing)'}</label>
+                        <input className={styles.fieldInput} type='password' value={form.password} onChange={set('password')} placeholder={initial?.has_password ? 'Stored separately' : 'optional'} />
+                        {initial?.has_password && (
+                            <label className={styles.checkboxField}>
+                                <input type='checkbox' checked={form.clear_password} onChange={e => setForm(f => ({ ...f, clear_password: e.target.checked, password: e.target.checked ? '' : f.password }))} />
+                                <span>Clear stored password</span>
+                            </label>
+                        )}
+                    </div>
+                    <div className={styles.field}>
+                        <label className={styles.fieldLabel}>Token {initial?.has_bearer_token && '(leave blank to keep existing)'}</label>
+                        <textarea className={`${styles.fieldInput} ${styles.fieldTextarea}`} value={form.bearer_token} onChange={e => setForm(f => ({ ...f, bearer_token: e.target.value, clear_bearer_token: false }))} placeholder={initial?.has_bearer_token ? 'Stored separately' : 'optional'} rows={3} />
+                        {initial?.has_bearer_token && (
+                            <label className={styles.checkboxField}>
+                                <input type='checkbox' checked={form.clear_bearer_token} onChange={e => setForm(f => ({ ...f, clear_bearer_token: e.target.checked, bearer_token: e.target.checked ? '' : f.bearer_token }))} />
+                                <span>Clear stored token</span>
+                            </label>
+                        )}
+                    </div>
+                    <div className={styles.securityGrid}>
+                        <div className={styles.field}>
+                            <label className={styles.fieldLabel}>CA certificate</label>
+                            <textarea className={`${styles.fieldInput} ${styles.fieldTextarea}`} value={form.tls_ca_data} onChange={e => setForm(f => ({ ...f, tls_ca_data: e.target.value, clear_tls_ca_data: false }))} placeholder={initial?.has_tls_ca_data ? 'Stored PEM data' : '-----BEGIN CERTIFICATE-----'} rows={4} />
+                            {initial?.has_tls_ca_data && (
+                                <label className={styles.checkboxField}>
+                                    <input type='checkbox' checked={form.clear_tls_ca_data} onChange={e => setForm(f => ({ ...f, clear_tls_ca_data: e.target.checked, tls_ca_data: e.target.checked ? '' : f.tls_ca_data }))} />
+                                    <span>Clear stored CA bundle</span>
+                                </label>
+                            )}
+                        </div>
+                        <div className={styles.field}>
+                            <label className={styles.fieldLabel}>Client certificate</label>
+                            <textarea className={`${styles.fieldInput} ${styles.fieldTextarea}`} value={form.tls_cert_data} onChange={e => setForm(f => ({ ...f, tls_cert_data: e.target.value, clear_tls_cert_data: false }))} placeholder={initial?.has_tls_cert_data ? 'Stored PEM data' : '-----BEGIN CERTIFICATE-----'} rows={4} />
+                        </div>
+                        <div className={styles.field}>
+                            <label className={styles.fieldLabel}>Client key</label>
+                            <textarea className={`${styles.fieldInput} ${styles.fieldTextarea}`} value={form.tls_key_data} onChange={e => setForm(f => ({ ...f, tls_key_data: e.target.value, clear_tls_key_data: false }))} placeholder={initial?.has_tls_key_data ? 'Stored PEM key' : '-----BEGIN PRIVATE KEY-----'} rows={4} />
+                            {(initial?.has_tls_cert_data || initial?.has_tls_key_data) && (
+                                <label className={styles.checkboxField}>
+                                    <input type='checkbox' checked={form.clear_tls_cert_data || form.clear_tls_key_data} onChange={e => setForm(f => ({ ...f, clear_tls_cert_data: e.target.checked, clear_tls_key_data: e.target.checked, tls_cert_data: e.target.checked ? '' : f.tls_cert_data, tls_key_data: e.target.checked ? '' : f.tls_key_data }))} />
+                                    <span>Clear stored client certificate pair</span>
+                                </label>
+                            )}
+                        </div>
+                    </div>
+                    <label className={styles.checkboxField}>
+                        <input type='checkbox' checked={form.insecure_skip_tls_verify} onChange={e => setForm(f => ({ ...f, insecure_skip_tls_verify: e.target.checked }))} />
+                        <span>Skip TLS verification</span>
+                    </label>
                     <div className={styles.modalFooter}>
                         <button type='button' className={`${styles.btn} ${styles.btnSecondary}`} onClick={onClose}>Cancel</button>
                         <button type='submit' className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
@@ -233,6 +338,7 @@ function RegistriesTab() {
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>URL</th>
+                                <th>Connection</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -242,6 +348,7 @@ function RegistriesTab() {
                                     <td>{r.name}</td>
                                     <td><KindBadge kind={r.kind} /></td>
                                     <td style={{ color: '#6d7f8b', fontSize: 12 }}>{r.url || '—'}</td>
+                                    <td style={{ color: '#6d7f8b', fontSize: 12 }}>{connectionDetailsSummary(r)}</td>
                                     <td>
                                         <div className={styles.actions}>
                                             <button

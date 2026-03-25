@@ -115,13 +115,6 @@ export default function Catalog() {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6)
   }, [packages])
 
-  const stats = useMemo(() => ({
-    visible: visiblePackages.length,
-    mockReady: visiblePackages.filter(pkg => capsForPackage(pkg).includes('mock')).length,
-    contractReady: visiblePackages.filter(pkg => capsForPackage(pkg).includes('contract')).length,
-    publishers: new Set(visiblePackages.map(pkg => pkg.publisher || 'Unknown')).size,
-  }), [visiblePackages])
-
   const handleSearch = (value: string) => {
     setSearch(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -157,20 +150,6 @@ export default function Catalog() {
   return (
     <Layout>
       <Page title='Suites' toolbar={admin ? <button className='app-button app-button--secondary' onClick={() => nav('/settings/catalog?tab=packages')}><FaGear />Manage Catalog</button> : undefined}>
-        <section className={styles.hero}>
-          <div>
-            <div className={styles.eyebrow}>Enabled suites</div>
-            <h1>Browse the suites your admins made available.</h1>
-            <p>Choose an enabled suite, pick its profile, and launch the run without exposing the raw catalog to every user.</p>
-          </div>
-          <div className={styles.heroStats}>
-            <StatCard label='Visible suites' value={String(stats.visible)} />
-            <StatCard label='Mock-ready' value={String(stats.mockReady)} />
-            <StatCard label='Contract-first' value={String(stats.contractReady)} />
-            <StatCard label='Publishers' value={String(stats.publishers)} />
-          </div>
-        </section>
-
         <div className={styles.searchRow}>
           <input className={styles.searchInput} type='text' value={search} onChange={e => handleSearch(e.target.value)} placeholder='Search enabled suites by name, publisher, tags, or profile...' />
           <span className={styles.count}>{loading ? 'Loading...' : `${visiblePackages.length} visible / ${total} total`}</span>
@@ -324,8 +303,4 @@ export default function Catalog() {
       </Page>
     </Layout>
   )
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return <div className={styles.statCard}><span>{label}</span><strong>{value}</strong></div>
 }
