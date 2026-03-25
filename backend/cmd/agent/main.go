@@ -1,45 +1,45 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/engine"
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/telemetry"
+	"github.com/babelsuite/babelsuite/pkg/api"
+	babelclient "github.com/babelsuite/babelsuite/pkg/client"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
-	pollInterval = 5 * time.Second
-	logBatchSize = 50
+	pollInterval         = 5 * time.Second
+	logBatchSize         = 50
+	reportHealthInterval = 10 * time.Second
 )
 
-type Run struct {
-	RunID    string `json:"run_id"`
-	OrgID    string `json:"org_id"`
-	ImageRef string `json:"image_ref"`
-}
-
-type Step struct {
-	StepID string `json:"step_id"`
-	RunID  string `json:"run_id"`
-}
-
-type logLine struct {
-	Line int    `json:"line"`
-	Data string `json:"data"`
-	Time int64  `json:"time"`
-	Type int    `json:"type"`
-}
+var errRunCanceled = errors.New("run canceled")
 
 func main() {
 	envloader.Load()
+
+	shutdownTelemetry, err := telemetry.Setup(context.Background(), telemetry.Config{
+		ServiceName:    "babelsuite-agent",
+		ServiceVersion: "0.1.0",
+	})
+	if err != nil {
+		log.Fatalf("telemetry: %v", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	serverURL := os.Getenv("SERVER_URL")
 	if serverURL == "" {
@@ -49,171 +49,326 @@ func main() {
 	if agentToken == "" {
 		log.Fatal("AGENT_TOKEN is required")
 	}
-
-	docker, err := engine.NewDocker()
-	if err != nil {
-		log.Fatalf("docker: %v", err)
+	maxWorkflows := 1
+	if s := os.Getenv("MAX_WORKFLOWS"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			maxWorkflows = n
+		}
 	}
-	defer docker.Close()
+
+	backendName := os.Getenv("BACKEND_ENGINE")
+	if backendName == "" {
+		backendName = "docker"
+	}
+	targetName := os.Getenv("AGENT_TARGET_NAME")
+	targetURL := os.Getenv("AGENT_TARGET_URL")
+
+	runner, err := engine.NewRunner(backendName)
+	if err != nil {
+		log.Fatalf("backend: %v", err)
+	}
+	defer runner.Close()
+
+	ctx := context.Background()
+	if !runner.IsAvailable(ctx) {
+		log.Fatalf("backend %q is not reachable", backendName)
+	}
+	engInfo, err := runner.Load(ctx)
+	if err != nil {
+		log.Fatalf("backend load: %v", err)
+	}
 
 	a := &agent{
-		serverURL: serverURL,
-		token:     agentToken,
-		docker:    docker,
-		http:      &http.Client{Timeout: 30 * time.Second},
+		serverURL:    serverURL,
+		runner:       runner,
+		platform:     engInfo.Platform,
+		targetName:   targetName,
+		targetURL:    targetURL,
+		maxWorkflows: maxWorkflows,
+		server: babelclient.New(serverURL,
+			babelclient.WithToken(agentToken),
+			babelclient.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
+		),
 	}
 
-	// Register with server
-	if err := a.register(); err != nil {
+	if err := a.register(context.Background()); err != nil {
 		log.Printf("register: %v (continuing)", err)
 	}
 
-	log.Printf("agent started  server=%s", serverURL)
+	log.Printf("agent started  server=%s backend=%s platform=%s workers=%d",
+		serverURL, runner.Name(), engInfo.Platform, maxWorkflows)
 
-	for {
-		run, err := a.poll()
-		if err != nil {
-			log.Printf("poll: %v", err)
-			time.Sleep(pollInterval)
-			continue
-		}
-		if run == nil {
-			time.Sleep(pollInterval)
-			continue
-		}
-		log.Printf("executing run %s  image=%s", run.RunID, run.ImageRef)
-		go func(r *Run) {
-			if err := a.execute(r); err != nil {
-				log.Printf("run %s failed: %v", r.RunID, err)
-				_ = a.updateRun(r.RunID, "error")
+	// Periodic health heartbeat.
+	go func() {
+		for {
+			time.Sleep(reportHealthInterval)
+			if err := a.server.AgentHealth(context.Background()); err != nil {
+				log.Printf("health: %v", err)
 			}
-		}(run)
+		}
+	}()
+
+	// N concurrent runners, each polling independently.
+	var wg sync.WaitGroup
+	for range maxWorkflows {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				run, err := a.poll(context.Background())
+				if err != nil {
+					log.Printf("poll: %v", err)
+					time.Sleep(pollInterval)
+					continue
+				}
+				if run == nil {
+					time.Sleep(pollInterval)
+					continue
+				}
+				log.Printf("executing run %s  image=%s", run.RunID, run.ImageRef)
+				if err := a.execute(context.Background(), run); err != nil {
+					log.Printf("run %s failed: %v", run.RunID, err)
+					_ = a.updateRun(context.Background(), run.RunID, api.RunError)
+				}
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 // ── agent ─────────────────────────────────────────────────────────────────────
 
 type agent struct {
-	serverURL string
-	token     string
-	docker    *engine.Docker
-	http      *http.Client
+	serverURL    string
+	runner       engine.Runner
+	platform     string
+	targetName   string
+	targetURL    string
+	maxWorkflows int
+	server       *babelclient.Client
 }
 
-func (a *agent) register() error {
+func (a *agent) register(ctx context.Context) error {
+	ctx, span := a.startSpan(ctx, "agent.register")
+	defer span.End()
+
 	hostname, _ := os.Hostname()
-	body := map[string]any{
-		"name":     hostname,
-		"platform": "linux",
-		"backend":  "docker",
-		"capacity": 1,
-		"version":  "0.1.0",
+	span.SetAttributes(attribute.String("agent.name", hostname))
+	_, err := a.server.AgentRegister(ctx, api.AgentRegisterRequest{
+		Name:     hostname,
+		Platform: a.platform,
+		Backend:  a.runner.Name(),
+		TargetName: a.targetName,
+		TargetURL:  a.targetURL,
+		Capacity: a.maxWorkflows,
+		Version:  "0.1.0",
+	})
+	if err != nil {
+		span.RecordError(err)
 	}
-	_, err := a.post("/api/agent/register", body)
 	return err
 }
 
-func (a *agent) poll() (*Run, error) {
-	resp, err := a.get("/api/agent/runs/next")
+func (a *agent) poll(ctx context.Context) (*api.Run, error) {
+	ctx, span := a.startSpan(ctx, "agent.poll")
+	defer span.End()
+
+	run, err := a.server.AgentNextRun(ctx)
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNoContent {
-		return nil, nil
+	if run != nil {
+		span.SetAttributes(attribute.String("run.id", run.RunID))
 	}
-	var run Run
-	return &run, json.NewDecoder(resp.Body).Decode(&run)
+	return run, nil
 }
 
-func (a *agent) execute(run *Run) error {
-	ctx := context.Background()
+func (a *agent) execute(ctx context.Context, run *api.Run) error {
+	ctx, span := a.startSpan(ctx, "agent.execute_run",
+		attribute.String("run.id", run.RunID),
+		attribute.String("run.image_ref", run.ImageRef),
+	)
+	defer span.End()
 
-	networkID, err := a.docker.CreateNetwork(ctx, "babel-net-"+run.RunID[:8])
+	networkID, err := a.runner.CreateNetwork(ctx, "babel-net-"+run.RunID[:8])
 	if err != nil {
+		span.RecordError(err)
 		return fmt.Errorf("network: %w", err)
 	}
-	defer a.docker.RemoveNetwork(ctx, networkID)
+	defer a.runner.RemoveNetwork(ctx, networkID)
 
-	// Step 1: pull the suite image.
-	pullStep, err := a.createStep(run.RunID, "Pull suite image")
+	pullStep, err := a.createStep(ctx, run.RunID, "Pull suite image")
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	if err := a.executePull(ctx, run, pullStep, networkID); err != nil {
-		_ = a.finishStep(run.RunID, pullStep.StepID, "failure", 1, err.Error())
-		_ = a.updateRun(run.RunID, "failure")
+		span.RecordError(err)
+		_ = a.finishStep(ctx, run.RunID, pullStep.StepID, api.RunFailure, 1, err.Error())
+		_ = a.updateRun(ctx, run.RunID, api.RunFailure)
 		return err
 	}
-	_ = a.finishStep(run.RunID, pullStep.StepID, "success", 0, "")
+	_ = a.finishStep(ctx, run.RunID, pullStep.StepID, api.RunSuccess, 0, "")
 
-	// Step 2: run the suite container and stream its logs.
-	runStep, err := a.createStep(run.RunID, "Run suite")
+	runStep, err := a.createStep(ctx, run.RunID, "Run suite")
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	exitCode, runErr := a.executeSuite(ctx, run, runStep, networkID)
-	status := "success"
+	status := api.RunSuccess
 	errMsg := ""
-	if runErr != nil {
-		status = "error"
+	if errors.Is(runErr, errRunCanceled) {
+		status = api.RunCanceled
+		errMsg = runErr.Error()
+		runErr = nil
+	} else if runErr != nil {
+		status = api.RunError
 		errMsg = runErr.Error()
 	} else if exitCode != 0 {
-		status = "failure"
+		status = api.RunFailure
 		errMsg = fmt.Sprintf("exit code %d", exitCode)
 	}
-	_ = a.finishStep(run.RunID, runStep.StepID, status, exitCode, errMsg)
-	_ = a.updateRun(run.RunID, status)
+	if runErr != nil {
+		span.RecordError(runErr)
+	}
+	_ = a.finishStep(ctx, run.RunID, runStep.StepID, status, exitCode, errMsg)
+	_ = a.updateRun(ctx, run.RunID, status)
 	return runErr
 }
 
-// executePull pulls the suite OCI image and streams pull progress as log lines.
-func (a *agent) executePull(ctx context.Context, run *Run, step *Step, _ string) error {
-	ch, err := a.docker.Pull(ctx, run.ImageRef)
+func (a *agent) executePull(ctx context.Context, run *api.Run, step *api.Step, _ string) error {
+	ctx, span := a.startSpan(ctx, "agent.pull_image",
+		attribute.String("run.id", run.RunID),
+		attribute.String("step.id", step.StepID),
+		attribute.String("run.image_ref", run.ImageRef),
+	)
+	defer span.End()
+
+	ch, err := a.runner.Pull(ctx, run.ImageRef)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
-	return a.streamLines(ctx, run.RunID, step.StepID, ch)
+	err = a.streamLines(ctx, run.RunID, step.StepID, ch)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
 }
 
-// executeSuite starts the suite container and streams its stdout/stderr.
-// The suite OCI image is expected to be self-contained and produce output on stdout.
-func (a *agent) executeSuite(ctx context.Context, run *Run, step *Step, networkID string) (int, error) {
-	containerID, err := a.docker.Start(ctx, engine.RunConfig{
+func (a *agent) executeSuite(ctx context.Context, run *api.Run, step *api.Step, networkID string) (int, error) {
+	ctx, span := a.startSpan(ctx, "agent.run_suite_container",
+		attribute.String("run.id", run.RunID),
+		attribute.String("step.id", step.StepID),
+		attribute.String("run.image_ref", run.ImageRef),
+	)
+	defer span.End()
+
+	containerID, err := a.runner.Start(ctx, engine.RunConfig{
 		Name:      "babel-suite-" + run.RunID[:8],
 		Image:     run.ImageRef,
+		Env: map[string]string{
+			"BABELSUITE_RUN_ID":     run.RunID,
+			"BABELSUITE_PACKAGE_ID": run.PackageID,
+			"BABELSUITE_PROFILE":    run.Profile,
+		},
 		NetworkID: networkID,
 	})
 	if err != nil {
+		span.RecordError(err)
 		return -1, fmt.Errorf("start container: %w", err)
 	}
-	defer a.docker.Stop(ctx, containerID)
+	defer a.runner.Stop(ctx, containerID)
 
-	// Tail logs — real stdout/stderr from the container.
-	rc, err := a.docker.Tail(ctx, containerID)
+	waitCtx, cancelWait := context.WithCancel(ctx)
+	defer cancelWait()
+
+	var canceled atomic.Bool
+	go func() {
+		for {
+			terminal, wasCanceled, err := a.waitForRun(waitCtx, run.RunID)
+			if err != nil {
+				if waitCtx.Err() != nil {
+					return
+				}
+				log.Printf("wait run %s: %v", run.RunID, err)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			if !terminal {
+				continue
+			}
+			if wasCanceled {
+				canceled.Store(true)
+			}
+			a.runner.Stop(context.Background(), containerID)
+			return
+		}
+	}()
+
+	rc, err := a.runner.Tail(ctx, containerID)
 	if err != nil {
+		span.RecordError(err)
 		return -1, fmt.Errorf("tail: %w", err)
 	}
 	defer rc.Close()
 
-	lineCh := engine.LineScanner(rc)
-	if err := a.streamLines(ctx, run.RunID, step.StepID, lineCh); err != nil {
+	lineNum := 0
+	var batch []api.StepLogLine
+	traceID, spanID := telemetry.SpanIDsFromContext(ctx)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		err := a.postLogs(ctx, run.RunID, step.StepID, batch)
+		batch = batch[:0]
+		return err
+	}
+	lw := engine.NewLineWriter(func(line []byte) {
+		batch = append(batch, api.StepLogLine{
+			Line:    lineNum,
+			Data:    string(line),
+			Time:    time.Now().UnixMilli(),
+			Type:    0,
+			TraceID: traceID,
+			SpanID:  spanID,
+		})
+		lineNum++
+		if len(batch) >= logBatchSize {
+			_ = flush()
+		}
+	})
+	if err := lw.WriteTo(rc); err != nil {
+		span.RecordError(err)
+	}
+	if err := flush(); err != nil {
+		span.RecordError(err)
 		return -1, err
 	}
 
-	return a.docker.Wait(ctx, containerID)
+	exitCode, waitErr := a.runner.Wait(ctx, containerID)
+	cancelWait()
+	if canceled.Load() {
+		return exitCode, errRunCanceled
+	}
+	if waitErr != nil {
+		span.RecordError(waitErr)
+	}
+	return exitCode, waitErr
 }
 
-// streamLines reads lines from ch, batches them and posts to the server.
 func (a *agent) streamLines(ctx context.Context, runID, stepID string, ch <-chan string) error {
-	var batch []logLine
+	var batch []api.StepLogLine
 	lineNum := 0
+	traceID, spanID := telemetry.SpanIDsFromContext(ctx)
 
 	flush := func() error {
 		if len(batch) == 0 {
 			return nil
 		}
-		err := a.postLogs(runID, stepID, batch)
+		err := a.postLogs(ctx, runID, stepID, batch)
 		batch = batch[:0]
 		return err
 	}
@@ -227,11 +382,13 @@ func (a *agent) streamLines(ctx context.Context, runID, stepID string, ch <-chan
 			if !ok {
 				return flush()
 			}
-			batch = append(batch, logLine{
-				Line: lineNum,
-				Data: line,
-				Time: time.Now().UnixMilli(),
-				Type: 0,
+			batch = append(batch, api.StepLogLine{
+				Line:    lineNum,
+				Data:    line,
+				Time:    time.Now().UnixMilli(),
+				Type:    0,
+				TraceID: traceID,
+				SpanID:  spanID,
 			})
 			lineNum++
 			if len(batch) >= logBatchSize {
@@ -245,59 +402,41 @@ func (a *agent) streamLines(ctx context.Context, runID, stepID string, ch <-chan
 
 // ── server API calls ──────────────────────────────────────────────────────────
 
-func (a *agent) createStep(runID, name string) (*Step, error) {
-	resp, err := a.post(fmt.Sprintf("/api/agent/runs/%s/steps", runID), map[string]string{"name": name})
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var s Step
-	return &s, json.NewDecoder(resp.Body).Decode(&s)
+func (a *agent) createStep(ctx context.Context, runID, name string) (*api.Step, error) {
+	return a.server.AgentCreateStep(ctx, runID, api.CreateStepRequest{Name: name})
 }
 
-func (a *agent) finishStep(runID, stepID, status string, exitCode int, errMsg string) error {
-	_, err := a.patch(fmt.Sprintf("/api/agent/runs/%s/steps/%s", runID, stepID), map[string]any{
-		"status":    status,
-		"exit_code": exitCode,
-		"error":     errMsg,
+func (a *agent) finishStep(ctx context.Context, runID, stepID string, status api.RunStatus, exitCode int, errMsg string) error {
+	_, err := a.server.AgentUpdateStep(ctx, runID, stepID, api.UpdateStepRequest{
+		Status:   status,
+		ExitCode: exitCode,
+		Error:    errMsg,
 	})
 	return err
 }
 
-func (a *agent) updateRun(runID, status string) error {
-	_, err := a.patch(fmt.Sprintf("/api/agent/runs/%s", runID), map[string]string{"status": status})
+func (a *agent) updateRun(ctx context.Context, runID string, status api.RunStatus) error {
+	_, err := a.server.AgentUpdateRun(ctx, runID, api.UpdateRunRequest{Status: status})
 	return err
 }
 
-func (a *agent) postLogs(runID, stepID string, lines []logLine) error {
-	_, err := a.post(fmt.Sprintf("/api/agent/runs/%s/steps/%s/logs", runID, stepID), lines)
-	return err
+func (a *agent) postLogs(ctx context.Context, runID, stepID string, lines []api.StepLogLine) error {
+	return a.server.AgentAppendLogs(ctx, runID, stepID, lines)
+}
+
+func (a *agent) waitForRun(ctx context.Context, runID string) (bool, bool, error) {
+	payload, err := a.server.AgentWaitRun(ctx, runID)
+	if err != nil {
+		return false, false, err
+	}
+	if payload == nil {
+		return false, false, nil
+	}
+	return true, payload.Canceled || payload.Status == api.RunCanceled, nil
+}
+
+func (a *agent) startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	return telemetry.Start(ctx, "babelsuite.agent", name, trace.WithAttributes(attrs...))
 }
 
 // ── http helpers ──────────────────────────────────────────────────────────────
-
-func (a *agent) get(path string) (*http.Response, error) {
-	req, _ := http.NewRequest(http.MethodGet, a.serverURL+path, nil)
-	req.Header.Set("Authorization", "Bearer "+a.token)
-	return a.http.Do(req)
-}
-
-func (a *agent) post(path string, body any) (*http.Response, error) {
-	return a.do(http.MethodPost, path, body)
-}
-
-func (a *agent) patch(path string, body any) (*http.Response, error) {
-	return a.do(http.MethodPatch, path, body)
-}
-
-func (a *agent) do(method, path string, body any) (*http.Response, error) {
-	var r io.Reader
-	if body != nil {
-		b, _ := json.Marshal(body)
-		r = bytes.NewReader(b)
-	}
-	req, _ := http.NewRequest(method, a.serverURL+path, r)
-	req.Header.Set("Authorization", "Bearer "+a.token)
-	req.Header.Set("Content-Type", "application/json")
-	return a.http.Do(req)
-}

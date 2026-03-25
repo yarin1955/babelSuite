@@ -1,6 +1,9 @@
 dev-server:
 	cd backend && go run ./cmd/server
 
+build-cli:
+	cd cli && go build ./cmd/babel
+
 dev-frontend:
 	cd frontend && npm run dev
 

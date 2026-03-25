@@ -34,10 +34,14 @@ CREATE TABLE IF NOT EXISTS catalog_packages (
   image_ref     TEXT NOT NULL,
   version       TEXT,
   tags          TEXT[],
+  profiles      TEXT[],
+  default_profile TEXT,
   enabled       BOOLEAN NOT NULL DEFAULT false,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(org_id, image_ref)
-);`)
+);
+ALTER TABLE catalog_packages ADD COLUMN IF NOT EXISTS profiles TEXT[];
+ALTER TABLE catalog_packages ADD COLUMN IF NOT EXISTS default_profile TEXT;`)
 	return err
 }
 
@@ -92,12 +96,12 @@ func (s *Store) DeleteRegistry(ctx context.Context, id string) error {
 
 func (s *Store) UpsertPackage(ctx context.Context, p *domain.CatalogPackage) error {
 	_, err := s.pool.Exec(ctx, `
-INSERT INTO catalog_packages(package_id,org_id,registry_id,registry_kind,name,display_name,description,publisher,image_ref,version,tags,enabled,updated_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+INSERT INTO catalog_packages(package_id,org_id,registry_id,registry_kind,name,display_name,description,publisher,image_ref,version,tags,profiles,default_profile,enabled,updated_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 ON CONFLICT(org_id,image_ref) DO UPDATE SET
-  name=$5, display_name=$6, description=$7, publisher=$8, version=$10, tags=$11, updated_at=$13`,
+  name=$5, display_name=$6, description=$7, publisher=$8, version=$10, tags=$11, profiles=$12, default_profile=$13, updated_at=$15`,
 		p.PackageID, p.OrgID, p.RegistryID, p.RegistryKind, p.Name, p.DisplayName,
-		p.Description, p.Publisher, p.ImageRef, p.Version, p.Tags, p.Enabled, p.UpdatedAt)
+		p.Description, p.Publisher, p.ImageRef, p.Version, p.Tags, p.Profiles, p.DefaultProfile, p.Enabled, p.UpdatedAt)
 	return wrap(err)
 }
 
@@ -117,7 +121,7 @@ func (s *Store) ListPackages(ctx context.Context, orgID string, f domain.Catalog
 		n++
 	}
 	if f.Search != "" {
-		where = append(where, fmt.Sprintf("(name ILIKE $%d OR display_name ILIKE $%d OR description ILIKE $%d)", n, n, n))
+		where = append(where, fmt.Sprintf("(name ILIKE $%d OR display_name ILIKE $%d OR description ILIKE $%d OR publisher ILIKE $%d OR array_to_string(tags, ',') ILIKE $%d OR array_to_string(profiles, ',') ILIKE $%d)", n, n, n, n, n, n))
 		args = append(args, "%"+f.Search+"%")
 		n++
 	}
@@ -141,7 +145,7 @@ func (s *Store) ListPackages(ctx context.Context, orgID string, f domain.Catalog
 	args = append(args, pageSize, offset)
 
 	rows, err := s.pool.Query(ctx,
-		`SELECT package_id,org_id,registry_id,registry_kind,name,display_name,description,publisher,image_ref,version,tags,enabled,updated_at
+		`SELECT package_id,org_id,registry_id,registry_kind,name,display_name,description,publisher,image_ref,version,tags,profiles,default_profile,enabled,updated_at
 		 FROM catalog_packages `+clause+fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", n, n+1),
 		args...)
 	if err != nil {
@@ -154,7 +158,7 @@ func (s *Store) ListPackages(ctx context.Context, orgID string, f domain.Catalog
 		var p domain.CatalogPackage
 		if err := rows.Scan(&p.PackageID, &p.OrgID, &p.RegistryID, &p.RegistryKind,
 			&p.Name, &p.DisplayName, &p.Description, &p.Publisher,
-			&p.ImageRef, &p.Version, &p.Tags, &p.Enabled, &p.UpdatedAt); err != nil {
+			&p.ImageRef, &p.Version, &p.Tags, &p.Profiles, &p.DefaultProfile, &p.Enabled, &p.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, &p)
@@ -165,11 +169,11 @@ func (s *Store) ListPackages(ctx context.Context, orgID string, f domain.Catalog
 func (s *Store) GetPackage(ctx context.Context, id string) (*domain.CatalogPackage, error) {
 	var p domain.CatalogPackage
 	err := s.pool.QueryRow(ctx,
-		`SELECT package_id,org_id,registry_id,registry_kind,name,display_name,description,publisher,image_ref,version,tags,enabled,updated_at
+		`SELECT package_id,org_id,registry_id,registry_kind,name,display_name,description,publisher,image_ref,version,tags,profiles,default_profile,enabled,updated_at
 		 FROM catalog_packages WHERE package_id=$1`, id).
 		Scan(&p.PackageID, &p.OrgID, &p.RegistryID, &p.RegistryKind,
 			&p.Name, &p.DisplayName, &p.Description, &p.Publisher,
-			&p.ImageRef, &p.Version, &p.Tags, &p.Enabled, &p.UpdatedAt)
+			&p.ImageRef, &p.Version, &p.Tags, &p.Profiles, &p.DefaultProfile, &p.Enabled, &p.UpdatedAt)
 	return &p, wrap(err)
 }
 

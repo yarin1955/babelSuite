@@ -7,7 +7,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/domain"
 )
 
-var ErrNotFound  = errors.New("not found")
+var ErrNotFound = errors.New("not found")
 var ErrDuplicate = errors.New("already exists")
 
 type Store interface {
@@ -36,12 +36,20 @@ type Store interface {
 	SetPackageEnabled(ctx context.Context, id string, enabled bool) error
 	DeletePackage(ctx context.Context, id string) error
 
+	// Profiles
+	CreateProfile(ctx context.Context, p *domain.Profile) error
+	ListProfiles(ctx context.Context, orgID string) ([]*domain.Profile, error)
+	GetProfile(ctx context.Context, id string) (*domain.Profile, error)
+	UpdateProfile(ctx context.Context, p *domain.Profile) error
+	DeleteProfile(ctx context.Context, id string) error
+
 	// Runs
 	CreateRun(ctx context.Context, r *domain.Run) error
 	ListRuns(ctx context.Context, orgID string, page, pageSize int) ([]*domain.Run, int64, error)
 	GetRun(ctx context.Context, id string) (*domain.Run, error)
 	UpdateRun(ctx context.Context, r *domain.Run) error
-	NextPendingRun(ctx context.Context, orgID string) (*domain.Run, error)
+	NextPendingRun(ctx context.Context, orgID, agentID string) (*domain.Run, error)
+	CountActiveRunsByAgent(ctx context.Context, agentID string) (int64, error)
 
 	// Steps
 	CreateStep(ctx context.Context, s *domain.Step) error

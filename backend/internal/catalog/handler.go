@@ -14,8 +14,8 @@ import (
 )
 
 type Handler struct {
-	store  store.Store
-	jwtMw  func(http.Handler) http.Handler
+	store store.Store
+	jwtMw func(http.Handler) http.Handler
 }
 
 func NewHandler(st store.Store, jwtSvc *auth.JWTService) *Handler {
@@ -41,17 +41,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /api/catalog/{id}", wrap(h.getPackage))
 
 	// Admin — registry management
-	mux.Handle("GET /api/admin/registries",        admin(h.listRegistries))
-	mux.Handle("POST /api/admin/registries",        admin(h.createRegistry))
-	mux.Handle("PUT /api/admin/registries/{id}",    admin(h.updateRegistry))
+	mux.Handle("GET /api/admin/registries", admin(h.listRegistries))
+	mux.Handle("POST /api/admin/registries", admin(h.createRegistry))
+	mux.Handle("PUT /api/admin/registries/{id}", admin(h.updateRegistry))
 	mux.Handle("DELETE /api/admin/registries/{id}", admin(h.deleteRegistry))
 
 	// Admin — package management
-	mux.Handle("GET /api/admin/catalog",               admin(h.listAllPackages))
-	mux.Handle("POST /api/admin/catalog/{id}/enable",   admin(h.enablePackage))
-	mux.Handle("POST /api/admin/catalog/{id}/disable",  admin(h.disablePackage))
-	mux.Handle("DELETE /api/admin/catalog/{id}",        admin(h.deletePackage))
-	mux.Handle("POST /api/admin/registries/{id}/sync",  admin(h.syncRegistry))
+	mux.Handle("GET /api/admin/catalog", admin(h.listAllPackages))
+	mux.Handle("POST /api/admin/catalog/{id}/enable", admin(h.enablePackage))
+	mux.Handle("POST /api/admin/catalog/{id}/disable", admin(h.disablePackage))
+	mux.Handle("DELETE /api/admin/catalog/{id}", admin(h.deletePackage))
+	mux.Handle("POST /api/admin/registries/{id}/sync", admin(h.syncRegistry))
 }
 
 // ── catalog (user) ────────────────────────────────────────────────────────────
@@ -65,15 +65,16 @@ func (h *Handler) listCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{
-		"packages":   pkgs,
-		"total":      total,
-		"page":       f.Page,
-		"page_size":  f.PageSize,
+		"packages":    pkgs,
+		"total":       total,
+		"page":        f.Page,
+		"page_size":   f.PageSize,
 		"total_pages": totalPages(total, f.PageSize),
 	})
 }
 
 func (h *Handler) getPackage(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFrom(r)
 	pkg, err := h.store.GetPackage(r.Context(), r.PathValue("id"))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -81,6 +82,14 @@ func (h *Handler) getPackage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeErr(w, 500, "internal error")
+		return
+	}
+	if pkg.OrgID != claims.OrgID {
+		writeErr(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if !claims.IsAdmin && !pkg.Enabled {
+		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
 	writeJSON(w, 200, pkg)

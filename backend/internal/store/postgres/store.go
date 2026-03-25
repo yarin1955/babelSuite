@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS runs (
   org_id      TEXT NOT NULL,
   package_id  TEXT NOT NULL DEFAULT '',
   image_ref   TEXT NOT NULL DEFAULT '',
+  profile     TEXT NOT NULL DEFAULT '',
   agent_id    TEXT NOT NULL DEFAULT '',
   status      TEXT NOT NULL DEFAULT 'pending',
   started_at  TIMESTAMPTZ,
@@ -92,25 +93,61 @@ CREATE TABLE IF NOT EXISTS run_logs (
   data    TEXT NOT NULL DEFAULT '',
   time    BIGINT NOT NULL DEFAULT 0,
   type    INT  NOT NULL DEFAULT 0,
+  trace_id TEXT NOT NULL DEFAULT '',
+  span_id  TEXT NOT NULL DEFAULT '',
   UNIQUE(step_id, line)
 );
 CREATE INDEX IF NOT EXISTS idx_runs_org_status    ON runs(org_id, status);
 CREATE INDEX IF NOT EXISTS idx_steps_run_id       ON steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_logs_step_line ON run_logs(step_id, line);
+ALTER TABLE run_logs ADD COLUMN IF NOT EXISTS trace_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE run_logs ADD COLUMN IF NOT EXISTS span_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE steps ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0;
+ALTER TABLE steps ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT '';
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS profile TEXT NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS agents (
   agent_id     TEXT PRIMARY KEY,
   org_id       TEXT NOT NULL,
   name         TEXT NOT NULL,
   token        TEXT UNIQUE NOT NULL,
+  desired_backend  TEXT NOT NULL DEFAULT '',
+  desired_platform TEXT NOT NULL DEFAULT '',
+  desired_target_name TEXT NOT NULL DEFAULT '',
+  desired_target_url  TEXT NOT NULL DEFAULT '',
   platform     TEXT NOT NULL DEFAULT '',
   backend      TEXT NOT NULL DEFAULT '',
+  target_name  TEXT NOT NULL DEFAULT '',
+  target_url   TEXT NOT NULL DEFAULT '',
   capacity     INT  NOT NULL DEFAULT 1,
   version      TEXT NOT NULL DEFAULT '',
   labels       TEXT NOT NULL DEFAULT '{}',
   last_contact TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_work    TIMESTAMPTZ,
   no_schedule  BOOLEAN NOT NULL DEFAULT false,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_work TIMESTAMPTZ;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_backend TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_platform TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_target_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_target_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS target_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS target_url TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS profiles (
+  profile_id       TEXT PRIMARY KEY,
+  org_id           TEXT NOT NULL REFERENCES orgs(org_id),
+  name             TEXT NOT NULL,
+  description      TEXT NOT NULL DEFAULT '',
+  format           TEXT NOT NULL DEFAULT 'yaml',
+  content          TEXT NOT NULL DEFAULT '',
+  revision         INT  NOT NULL DEFAULT 1,
+  created_by       TEXT NOT NULL DEFAULT '',
+  created_by_name  TEXT NOT NULL DEFAULT '',
+  updated_by       TEXT NOT NULL DEFAULT '',
+  updated_by_name  TEXT NOT NULL DEFAULT '',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, name)
 );
 CREATE TABLE IF NOT EXISTS oidc_providers (
   provider_id   TEXT PRIMARY KEY,

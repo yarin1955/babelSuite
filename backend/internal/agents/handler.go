@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,16 +27,16 @@ func NewHandler(s store.Store, jwt *auth.JWTService) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	// Management routes — user JWT required
-	mux.HandleFunc("GET /api/agents",         h.userMiddleware(h.list))
-	mux.HandleFunc("POST /api/agents",         h.userMiddleware(h.create))
-	mux.HandleFunc("GET /api/agents/{id}",     h.userMiddleware(h.get))
-	mux.HandleFunc("PATCH /api/agents/{id}",   h.userMiddleware(h.update))
-	mux.HandleFunc("DELETE /api/agents/{id}",  h.userMiddleware(h.delete))
+	mux.HandleFunc("GET /api/agents", h.adminMiddleware(h.list))
+	mux.HandleFunc("POST /api/agents", h.adminMiddleware(h.create))
+	mux.HandleFunc("GET /api/agents/{id}", h.adminMiddleware(h.get))
+	mux.HandleFunc("PATCH /api/agents/{id}", h.adminMiddleware(h.update))
+	mux.HandleFunc("DELETE /api/agents/{id}", h.adminMiddleware(h.delete))
 
 	// Agent-facing routes — agent token required
 	mux.HandleFunc("POST /api/agent/register", h.agentMiddleware(h.agentRegister))
-	mux.HandleFunc("POST /api/agent/health",   h.agentMiddleware(h.agentHealth))
-	mux.HandleFunc("GET /api/agent/next",      h.agentMiddleware(h.agentNext))
+	mux.HandleFunc("POST /api/agent/health", h.agentMiddleware(h.agentHealth))
+	mux.HandleFunc("GET /api/agent/next", h.agentMiddleware(h.agentNext))
 }
 
 // ── management ────────────────────────────────────────────────────────────────
@@ -56,9 +57,14 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFrom(r)
 	var req struct {
-		Name     string            `json:"name"`
-		Capacity int               `json:"capacity"`
-		Labels   map[string]string `json:"labels"`
+		Name              string            `json:"name"`
+		DesiredBackend    string            `json:"desired_backend"`
+		DesiredPlatform   string            `json:"desired_platform"`
+		DesiredTargetName string            `json:"desired_target_name"`
+		DesiredTargetURL  string            `json:"desired_target_url"`
+		Capacity          int               `json:"capacity"`
+		Labels            map[string]string `json:"labels"`
+		NoSchedule        bool              `json:"no_schedule"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
@@ -68,8 +74,20 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	desiredBackend, err := normalizeDesiredBackend(defaultDesiredBackend(req.DesiredBackend))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	desiredPlatform := normalizeDesiredPlatform(req.DesiredPlatform)
 	if req.Capacity <= 0 {
 		req.Capacity = 1
+	}
+	desiredTargetName := normalizeTargetName(req.DesiredTargetName)
+	desiredTargetURL := normalizeTargetURL(req.DesiredTargetURL)
+	if err := validateDesiredTarget(desiredBackend, desiredTargetName, desiredTargetURL); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	token, err := generateToken()
@@ -79,14 +97,19 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := &domain.Agent{
-		AgentID:     uuid.NewString(),
-		OrgID:       claims.OrgID,
-		Name:        req.Name,
-		Token:       token,
-		Capacity:    req.Capacity,
-		Labels:      req.Labels,
-		LastContact: time.Now().UTC(),
-		CreatedAt:   time.Now().UTC(),
+		AgentID:           uuid.NewString(),
+		OrgID:             claims.OrgID,
+		Name:              req.Name,
+		Token:             token,
+		DesiredBackend:    desiredBackend,
+		DesiredPlatform:   desiredPlatform,
+		DesiredTargetName: desiredTargetName,
+		DesiredTargetURL:  desiredTargetURL,
+		Capacity:          req.Capacity,
+		Labels:            req.Labels,
+		NoSchedule:        req.NoSchedule,
+		LastContact:       time.Now().UTC(),
+		CreatedAt:         time.Now().UTC(),
 	}
 	if err := h.store.CreateAgent(r.Context(), a); err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
@@ -135,10 +158,14 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name       *string            `json:"name"`
-		NoSchedule *bool              `json:"no_schedule"`
-		Capacity   *int               `json:"capacity"`
-		Labels     map[string]string  `json:"labels"`
+		Name              *string           `json:"name"`
+		DesiredBackend    *string           `json:"desired_backend"`
+		DesiredPlatform   *string           `json:"desired_platform"`
+		DesiredTargetName *string           `json:"desired_target_name"`
+		DesiredTargetURL  *string           `json:"desired_target_url"`
+		NoSchedule        *bool             `json:"no_schedule"`
+		Capacity          *int              `json:"capacity"`
+		Labels            map[string]string `json:"labels"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
@@ -146,6 +173,23 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name != nil {
 		a.Name = *req.Name
+	}
+	if req.DesiredBackend != nil {
+		desiredBackend, err := normalizeDesiredBackend(*req.DesiredBackend)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.DesiredBackend = desiredBackend
+	}
+	if req.DesiredPlatform != nil {
+		a.DesiredPlatform = normalizeDesiredPlatform(*req.DesiredPlatform)
+	}
+	if req.DesiredTargetName != nil {
+		a.DesiredTargetName = normalizeTargetName(*req.DesiredTargetName)
+	}
+	if req.DesiredTargetURL != nil {
+		a.DesiredTargetURL = normalizeTargetURL(*req.DesiredTargetURL)
 	}
 	if req.NoSchedule != nil {
 		a.NoSchedule = *req.NoSchedule
@@ -155,6 +199,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Labels != nil {
 		a.Labels = req.Labels
+	}
+	if err := validateDesiredTarget(a.DesiredBackend, a.DesiredTargetName, a.DesiredTargetURL); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	if err := h.store.UpdateAgent(r.Context(), a); err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
@@ -179,6 +227,15 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "forbidden")
 		return
 	}
+	active, err := h.store.CountActiveRunsByAgent(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if active > 0 {
+		writeErr(w, http.StatusConflict, "agent has active runs")
+		return
+	}
 	if err := h.store.DeleteAgent(r.Context(), id); err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
@@ -192,12 +249,14 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) agentRegister(w http.ResponseWriter, r *http.Request) {
 	a := agentFrom(r)
 	var req struct {
-		Name     string            `json:"name"`
-		Platform string            `json:"platform"`
-		Backend  string            `json:"backend"`
-		Capacity int               `json:"capacity"`
-		Version  string            `json:"version"`
-		Labels   map[string]string `json:"labels"`
+		Name       string            `json:"name"`
+		Platform   string            `json:"platform"`
+		Backend    string            `json:"backend"`
+		TargetName string            `json:"target_name"`
+		TargetURL  string            `json:"target_url"`
+		Capacity   int               `json:"capacity"`
+		Version    string            `json:"version"`
+		Labels     map[string]string `json:"labels"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
@@ -208,6 +267,8 @@ func (h *Handler) agentRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Platform = req.Platform
 	a.Backend = req.Backend
+	a.TargetName = normalizeTargetName(req.TargetName)
+	a.TargetURL = normalizeTargetURL(req.TargetURL)
 	if req.Capacity > 0 {
 		a.Capacity = req.Capacity
 	}
@@ -255,6 +316,17 @@ func (h *Handler) userMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return auth.Middleware(h.jwt)(http.HandlerFunc(next)).ServeHTTP
 }
 
+func (h *Handler) adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return auth.Middleware(h.jwt)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := auth.ClaimsFrom(r)
+		if claims == nil || !claims.IsAdmin {
+			writeErr(w, http.StatusForbidden, "admin only")
+			return
+		}
+		next(w, r)
+	})).ServeHTTP
+}
+
 func (h *Handler) agentMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bearer := r.Header.Get("Authorization")
@@ -280,6 +352,48 @@ func generateToken() (string, error) {
 		return "", err
 	}
 	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), nil
+}
+
+func defaultDesiredBackend(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "docker"
+	}
+	return value
+}
+
+func normalizeDesiredBackend(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "", "docker", "kubernetes", "local":
+		return normalized, nil
+	default:
+		return "", errors.New("desired_backend must be docker, kubernetes, local, or empty")
+	}
+}
+
+func normalizeDesiredPlatform(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeTargetName(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func normalizeTargetURL(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func validateDesiredTarget(backend, targetName, targetURL string) error {
+	if targetURL != "" {
+		parsed, err := url.ParseRequestURI(targetURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return errors.New("desired_target_url must be a valid absolute URL")
+		}
+	}
+	if backend == "kubernetes" && targetName == "" && targetURL == "" {
+		return errors.New("kubernetes agents must set desired_target_name or desired_target_url")
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

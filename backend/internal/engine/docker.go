@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
@@ -34,6 +35,17 @@ func NewDocker() (*Docker, error) {
 }
 
 func (d *Docker) Close() error { return d.client.Close() }
+
+func (d *Docker) Name() string { return "docker" }
+
+func (d *Docker) IsAvailable(ctx context.Context) bool {
+	_, err := d.client.Ping(ctx)
+	return err == nil
+}
+
+func (d *Docker) Load(_ context.Context) (*BackendInfo, error) {
+	return &BackendInfo{Platform: runtime.GOOS + "/" + runtime.GOARCH}, nil
+}
 
 // PullProgress is emitted during an image pull.
 type PullProgress struct {

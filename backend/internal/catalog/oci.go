@@ -132,6 +132,19 @@ func SyncRepo(registry *domain.Registry, orgID, repo string) ([]*domain.CatalogP
 				}
 			}
 		}
+		rawProfiles := ann["io.babelsuite.profiles"]
+		var profiles []string
+		if rawProfiles != "" {
+			for _, profile := range strings.Split(rawProfiles, ",") {
+				if s := strings.TrimSpace(profile); s != "" {
+					profiles = append(profiles, s)
+				}
+			}
+		}
+		defaultProfile := strings.TrimSpace(ann["io.babelsuite.default_profile"])
+		if defaultProfile != "" && !containsString(profiles, defaultProfile) {
+			profiles = append([]string{defaultProfile}, profiles...)
+		}
 
 		pkgs = append(pkgs, &domain.CatalogPackage{
 			PackageID:    uuid.NewString(),
@@ -145,9 +158,20 @@ func SyncRepo(registry *domain.Registry, orgID, repo string) ([]*domain.CatalogP
 			ImageRef:     fmt.Sprintf("%s/%s:%s", strings.TrimPrefix(strings.TrimPrefix(registry.URL, "https://"), "http://"), repo, tag),
 			Version:      ver,
 			Tags:         tags,
+			Profiles:     profiles,
+			DefaultProfile: defaultProfile,
 			Enabled:      false,
 			UpdatedAt:    time.Now().UTC(),
 		})
 	}
 	return pkgs, nil
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }

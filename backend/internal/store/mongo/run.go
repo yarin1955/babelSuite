@@ -47,9 +47,9 @@ func (s *Store) UpdateRun(ctx context.Context, r *domain.Run) error {
 	return wrap(err)
 }
 
-func (s *Store) NextPendingRun(ctx context.Context, orgID string) (*domain.Run, error) {
+func (s *Store) NextPendingRun(ctx context.Context, orgID, agentID string) (*domain.Run, error) {
 	filter := bson.M{"org_id": orgID, "status": domain.RunPending}
-	update := bson.M{"$set": bson.M{"status": domain.RunRunning, "started_at": time.Now().UTC()}}
+	update := bson.M{"$set": bson.M{"agent_id": agentID, "status": domain.RunRunning, "started_at": time.Now().UTC()}}
 	opts := options.FindOneAndUpdate().SetSort(bson.D{{Key: "created_at", Value: 1}}).SetReturnDocument(options.After)
 	var r domain.Run
 	err := s.runs.FindOneAndUpdate(ctx, filter, update, opts).Decode(&r)
@@ -57,6 +57,12 @@ func (s *Store) NextPendingRun(ctx context.Context, orgID string) (*domain.Run, 
 		return nil, wrap(err)
 	}
 	return &r, nil
+}
+
+func (s *Store) CountActiveRunsByAgent(ctx context.Context, agentID string) (int64, error) {
+	filter := bson.M{"agent_id": agentID, "status": bson.M{"$in": []domain.RunStatus{domain.RunPending, domain.RunRunning}}}
+	count, err := s.runs.CountDocuments(ctx, filter)
+	return count, wrap(err)
 }
 
 // ── steps ─────────────────────────────────────────────────────────────────────

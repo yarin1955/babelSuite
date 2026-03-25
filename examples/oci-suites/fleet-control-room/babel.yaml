@@ -1,0 +1,58 @@
+apiVersion: babelsuite/v1alpha1
+kind: Suite
+metadata:
+  name: fleet-control-room
+  displayName: Fleet Control Room
+  version: 0.1.0
+  publisher: BabelSuite Labs
+  description: End-to-end fleet orchestration suite with infra, mocks, contracts, and mounted tests.
+  tags:
+    - fleet
+    - integration
+    - contracts
+    - async
+    - mocks
+
+defaults:
+  profile: default
+
+inputs:
+  storm_profile:
+    type: string
+    description: Which simulator profile to run against the fleet.
+    enum:
+      - clear_skies
+      - heavy_storm
+    default: clear_skies
+  seed_alerts:
+    type: integer
+    description: Number of alert rows to pre-seed before tests start.
+    minimum: 0
+    default: 2
+  enable_mock_ledger:
+    type: boolean
+    description: Enables the ledger mock used by settlement checks.
+    default: true
+  replay_window_minutes:
+    type: integer
+    description: Time range inspected by replay tests.
+    minimum: 1
+    default: 15
+
+contracts:
+  rest:
+    - api/fleet-openapi.yaml
+  grpc:
+    - api/fleet-provisioning.proto
+  async:
+    - api/fleet-events.yaml
+
+tests:
+  mounts:
+    - tests/
+  entrypoints:
+    - tests/e2e_flow.py
+
+artifacts:
+  reportsDir: /workspace/reports
+  diagnosticsDir: /workspace/artifacts

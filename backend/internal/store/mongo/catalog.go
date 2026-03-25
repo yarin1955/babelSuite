@@ -66,7 +66,9 @@ func (s *Store) ListPackages(ctx context.Context, orgID string, f domain.Catalog
 			bson.M{"name": bson.M{"$regex": f.Search, "$options": "i"}},
 			bson.M{"display_name": bson.M{"$regex": f.Search, "$options": "i"}},
 			bson.M{"description": bson.M{"$regex": f.Search, "$options": "i"}},
+			bson.M{"publisher": bson.M{"$regex": f.Search, "$options": "i"}},
 			bson.M{"tags": bson.M{"$regex": f.Search, "$options": "i"}},
+			bson.M{"profiles": bson.M{"$regex": f.Search, "$options": "i"}},
 		}
 	}
 

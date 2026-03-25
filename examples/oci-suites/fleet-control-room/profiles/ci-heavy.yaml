@@ -1,0 +1,36 @@
+profile:
+  name: ci-heavy
+  description: Larger CI environment with stronger validation and heavier simulation.
+
+inputs:
+  storm_profile: heavy_storm
+  seed_alerts: 6
+  enable_mock_ledger: true
+  replay_window_minutes: 45
+
+runtime:
+  parallelism: 4
+  test_timeout_minutes: 45
+
+apps:
+  api:
+    env:
+      LOG_LEVEL: debug
+      FEATURE_AUDIT_MODE: "true"
+      ENABLE_TRAFFIC_REPLAY: "true"
+  worker:
+    replicas: 2
+
+simulators:
+  physics_engine:
+    env:
+      BATCH_SIZE: "2000"
+      JITTER_MODE: aggressive
+
+tests:
+  backend_runner:
+    env:
+      PYTEST_ADDOPTS: -q -n 2
+  frontend_runner:
+    env:
+      PLAYWRIGHT_JOBS: "2"

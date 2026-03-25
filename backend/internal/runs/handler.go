@@ -1,6 +1,7 @@
 package runs
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,16 +13,17 @@ import (
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/domain"
 	"github.com/babelsuite/babelsuite/internal/store"
+	"github.com/babelsuite/babelsuite/internal/telemetry"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// Handler handles runs, steps, and real-time log streaming.
-// It also exposes agent-facing endpoints that agents call during execution.
 type Handler struct {
-	store    store.Store
-	jwt      *auth.JWTService
-	logPub   *LogPubSub
-	runPub   *RunPubSub
+	store  store.Store
+	jwt    *auth.JWTService
+	logPub *LogPubSub
+	runPub *RunPubSub
 }
 
 func NewHandler(s store.Store, jwt *auth.JWTService) *Handler {
@@ -33,32 +35,26 @@ func NewHandler(s store.Store, jwt *auth.JWTService) *Handler {
 	}
 }
 
-// LogPubSub returns the log pubsub so the agents handler can publish logs.
 func (h *Handler) LogPubSub() *LogPubSub { return h.logPub }
 
-// RunPubSub returns the run pubsub so the agents handler can publish run updates.
 func (h *Handler) RunPubSub() *RunPubSub { return h.runPub }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	// User-facing (JWT auth)
-	mux.HandleFunc("GET /api/runs",                            h.userMW(h.listRuns))
-	mux.HandleFunc("POST /api/runs",                           h.userMW(h.createRun))
-	mux.HandleFunc("GET /api/runs/{id}",                       h.userMW(h.getRun))
-	mux.HandleFunc("DELETE /api/runs/{id}",                    h.userMW(h.cancelRun))
-	mux.HandleFunc("GET /api/runs/{id}/steps",                 h.userMW(h.listSteps))
-	mux.HandleFunc("GET /api/runs/{id}/logs/{stepID}",         h.sseMW(h.streamLogs))
+	mux.HandleFunc("GET /api/runs", h.userMW(h.listRuns))
+	mux.HandleFunc("POST /api/runs", h.userMW(h.createRun))
+	mux.HandleFunc("GET /api/runs/{id}", h.userMW(h.getRun))
+	mux.HandleFunc("DELETE /api/runs/{id}", h.userMW(h.cancelRun))
+	mux.HandleFunc("GET /api/runs/{id}/steps", h.userMW(h.listSteps))
+	mux.HandleFunc("GET /api/runs/{id}/logs/{stepID}", h.sseMW(h.streamLogs))
 	mux.HandleFunc("GET /api/runs/{id}/logs/{stepID}/history", h.userMW(h.historyLogs))
 
-	// Agent-facing (agent token auth — handled in agents handler, but we expose
-	// the endpoints here so they sit alongside the run domain)
-	mux.HandleFunc("GET /api/agent/runs/next",                         h.agentMW(h.agentNext))
-	mux.HandleFunc("PATCH /api/agent/runs/{id}",                       h.agentMW(h.agentUpdateRun))
-	mux.HandleFunc("POST /api/agent/runs/{id}/steps",                  h.agentMW(h.agentCreateStep))
-	mux.HandleFunc("PATCH /api/agent/runs/{id}/steps/{stepID}",        h.agentMW(h.agentUpdateStep))
-	mux.HandleFunc("POST /api/agent/runs/{id}/steps/{stepID}/logs",    h.agentMW(h.agentAppendLogs))
+	mux.HandleFunc("GET /api/agent/runs/next", h.agentMW(h.agentNext))
+	mux.HandleFunc("GET /api/agent/runs/{id}/wait", h.agentMW(h.agentWaitRun))
+	mux.HandleFunc("PATCH /api/agent/runs/{id}", h.agentMW(h.agentUpdateRun))
+	mux.HandleFunc("POST /api/agent/runs/{id}/steps", h.agentMW(h.agentCreateStep))
+	mux.HandleFunc("PATCH /api/agent/runs/{id}/steps/{stepID}", h.agentMW(h.agentUpdateStep))
+	mux.HandleFunc("POST /api/agent/runs/{id}/steps/{stepID}/logs", h.agentMW(h.agentAppendLogs))
 }
-
-// ── user endpoints ────────────────────────────────────────────────────────────
 
 func (h *Handler) listRuns(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFrom(r)
@@ -78,11 +74,16 @@ func (h *Handler) listRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createRun(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.create_run")
+	defer span.End()
+
 	claims := auth.ClaimsFrom(r)
 	var req struct {
 		PackageID string `json:"package_id"`
+		Profile   string `json:"profile"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
@@ -90,9 +91,11 @@ func (h *Handler) createRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "package_id is required")
 		return
 	}
+	span.SetAttributes(attribute.String("catalog.package_id", req.PackageID))
 
-	pkg, err := h.store.GetPackage(r.Context(), req.PackageID)
+	pkg, err := h.store.GetPackage(ctx, req.PackageID)
 	if err != nil {
+		span.RecordError(err)
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "package not found")
 		} else {
@@ -100,26 +103,56 @@ func (h *Handler) createRun(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if !pkg.Enabled {
+		writeErr(w, http.StatusForbidden, "package is not enabled")
+		return
+	}
+
+	selectedProfile := strings.TrimSpace(req.Profile)
+	if selectedProfile == "" {
+		selectedProfile = strings.TrimSpace(pkg.DefaultProfile)
+	}
+	if len(pkg.Profiles) > 0 && selectedProfile != "" {
+		matched := false
+		for _, profile := range pkg.Profiles {
+			if strings.EqualFold(strings.TrimSpace(profile), selectedProfile) {
+				selectedProfile = strings.TrimSpace(profile)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			writeErr(w, http.StatusBadRequest, "profile is not published by this suite")
+			return
+		}
+	}
 
 	run := &domain.Run{
 		RunID:     uuid.NewString(),
 		OrgID:     claims.OrgID,
 		PackageID: pkg.PackageID,
 		ImageRef:  pkg.ImageRef,
+		Profile:   selectedProfile,
 		Status:    domain.RunPending,
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := h.store.CreateRun(r.Context(), run); err != nil {
+	if err := h.store.CreateRun(ctx, run); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	span.SetAttributes(attribute.String("run.id", run.RunID))
 	writeJSON(w, http.StatusCreated, run)
 }
 
 func (h *Handler) getRun(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.get_run", attribute.String("run.id", r.PathValue("id")))
+	defer span.End()
+
 	claims := auth.ClaimsFrom(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil {
+		span.RecordError(err)
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 		} else {
@@ -149,9 +182,7 @@ func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	run.Status = domain.RunCanceled
-	now := time.Now().UTC()
-	run.FinishedAt = &now
+	domain.ApplyRunStatus(run, domain.RunCanceled, time.Now().UTC())
 	if err := h.store.UpdateRun(r.Context(), run); err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
@@ -161,9 +192,13 @@ func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listSteps(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.list_steps", attribute.String("run.id", r.PathValue("id")))
+	defer span.End()
+
 	claims := auth.ClaimsFrom(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil {
+		span.RecordError(err)
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 		} else {
@@ -175,8 +210,9 @@ func (h *Handler) listSteps(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	steps, err := h.store.ListSteps(r.Context(), run.RunID)
+	steps, err := h.store.ListSteps(ctx, run.RunID)
 	if err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -186,12 +222,17 @@ func (h *Handler) listSteps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, steps)
 }
 
-// streamLogs opens an SSE stream that sends historical logs first, then
-// tails live logs until the step finishes or the client disconnects.
 func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.stream_logs",
+		attribute.String("run.id", r.PathValue("id")),
+		attribute.String("step.id", r.PathValue("stepID")),
+	)
+	defer span.End()
+
 	claims := auth.ClaimsFrom(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil {
+		span.RecordError(err)
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 		} else {
@@ -205,7 +246,6 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	stepID := r.PathValue("stepID")
 
-	// Determine last line seen (for reconnection support via Last-Event-ID).
 	lastLine := -1
 	if raw := r.Header.Get("Last-Event-ID"); raw != "" {
 		lastLine, _ = strconv.Atoi(raw)
@@ -222,8 +262,12 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send historical logs.
-	historical, _ := h.store.GetLogs(r.Context(), stepID)
+	historical, err := h.store.GetLogs(ctx, stepID)
+	if err != nil {
+		span.RecordError(err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	for _, e := range historical {
 		if e.Line <= lastLine {
 			continue
@@ -231,15 +275,13 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		sendLogSSE(w, flusher, []*domain.LogEntry{e})
 	}
 
-	// If the step is already done, close immediately.
-	step := h.findStep(r, run.RunID, stepID)
-	if step != nil && isTerminal(step.Status) {
+	step := h.findStep(r.WithContext(ctx), run.RunID, stepID)
+	if step != nil && step.Status.IsTerminal() {
 		fmt.Fprintf(w, "event: eof\ndata: {}\n\n")
 		flusher.Flush()
 		return
 	}
 
-	// Tail live logs via pubsub.
 	ch, cancel := h.logPub.Subscribe(stepID)
 	defer cancel()
 
@@ -253,21 +295,18 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-
 		case <-keepalive.C:
 			fmt.Fprintf(w, ": ping\n\n")
 			flusher.Flush()
-
 		case entries, open := <-ch:
-			if !open {
+			if !open || entries == nil {
 				fmt.Fprintf(w, "event: eof\ndata: {}\n\n")
 				flusher.Flush()
 				return
 			}
 			sendLogSSE(w, flusher, entries)
-
 		case updatedRun, open := <-runCh:
-			if !open || isTerminal(updatedRun.Status) {
+			if !open || updatedRun.Status.IsTerminal() {
 				fmt.Fprintf(w, "event: eof\ndata: {}\n\n")
 				flusher.Flush()
 				return
@@ -276,11 +315,17 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// historyLogs returns all stored logs for a step as JSON (for finished steps).
 func (h *Handler) historyLogs(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.history_logs",
+		attribute.String("run.id", r.PathValue("id")),
+		attribute.String("step.id", r.PathValue("stepID")),
+	)
+	defer span.End()
+
 	claims := auth.ClaimsFrom(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil {
+		span.RecordError(err)
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 		} else {
@@ -292,8 +337,9 @@ func (h *Handler) historyLogs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	logs, err := h.store.GetLogs(r.Context(), r.PathValue("stepID"))
+	logs, err := h.store.GetLogs(ctx, r.PathValue("stepID"))
 	if err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -303,17 +349,19 @@ func (h *Handler) historyLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, logs)
 }
 
-// ── agent endpoints ───────────────────────────────────────────────────────────
-
-// agentNext returns the next pending run for the agent's org (atomic claim).
 func (h *Handler) agentNext(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.agent_next")
+	defer span.End()
+
 	a := agentFromCtx(r)
-	if a.NoSchedule {
+	if !agentReadyForScheduling(a) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	run, err := h.store.NextPendingRun(r.Context(), a.OrgID)
+	span.SetAttributes(attribute.String("agent.id", a.AgentID))
+	run, err := h.store.NextPendingRun(ctx, a.OrgID, a.AgentID)
 	if err != nil {
+		span.RecordError(err)
 		if errors.Is(err, store.ErrNotFound) {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
@@ -321,18 +369,82 @@ func (h *Handler) agentNext(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	// Assign agent
-	run.AgentID = a.AgentID
-	_ = h.store.UpdateRun(r.Context(), run)
+	span.SetAttributes(attribute.String("run.id", run.RunID))
+	h.touchAgent(ctx, a, true)
 	h.runPub.Publish(run)
 	writeJSON(w, http.StatusOK, run)
 }
 
-// agentUpdateRun lets the agent report the final status of a run.
-func (h *Handler) agentUpdateRun(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) agentWaitRun(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.agent_wait",
+		attribute.String("run.id", r.PathValue("id")),
+	)
+	defer span.End()
+
 	a := agentFromCtx(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	span.SetAttributes(attribute.String("agent.id", a.AgentID))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil || run.OrgID != a.OrgID {
+		if err != nil {
+			span.RecordError(err)
+		}
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if run.AgentID != "" && run.AgentID != a.AgentID {
+		writeErr(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if run.Status.IsTerminal() {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"canceled": run.Status == domain.RunCanceled,
+			"status":   run.Status,
+		})
+		return
+	}
+
+	ch, cancel := h.runPub.Subscribe(run.RunID)
+	defer cancel()
+
+	timer := time.NewTimer(25 * time.Second)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-timer.C:
+			w.WriteHeader(http.StatusNoContent)
+			return
+		case updatedRun, open := <-ch:
+			if !open {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if updatedRun.Status.IsTerminal() {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"canceled": updatedRun.Status == domain.RunCanceled,
+					"status":   updatedRun.Status,
+				})
+				return
+			}
+		}
+	}
+}
+
+func (h *Handler) agentUpdateRun(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.agent_update_run",
+		attribute.String("run.id", r.PathValue("id")),
+	)
+	defer span.End()
+
+	a := agentFromCtx(r)
+	span.SetAttributes(attribute.String("agent.id", a.AgentID))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
+	if err != nil || run.OrgID != a.OrgID {
+		if err != nil {
+			span.RecordError(err)
+		}
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -340,25 +452,34 @@ func (h *Handler) agentUpdateRun(w http.ResponseWriter, r *http.Request) {
 		Status RunStatusReq `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	run.Status = domain.RunStatus(req.Status)
-	now := time.Now().UTC()
-	run.FinishedAt = &now
-	if err := h.store.UpdateRun(r.Context(), run); err != nil {
+	domain.ApplyRunStatus(run, domain.RunStatus(req.Status), time.Now().UTC())
+	if err := h.store.UpdateRun(ctx, run); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	h.touchAgent(ctx, a, true)
 	h.runPub.Publish(run)
 	writeJSON(w, http.StatusOK, run)
 }
 
-// agentCreateStep is called by the agent when it starts a new container/step.
 func (h *Handler) agentCreateStep(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.agent_create_step",
+		attribute.String("run.id", r.PathValue("id")),
+	)
+	defer span.End()
+
 	a := agentFromCtx(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	span.SetAttributes(attribute.String("agent.id", a.AgentID))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil || run.OrgID != a.OrgID {
+		if err != nil {
+			span.RecordError(err)
+		}
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -366,33 +487,58 @@ func (h *Handler) agentCreateStep(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	now := time.Now().UTC()
-	step := &domain.Step{
-		StepID:    uuid.NewString(),
-		RunID:     run.RunID,
-		Name:      req.Name,
-		Status:    domain.RunRunning,
-		StartedAt: &now,
-	}
-	if err := h.store.CreateStep(r.Context(), step); err != nil {
+	span.SetAttributes(attribute.String("step.name", req.Name))
+	steps, err := h.store.ListSteps(ctx, run.RunID)
+	if err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	step := &domain.Step{
+		StepID:   uuid.NewString(),
+		RunID:    run.RunID,
+		Name:     req.Name,
+		Position: len(steps),
+		Type:     "commands",
+	}
+	domain.ApplyStepStatus(step, domain.RunRunning, 0, "", time.Now().UTC())
+	if err := h.store.CreateStep(ctx, step); err != nil {
+		span.RecordError(err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	span.SetAttributes(attribute.String("step.id", step.StepID))
+	h.touchAgent(ctx, a, true)
 	writeJSON(w, http.StatusCreated, step)
 }
 
-// agentUpdateStep lets the agent report a step's completion.
 func (h *Handler) agentUpdateStep(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.agent_update_step",
+		attribute.String("run.id", r.PathValue("id")),
+		attribute.String("step.id", r.PathValue("stepID")),
+	)
+	defer span.End()
+
 	a := agentFromCtx(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	span.SetAttributes(attribute.String("agent.id", a.AgentID))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil || run.OrgID != a.OrgID {
+		if err != nil {
+			span.RecordError(err)
+		}
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
-	steps, _ := h.store.ListSteps(r.Context(), run.RunID)
+	steps, err := h.store.ListSteps(ctx, run.RunID)
+	if err != nil {
+		span.RecordError(err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	var step *domain.Step
 	for _, s := range steps {
 		if s.StepID == r.PathValue("stepID") {
@@ -410,58 +556,76 @@ func (h *Handler) agentUpdateStep(w http.ResponseWriter, r *http.Request) {
 		Error    string       `json:"error"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	now := time.Now().UTC()
-	step.Status = domain.RunStatus(req.Status)
-	step.ExitCode = req.ExitCode
-	step.Error = req.Error
-	step.FinishedAt = &now
-	if err := h.store.UpdateStep(r.Context(), step); err != nil {
+	domain.ApplyStepStatus(step, domain.RunStatus(req.Status), req.ExitCode, req.Error, time.Now().UTC())
+	if err := h.store.UpdateStep(ctx, step); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	// Close the log stream for this step so SSE clients get an EOF.
+	if err := h.syncRunStatus(r.WithContext(ctx), run); err != nil {
+		span.RecordError(err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.touchAgent(ctx, a, true)
 	h.logPub.Publish(step.StepID, nil)
 	writeJSON(w, http.StatusOK, step)
 }
 
-// agentAppendLogs receives a batch of log entries from the agent,
-// persists them, and fans them out to any SSE subscribers.
 func (h *Handler) agentAppendLogs(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.startSpan(r, "runs.agent_append_logs",
+		attribute.String("run.id", r.PathValue("id")),
+		attribute.String("step.id", r.PathValue("stepID")),
+	)
+	defer span.End()
+
 	a := agentFromCtx(r)
-	run, err := h.store.GetRun(r.Context(), r.PathValue("id"))
+	span.SetAttributes(attribute.String("agent.id", a.AgentID))
+	run, err := h.store.GetRun(ctx, r.PathValue("id"))
 	if err != nil || run.OrgID != a.OrgID {
+		if err != nil {
+			span.RecordError(err)
+		}
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
 	stepID := r.PathValue("stepID")
 
 	var lines []struct {
-		Line int    `json:"line"`
-		Data string `json:"data"`
-		Time int64  `json:"time"`
-		Type int    `json:"type"`
+		Line    int    `json:"line"`
+		Data    string `json:"data"`
+		Time    int64  `json:"time"`
+		Type    int    `json:"type"`
+		TraceID string `json:"trace_id"`
+		SpanID  string `json:"span_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&lines); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	span.SetAttributes(attribute.Int("log.batch_size", len(lines)))
 
 	entries := make([]*domain.LogEntry, len(lines))
 	for i, l := range lines {
 		entries[i] = &domain.LogEntry{
-			LogID:  uuid.NewString(),
-			RunID:  run.RunID,
-			StepID: stepID,
-			Line:   l.Line,
-			Data:   l.Data,
-			Time:   l.Time,
-			Type:   domain.LogEntryType(l.Type),
+			LogID:   uuid.NewString(),
+			RunID:   run.RunID,
+			StepID:  stepID,
+			Line:    l.Line,
+			Data:    l.Data,
+			Time:    l.Time,
+			Type:    domain.LogEntryType(l.Type),
+			TraceID: l.TraceID,
+			SpanID:  l.SpanID,
 		}
 	}
-	if err := h.store.AppendLogs(r.Context(), entries); err != nil {
+	if err := h.store.AppendLogs(ctx, entries); err != nil {
+		span.RecordError(err)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -469,14 +633,10 @@ func (h *Handler) agentAppendLogs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ── middleware ────────────────────────────────────────────────────────────────
-
 func (h *Handler) userMW(next http.HandlerFunc) http.HandlerFunc {
 	return auth.Middleware(h.jwt)(http.HandlerFunc(next)).ServeHTTP
 }
 
-// sseMW is like userMW but also accepts the JWT via ?token= query param
-// since EventSource in browsers cannot send custom headers.
 func (h *Handler) sseMW(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "" {
@@ -488,9 +648,6 @@ func (h *Handler) sseMW(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// agentMW validates the agent bearer token and stores the agent in context.
-// It duplicates the agents package logic here to avoid import cycles, using
-// the store directly.
 func (h *Handler) agentMW(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bearer := r.Header.Get("Authorization")
@@ -507,8 +664,6 @@ func (h *Handler) agentMW(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r.WithContext(contextWithAgent(r.Context(), a)))
 	}
 }
-
-// ── helpers ───────────────────────────────────────────────────────────────────
 
 func sendLogSSE(w http.ResponseWriter, f http.Flusher, entries []*domain.LogEntry) {
 	if len(entries) == 0 {
@@ -533,13 +688,81 @@ func (h *Handler) findStep(r *http.Request, runID, stepID string) *domain.Step {
 	return nil
 }
 
-func isTerminal(s domain.RunStatus) bool {
-	return s == domain.RunSuccess || s == domain.RunFailure ||
-		s == domain.RunCanceled || s == domain.RunError
+func (h *Handler) syncRunStatus(r *http.Request, run *domain.Run) error {
+	if run.Status.IsTerminal() {
+		return nil
+	}
+
+	steps, err := h.store.ListSteps(r.Context(), run.RunID)
+	if err != nil {
+		return err
+	}
+
+	nextStatus := domain.AggregateRunStatus(steps)
+	if nextStatus == domain.RunPending && run.StartedAt != nil {
+		nextStatus = domain.RunRunning
+	}
+	if nextStatus == run.Status && nextStatus != domain.RunRunning {
+		return nil
+	}
+
+	domain.ApplyRunStatus(run, nextStatus, time.Now().UTC())
+	if err := h.store.UpdateRun(r.Context(), run); err != nil {
+		return err
+	}
+	h.runPub.Publish(run)
+	return nil
 }
 
-// RunStatusReq is a string alias so JSON can decode directly into RunStatus.
+func (h *Handler) touchAgent(ctx context.Context, agent *domain.Agent, didWork bool) {
+	now := time.Now().UTC()
+	agent.LastContact = now
+	if didWork {
+		agent.LastWork = &now
+	}
+	_ = h.store.UpdateAgent(ctx, agent)
+}
+
 type RunStatusReq = domain.RunStatus
+
+func agentReadyForScheduling(agent *domain.Agent) bool {
+	if agent.NoSchedule {
+		return false
+	}
+
+	if desired := strings.TrimSpace(strings.ToLower(agent.DesiredBackend)); desired != "" {
+		actual := strings.TrimSpace(strings.ToLower(agent.Backend))
+		if actual == "" || actual != desired {
+			return false
+		}
+	}
+
+	if desired := strings.TrimSpace(strings.ToLower(agent.DesiredPlatform)); desired != "" {
+		actual := strings.TrimSpace(strings.ToLower(agent.Platform))
+		if actual == "" {
+			return false
+		}
+		if actual != desired && !strings.HasPrefix(actual, desired+"/") {
+			return false
+		}
+	}
+
+	if desired := strings.TrimSpace(strings.ToLower(agent.DesiredTargetName)); desired != "" {
+		actual := strings.TrimSpace(strings.ToLower(agent.TargetName))
+		if actual == "" || actual != desired {
+			return false
+		}
+	}
+
+	if desired := strings.TrimSpace(agent.DesiredTargetURL); desired != "" {
+		actual := strings.TrimSpace(agent.TargetURL)
+		if actual == "" || actual != desired {
+			return false
+		}
+	}
+
+	return true
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -549,4 +772,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func (h *Handler) startSpan(r *http.Request, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	return telemetry.Start(r.Context(), "babelsuite.runs", name, trace.WithAttributes(attrs...))
 }

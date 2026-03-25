@@ -21,19 +21,25 @@ type Registry struct {
 }
 
 type CatalogPackage struct {
-	PackageID    string       `json:"package_id"    bson:"package_id"`
-	OrgID        string       `json:"org_id"        bson:"org_id"`
-	RegistryID   string       `json:"registry_id"   bson:"registry_id"`
-	RegistryKind RegistryKind `json:"registry_kind" bson:"registry_kind"`
-	Name         string       `json:"name"          bson:"name"`
-	DisplayName  string       `json:"display_name"  bson:"display_name"`
-	Description  string       `json:"description"   bson:"description"`
-	Publisher    string       `json:"publisher"     bson:"publisher"`
-	ImageRef     string       `json:"image_ref"     bson:"image_ref"`
-	Version      string       `json:"version"       bson:"version"`
-	Tags         []string     `json:"tags"          bson:"tags"`
-	Enabled      bool         `json:"enabled"       bson:"enabled"`
-	UpdatedAt    time.Time    `json:"updated_at"    bson:"updated_at"`
+	PackageID      string       `json:"package_id"    bson:"package_id"`
+	OrgID          string       `json:"org_id"        bson:"org_id"`
+	RegistryID     string       `json:"registry_id"   bson:"registry_id"`
+	RegistryKind   RegistryKind `json:"registry_kind" bson:"registry_kind"`
+	Name           string       `json:"name"          bson:"name"`
+	DisplayName    string       `json:"display_name"  bson:"display_name"`
+	Description    string       `json:"description"   bson:"description"`
+	Publisher      string       `json:"publisher"     bson:"publisher"`
+	ImageRef       string       `json:"image_ref"     bson:"image_ref"`
+	Version        string       `json:"version"       bson:"version"`
+	Tags           []string     `json:"tags"          bson:"tags"`
+	Profiles       []string     `json:"profiles,omitempty"        bson:"profiles,omitempty"`
+	DefaultProfile string       `json:"default_profile,omitempty" bson:"default_profile,omitempty"`
+	ServiceCount   int          `json:"service_count,omitempty"    bson:"service_count,omitempty"`
+	MockCount      int          `json:"mock_count,omitempty"       bson:"mock_count,omitempty"`
+	TestCount      int          `json:"test_count,omitempty"       bson:"test_count,omitempty"`
+	ContractCount  int          `json:"contract_count,omitempty"   bson:"contract_count,omitempty"`
+	Enabled        bool         `json:"enabled"       bson:"enabled"`
+	UpdatedAt      time.Time    `json:"updated_at"    bson:"updated_at"`
 }
 
 type CatalogFilter struct {

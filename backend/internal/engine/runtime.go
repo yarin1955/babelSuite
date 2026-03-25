@@ -6,60 +6,73 @@ import (
 	"io"
 	"sync"
 
+	"github.com/babelsuite/babelsuite/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
-// StepLogger receives a step's log stream and is responsible for consuming it.
-// It is called in a goroutine and must read rc until EOF.
-type StepLogger func(step *WorkflowStep, rc io.ReadCloser) error
+type StepLogger func(ctx context.Context, step *WorkflowStep, rc io.ReadCloser) error
 
-// Runtime executes a WorkflowConfig against a Backend, following the pattern
-// from the design reference: SetupWorkflow → stages (parallel steps) → DestroyWorkflow.
+type StepHooks struct {
+	OnStart  func(step *WorkflowStep)
+	OnFinish func(step *WorkflowStep, state *StepState, err error)
+}
+
 type Runtime struct {
 	backend  Backend
 	conf     *WorkflowConfig
 	taskUUID string
 	logger   StepLogger
+	hooks    StepHooks
 
-	// uploads tracks all logger goroutines so Run() waits for every log line
-	// to be flushed before returning.
 	uploads sync.WaitGroup
 }
 
-// NewRuntime creates a Runtime for the given workflow.
-func NewRuntime(backend Backend, conf *WorkflowConfig, taskUUID string, logger StepLogger) *Runtime {
+func NewRuntime(backend Backend, conf *WorkflowConfig, taskUUID string, logger StepLogger, hooks StepHooks) *Runtime {
 	return &Runtime{
 		backend:  backend,
 		conf:     conf,
 		taskUUID: taskUUID,
 		logger:   logger,
+		hooks:    hooks,
 	}
 }
 
-// Run executes the workflow: setup → stages → cleanup.
-// Stages run sequentially; steps within a stage run concurrently.
-// DestroyWorkflow is always called on exit to clean up containers and networks.
-// Run blocks until all logger goroutines have finished flushing logs.
 func (r *Runtime) Run(ctx context.Context) error {
+	ctx, span := telemetry.Start(ctx, "babelsuite.runtime", "runtime.run", trace.WithAttributes(
+		attribute.String("workflow.task_id", r.taskUUID),
+		attribute.Int("workflow.stage_count", len(r.conf.Stages)),
+	))
+	defer span.End()
+
 	defer func() {
-		r.uploads.Wait() // drain all log goroutines before cleanup
 		r.backend.DestroyWorkflow(ctx, r.conf, r.taskUUID)
+		r.uploads.Wait()
 	}()
 
 	if err := r.backend.SetupWorkflow(ctx, r.conf, r.taskUUID); err != nil {
+		span.RecordError(err)
 		return fmt.Errorf("setup workflow: %w", err)
 	}
 
-	for _, stage := range r.conf.Stages {
-		if err := r.execStage(ctx, stage); err != nil {
+	for index, stage := range r.conf.Stages {
+		if err := r.execStage(ctx, index, stage); err != nil {
+			span.RecordError(err)
 			return err
 		}
 	}
 	return nil
 }
 
-// execStage runs all steps in the stage concurrently and waits for all to finish.
-func (r *Runtime) execStage(ctx context.Context, stage *WorkflowStage) error {
+func (r *Runtime) execStage(ctx context.Context, index int, stage *WorkflowStage) error {
+	ctx, span := telemetry.Start(ctx, "babelsuite.runtime", "runtime.stage", trace.WithAttributes(
+		attribute.String("workflow.task_id", r.taskUUID),
+		attribute.Int("workflow.stage_index", index),
+		attribute.Int("workflow.step_count", len(stage.Steps)),
+	))
+	defer span.End()
+
 	g, ctx := errgroup.WithContext(ctx)
 	for _, step := range stage.Steps {
 		step := step
@@ -67,57 +80,92 @@ func (r *Runtime) execStage(ctx context.Context, stage *WorkflowStage) error {
 			return r.execStep(ctx, step)
 		})
 	}
-	return g.Wait()
+	err := g.Wait()
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
 }
 
-// execStep starts a container, streams its logs, and waits for completion.
-// Detached steps (services) are started and left running; the log stream
-// continues in a background goroutine until the container exits.
 func (r *Runtime) execStep(ctx context.Context, step *WorkflowStep) error {
+	ctx, span := telemetry.Start(ctx, "babelsuite.runtime", "runtime.step", trace.WithAttributes(
+		attribute.String("workflow.task_id", r.taskUUID),
+		attribute.String("workflow.step_id", step.UUID),
+		attribute.String("workflow.step_name", step.Name),
+		attribute.String("workflow.step_type", string(step.Type)),
+		attribute.Bool("workflow.detached", step.Detached),
+	))
+	defer span.End()
+
 	if err := r.backend.StartStep(ctx, step, r.taskUUID); err != nil {
+		span.RecordError(err)
+		r.finishHook(step, nil, err)
 		return fmt.Errorf("start step %s: %w", step.Name, err)
 	}
+	r.startHook(step)
 
 	rc, err := r.backend.TailStep(ctx, step, r.taskUUID)
 	if err != nil {
+		span.RecordError(err)
+		r.finishHook(step, nil, err)
 		return fmt.Errorf("tail step %s: %w", step.Name, err)
 	}
 
 	r.uploads.Add(1)
 	if step.Detached {
-		// Service container: stream logs in background, don't wait for exit.
 		go func() {
 			defer r.uploads.Done()
 			if r.logger != nil {
-				_ = r.logger(step, rc)
+				_ = r.logger(ctx, step, rc)
 			}
 			rc.Close()
 		}()
 		return nil
 	}
 
-	// Non-detached: wait for all logs to be consumed, then check exit code.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer r.uploads.Done()
 		defer wg.Done()
 		if r.logger != nil {
-			_ = r.logger(step, rc)
+			_ = r.logger(ctx, step, rc)
 		}
 		rc.Close()
 	}()
 	wg.Wait()
 
-	state, err := r.backend.WaitStep(ctx, step, r.taskUUID)
-	if err != nil {
-		return fmt.Errorf("wait step %s: %w", step.Name, err)
+	state, waitErr := r.backend.WaitStep(ctx, step, r.taskUUID)
+	destroyErr := r.backend.DestroyStep(ctx, step, r.taskUUID)
+	if waitErr != nil {
+		span.RecordError(waitErr)
+		r.finishHook(step, state, waitErr)
+		return fmt.Errorf("wait step %s: %w", step.Name, waitErr)
 	}
-	if err := r.backend.DestroyStep(ctx, step, r.taskUUID); err != nil {
-		return fmt.Errorf("destroy step %s: %w", step.Name, err)
+	if destroyErr != nil {
+		span.RecordError(destroyErr)
+		r.finishHook(step, state, destroyErr)
+		return fmt.Errorf("destroy step %s: %w", step.Name, destroyErr)
 	}
 	if state.ExitCode != 0 {
-		return fmt.Errorf("step %s: exit code %d", step.Name, state.ExitCode)
+		stepErr := fmt.Errorf("step %s: exit code %d", step.Name, state.ExitCode)
+		span.RecordError(stepErr)
+		r.finishHook(step, state, stepErr)
+		return stepErr
 	}
+
+	r.finishHook(step, state, nil)
 	return nil
+}
+
+func (r *Runtime) startHook(step *WorkflowStep) {
+	if r.hooks.OnStart != nil {
+		r.hooks.OnStart(step)
+	}
+}
+
+func (r *Runtime) finishHook(step *WorkflowStep, state *StepState, err error) {
+	if r.hooks.OnFinish != nil {
+		r.hooks.OnFinish(step, state, err)
+	}
 }

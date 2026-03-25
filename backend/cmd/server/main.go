@@ -9,17 +9,27 @@ import (
 	"github.com/babelsuite/babelsuite/internal/agents"
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/catalog"
-	"github.com/babelsuite/babelsuite/internal/demo"
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/profiles"
 	"github.com/babelsuite/babelsuite/internal/runs"
 	"github.com/babelsuite/babelsuite/internal/sso"
 	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
+	"github.com/babelsuite/babelsuite/internal/telemetry"
 )
 
 func main() {
 	envloader.Load()
+
+	shutdownTelemetry, telemetryErr := telemetry.Setup(context.Background(), telemetry.Config{
+		ServiceName:    "babelsuite-server",
+		ServiceVersion: "0.1.0",
+	})
+	if telemetryErr != nil {
+		log.Fatalf("telemetry: %v", telemetryErr)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	var st store.Store
 	var err error
@@ -64,6 +74,7 @@ func main() {
 	catalogHandler := catalog.NewHandler(st, jwtSvc)
 	ssoHandler := sso.NewHandler(st, jwtSvc, frontendURL)
 	agentsHandler := agents.NewHandler(st, jwtSvc)
+	profilesHandler := profiles.NewHandler(st, jwtSvc)
 	runsHandler := runs.NewHandler(st, jwtSvc)
 
 	mux := http.NewServeMux()
@@ -71,12 +82,8 @@ func main() {
 	catalogHandler.Register(mux)
 	ssoHandler.Register(mux)
 	agentsHandler.Register(mux)
+	profilesHandler.Register(mux)
 	runsHandler.Register(mux)
-
-	if os.Getenv("DEMO_ENABLED") == "true" {
-		demo.NewHandler(st, jwtSvc, runsHandler).Register(mux)
-		log.Println("demo mode enabled")
-	}
 
 	// CORS middleware for frontend dev server
 	corsed := corsMiddleware(mux)
@@ -86,7 +93,7 @@ func main() {
 		port = ":8090"
 	}
 	log.Printf("babelsuite server on %s  db=%s", port, os.Getenv("DB_DRIVER"))
-	if err := http.ListenAndServe(port, corsed); err != nil {
+	if err := http.ListenAndServe(port, telemetry.WrapHandler(corsed, "babelsuite-server")); err != nil {
 		log.Fatal(err)
 	}
 }
