@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { FaGithub, FaFrog, FaPlus, FaPen, FaTrash, FaRotate } from 'react-icons/fa6'
+import { FaPlus, FaPen, FaTrash, FaRotate } from 'react-icons/fa6'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../components/Layout'
 import Page from '../components/Page'
 import styles from './AdminCatalog.module.css'
@@ -36,14 +37,16 @@ interface CatalogPackage {
     version:       string
     registry_kind: string
     tags:          string[]
+    profiles?:     string[]
+    default_profile?: string
     enabled:       boolean
     updated_at:    string
 }
 
 /* ── Registry kind badge ─────────────────────────────────────────────────── */
 function KindBadge({ kind }: { kind: string }) {
-    if (kind === 'ghcr')  return <span className={`${styles.badge} ${styles.badgeGhcr}`}><FaGithub /> GHCR</span>
-    if (kind === 'jfrog') return <span className={`${styles.badge} ${styles.badgeJfrog}`}><FaFrog /> JFrog</span>
+    if (kind === 'ghcr')  return <span className={`${styles.badge} ${styles.badgeRegistryPrimary}`}>Hosted</span>
+    if (kind === 'jfrog') return <span className={`${styles.badge} ${styles.badgeRegistrySecondary}`}>Private</span>
     return <span className={styles.badge}>{kind}</span>
 }
 
@@ -98,13 +101,13 @@ function RegistryModal({
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>Type</label>
                         <select className={styles.fieldSelect} value={form.kind} onChange={set('kind')}>
-                            <option value='ghcr'>GitHub Container Registry (GHCR)</option>
-                            <option value='jfrog'>JFrog Artifactory</option>
+                            <option value='ghcr'>Hosted registry</option>
+                            <option value='jfrog'>Private registry</option>
                         </select>
                     </div>
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>URL (optional)</label>
-                        <input className={styles.fieldInput} value={form.url} onChange={set('url')} placeholder='https://ghcr.io' />
+                        <input className={styles.fieldInput} value={form.url} onChange={set('url')} placeholder='https://registry.example.com' />
                     </div>
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>Token {initial && '(leave blank to keep existing)'}</label>
@@ -209,6 +212,10 @@ function RegistriesTab() {
 
     return (
         <>
+            <div className={styles.notePanel}>
+                <strong>Catalog sources only</strong>
+                <p>These registries import suites into the catalog. Execution targets are configured on agent tokens from the Agents page.</p>
+            </div>
             <div className={styles.toolbar}>
                 <span className={styles.toolbarTitle}>Registries</span>
                 <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setModal('add')}>
@@ -317,6 +324,10 @@ function PackagesTab() {
 
     return (
         <>
+            <div className={styles.notePanel}>
+                <strong>Enable suites for users</strong>
+                <p>Only enabled packages appear on the Suites page. Published suite profiles are shown here so you can see what launch options users will get before turning a package on.</p>
+            </div>
             <div className={styles.toolbar}>
                 <span className={styles.toolbarTitle}>{total} packages</span>
                 <input
@@ -341,6 +352,7 @@ function PackagesTab() {
                                 <th>Registry</th>
                                 <th>Version</th>
                                 <th>Publisher</th>
+                                <th>Profiles</th>
                                 <th>Enabled</th>
                                 <th></th>
                             </tr>
@@ -359,6 +371,11 @@ function PackagesTab() {
                                     <td><KindBadge kind={pkg.registry_kind} /></td>
                                     <td style={{ fontSize: 12, color: '#6d7f8b' }}>{pkg.version || '—'}</td>
                                     <td style={{ fontSize: 12, color: '#6d7f8b' }}>{pkg.publisher || '—'}</td>
+                                    <td style={{ fontSize: 12, color: '#6d7f8b' }}>
+                                        {pkg.profiles?.length
+                                            ? `${pkg.profiles.length} profile${pkg.profiles.length === 1 ? '' : 's'}${pkg.default_profile ? ` / default ${pkg.default_profile}` : ''}`
+                                            : 'none published'}
+                                    </td>
                                     <td><Toggle checked={pkg.enabled} onChange={() => toggle(pkg)} /></td>
                                     <td>
                                         <button
@@ -379,19 +396,30 @@ function PackagesTab() {
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function AdminCatalog() {
-    const [tab, setTab] = useState<'registries' | 'packages'>('registries')
+    const nav = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const tab = searchParams.get('tab') === 'packages' ? 'packages' : 'registries'
+
+    const selectTab = (next: 'registries' | 'packages') => {
+        const params = new URLSearchParams(searchParams)
+        params.set('tab', next)
+        setSearchParams(params, { replace: true })
+    }
 
     return (
         <Layout>
-            <Page title='Catalog Admin'>
+            <Page
+                title='Catalog'
+                toolbar={<button className='app-button app-button--secondary' onClick={() => nav('/settings')}>Back to Settings</button>}
+            >
                 <div className={styles.tabs}>
                     <button
                         className={`${styles.tab}${tab === 'registries' ? ' ' + styles.tabActive : ''}`}
-                        onClick={() => setTab('registries')}
+                        onClick={() => selectTab('registries')}
                     >Registries</button>
                     <button
                         className={`${styles.tab}${tab === 'packages' ? ' ' + styles.tabActive : ''}`}
-                        onClick={() => setTab('packages')}
+                        onClick={() => selectTab('packages')}
                     >Packages</button>
                 </div>
 

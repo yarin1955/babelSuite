@@ -1,23 +1,38 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-    FaPlay, FaLayerGroup, FaSliders, FaGear, FaBoxOpen, FaRobot,
+    FaHouse, FaPlay, FaLayerGroup, FaSliders, FaGear,
     FaChevronLeft, FaChevronRight, FaArrowRightFromBracket,
 } from 'react-icons/fa6'
 import { useState } from 'react'
 
-const NAV = [
+const USER_NAV = [
+    { path: '/',         icon: <FaHouse />,      label: 'Overview' },
     { path: '/runs',     icon: <FaPlay />,       label: 'Runs'     },
     { path: '/suites',   icon: <FaLayerGroup />, label: 'Suites'   },
-    { path: '/catalog',  icon: <FaBoxOpen />,    label: 'Catalog'  },
-    { path: '/agents',   icon: <FaRobot />,      label: 'Agents'   },
     { path: '/profiles', icon: <FaSliders />,    label: 'Profiles' },
-    { path: '/settings', icon: <FaGear />,        label: 'Settings' },
+    { path: '/settings', icon: <FaGear />,       label: 'Settings' },
+]
+
+const ADMIN_NAV = [
+    { path: '/',         icon: <FaHouse />,      label: 'Overview' },
+    { path: '/runs',     icon: <FaPlay />,       label: 'Runs'     },
+    { path: '/suites',   icon: <FaLayerGroup />, label: 'Suites'   },
+    { path: '/profiles', icon: <FaSliders />,    label: 'Profiles' },
+    { path: '/settings', icon: <FaGear />,       label: 'Settings' },
 ]
 
 export default function Sidebar() {
     const [collapsed, setCollapsed] = useState(false)
     const location = useLocation()
     const nav = useNavigate()
+    const isAdmin = (() => {
+        try {
+            return JSON.parse(localStorage.getItem('user') || '{}').is_admin === true
+        } catch {
+            return false
+        }
+    })()
+    const items = isAdmin ? ADMIN_NAV : USER_NAV
 
     const logout = () => {
         localStorage.removeItem('token')
@@ -35,25 +50,27 @@ export default function Sidebar() {
                     {!collapsed && (
                         <div className='sidebar__logo-container' onClick={() => nav('/')}>
                             <div className='sidebar__logo__name'>BabelSuite</div>
-                            <div className='sidebar__version'>v0.1.0</div>
+                            <div className='sidebar__version'>container-native suite runner</div>
                         </div>
                     )}
                     <div className='sidebar__logo__icon' onClick={() => nav('/')}>B</div>
                 </div>
 
-                {NAV.map(item => {
-                    const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/')
-                    return (
-                        <div
-                            key={item.path}
-                            className={`sidebar__nav-item${active ? ' sidebar__nav-item--active' : ''}`}
-                            onClick={() => nav(item.path)}
-                        >
-                            <span className='nav-icon'>{item.icon}</span>
-                            {!collapsed && item.label}
-                        </div>
-                    )
-                })}
+                <div className='sidebar__nav'>
+                    {items.map(item => {
+                        const active = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path + '/'))
+                        return (
+                            <div
+                                key={item.path}
+                                className={`sidebar__nav-item${active ? ' sidebar__nav-item--active' : ''}`}
+                                onClick={() => nav(item.path)}
+                            >
+                                <span className='nav-icon'>{item.icon}</span>
+                                {!collapsed && item.label}
+                            </div>
+                        )
+                    })}
+                </div>
 
                 <div className='sidebar__bottom'>
                     <div className='sidebar__nav-item sidebar__nav-item--logout' onClick={logout}>

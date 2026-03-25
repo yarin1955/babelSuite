@@ -1,38 +1,32 @@
 @use 'config' as *;
 
-$deselected-text: #818d94;
-
 .sidebar {
     min-width: $sidebar-width;
     width: $sidebar-width;
-    padding: 0 20px;
+    padding: 18px;
     top: 0;
     left: 0;
     position: fixed;
     height: 100vh;
     max-height: 100vh;
     color: white;
-    background-color: #0f2733;
+    background:
+        radial-gradient(circle at top right, rgba(13, 173, 234, 0.22), transparent 26%),
+        linear-gradient(180deg, $sidebar-bg, $sidebar-bg-2);
     overflow: auto;
     z-index: 2;
+    border-right: 1px solid $sidebar-border;
+    transition: width 0.2s ease, min-width 0.2s ease, padding 0.2s ease;
 
     &__container {
-        padding: 0 5px;
         display: flex;
         flex-direction: column;
-        height: 100%;
-    }
-
-    &__bottom {
-        margin-top: auto;
-        padding-bottom: 40px;
+        min-height: 100%;
     }
 
     &__logo-container {
-        margin-top: 10px;
-        font-size: 12px;
-        color: $deselected-text;
-        margin-left: 12px;
+        margin-top: 8px;
+        cursor: pointer;
     }
 
     &__logo {
@@ -41,90 +35,113 @@ $deselected-text: #818d94;
         flex-direction: row-reverse;
         align-items: center;
         justify-content: flex-end;
-        font-size: 24px;
-        font-weight: 500;
-        margin: 1em 0;
-        margin-left: -7px;
+        gap: 14px;
+        margin-bottom: 20px;
 
         &__name {
-            cursor: pointer;
-            font-size: 18px;
-            font-weight: 700;
+            font-size: 22px;
+            font-weight: 800;
             color: white;
-            letter-spacing: 0.5px;
+            letter-spacing: -0.04em;
         }
 
         &__icon {
             cursor: pointer;
-            width: 32px;
-            height: 32px;
-            background: #fe733f;
-            border-radius: 6px;
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #fe733f, #ff8b46);
+            border-radius: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 800;
             color: white;
             flex-shrink: 0;
+            box-shadow: 0 16px 32px rgba(254, 115, 63, 0.28);
         }
     }
 
     &__version {
-        cursor: pointer;
-        width: 110px;
-        text-align: left;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: $deselected-text;
+        color: $sidebar-text;
         font-size: 12px;
-        margin-left: 12px;
+        margin-top: 4px;
+    }
+
+    &__intro {
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+        margin-bottom: 18px;
+    }
+
+    &__intro-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #d5e1e8;
         margin-bottom: 8px;
+    }
+
+    &__intro-copy {
+        color: $sidebar-text;
+        font-size: 13px;
+        line-height: 1.7;
+    }
+
+    &__nav {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    &__bottom {
+        margin-top: auto;
+        padding-top: 16px;
     }
 
     &__nav-item {
         cursor: pointer;
         display: flex;
         align-items: center;
-        font-size: 16px;
-        font-weight: 500;
-        $height: 2.5em;
-        height: $height;
-        line-height: $height;
-        color: $deselected-text;
-        border-radius: 6px;
-        padding: 0 4px;
-        margin-bottom: 2px;
-        transition: background 0.15s;
+        gap: 12px;
+        min-height: 48px;
+        color: $sidebar-text;
+        border-radius: 16px;
+        padding: 0 14px;
+        transition: background 0.15s ease, color 0.15s ease;
 
         &:hover {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.06);
             color: white;
         }
 
         .nav-icon {
-            font-size: 22px;
-            color: white;
-            width: 40px;
+            font-size: 18px;
+            color: #e8f2f7;
+            width: 24px;
             display: flex;
             align-items: center;
-            justify-content: flex-start;
+            justify-content: center;
             flex-shrink: 0;
         }
 
         &--active {
+            background: linear-gradient(135deg, rgba(254, 115, 63, 0.2), rgba(254, 115, 63, 0.08));
             color: white;
-            .nav-icon { color: #fe733f; }
+            border: 1px solid rgba(254, 115, 63, 0.26);
+
+            .nav-icon {
+                color: $sidebar-active;
+            }
         }
 
         &--logout {
-            color: #e96d76;
-            .nav-icon { color: #e96d76; }
-            &:hover {
-                background: rgba(233, 109, 118, 0.12);
-                color: #ff8a93;
-                .nav-icon { color: #ff8a93; }
+            color: #ffb0b8;
+
+            .nav-icon {
+                color: #ffb0b8;
             }
         }
     }
@@ -133,45 +150,36 @@ $deselected-text: #818d94;
         text-align: center;
         cursor: pointer;
         margin-left: auto;
-        margin-bottom: 1em;
-        font-size: 20px;
-        color: $deselected-text;
+        color: $sidebar-text;
         display: flex;
         justify-content: flex-end;
         padding: 4px 0;
 
-        &:hover { color: white; }
+        &:hover {
+            color: white;
+        }
     }
 
     &--collapsed {
         min-width: $collapsed-sidebar-width;
         width: $collapsed-sidebar-width;
-        padding: 15px 5px;
-        overflow: hidden !important;
+        padding: 18px 12px;
+        overflow: hidden;
 
         .sidebar__logo {
-            margin-left: 0;
             flex-direction: column;
+            gap: 12px;
             margin-bottom: 18px;
-            margin-top: -7px;
-            justify-content: center;
         }
 
         .sidebar__collapse-button {
             margin-left: 0;
-            margin-top: 1em;
             justify-content: center;
         }
 
         .sidebar__nav-item {
             justify-content: center;
             padding: 0;
-
-            .nav-icon {
-                width: auto;
-                justify-content: center;
-                margin-left: 7px;
-            }
         }
     }
 }

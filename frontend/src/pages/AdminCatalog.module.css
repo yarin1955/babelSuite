@@ -32,6 +32,28 @@
     margin-bottom: 14px;
 }
 
+.notePanel {
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    border: 1px solid #dbe7ef;
+    background: #f7fbfd;
+}
+
+.notePanel strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #243743;
+}
+
+.notePanel p {
+    margin: 0;
+    color: #627783;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
 .toolbarTitle {
     font-size: 15px;
     font-weight: 600;
@@ -126,8 +148,8 @@
     font-weight: 500;
 }
 
-.badgeGhcr  { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
-.badgeJfrog { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.badgeRegistryPrimary  { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+.badgeRegistrySecondary { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
 
 /* ── Toggle ──────────────────────────────────────────────────────────────── */
 .toggle {

@@ -4,7 +4,6 @@ import Signup       from './pages/Signup'
 import SSOCallback  from './pages/SSOCallback'
 import Home         from './pages/Home'
 import Runs         from './pages/Runs'
-import Suites       from './pages/Suites'
 import Catalog      from './pages/Catalog'
 import AdminCatalog from './pages/AdminCatalog'
 import Agents       from './pages/Agents'
@@ -35,12 +34,15 @@ export default function App() {
                 <Route path='/'              element={<Guard><Home /></Guard>} />
                 <Route path='/runs'          element={<Guard><Runs /></Guard>} />
                 <Route path='/runs/:id'      element={<Guard><RunDetail /></Guard>} />
-                <Route path='/suites'        element={<Guard><Suites /></Guard>} />
-                <Route path='/catalog'       element={<Guard><Catalog /></Guard>} />
-                <Route path='/agents'        element={<Guard><Agents /></Guard>} />
-                <Route path='/admin/catalog' element={<AdminGuard><AdminCatalog /></AdminGuard>} />
+                <Route path='/suites'        element={<Guard><Catalog /></Guard>} />
                 <Route path='/profiles'      element={<Guard><Profiles /></Guard>} />
                 <Route path='/settings'      element={<Guard><Settings /></Guard>} />
+                <Route path='/settings/profiles' element={<Guard><Profiles /></Guard>} />
+                <Route path='/settings/agents'   element={<AdminGuard><Agents /></AdminGuard>} />
+                <Route path='/settings/catalog'  element={<AdminGuard><AdminCatalog /></AdminGuard>} />
+                <Route path='/agents'        element={<AdminGuard><Navigate to='/settings/agents' replace /></AdminGuard>} />
+                <Route path='/catalog'       element={<AdminGuard><Navigate to='/settings/catalog' replace /></AdminGuard>} />
+                <Route path='/admin/catalog' element={<AdminGuard><Navigate to='/settings/catalog' replace /></AdminGuard>} />
                 <Route path='*' element={<Navigate to='/' replace />} />
             </Routes>
         </BrowserRouter>

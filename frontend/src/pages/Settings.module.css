@@ -1,0 +1,184 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionTop h2 {
+  margin: 6px 0 10px;
+  color: #102531;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.sectionTop p {
+  max-width: 68ch;
+  color: #5d7280;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.eyebrow {
+  color: #6f8390;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.redirectList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.redirectPanel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 20px 22px;
+  border: 1px solid rgba(179, 199, 211, 0.7);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 252, 0.95));
+  box-shadow: 0 12px 28px rgba(15, 39, 51, 0.08);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.redirectPanel:hover {
+  transform: translateY(-1px);
+  border-color: #b6d4e8;
+  background: linear-gradient(180deg, #ffffff, #eef8fc);
+  box-shadow: 0 16px 36px rgba(15, 39, 51, 0.1);
+}
+
+.redirectIcon {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(24, 190, 148, 0.18), rgba(17, 173, 234, 0.16));
+  color: #0f6473;
+  font-size: 18px;
+}
+
+.redirectContent {
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.redirectTitle {
+  color: #0f6070;
+  font-size: 19px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.redirectDescription {
+  color: #566c79;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.redirectArrow {
+  color: #6f8390;
+  font-size: 18px;
+}
+
+.accountCard {
+  padding: 22px;
+  border: 1px solid rgba(179, 199, 211, 0.7);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 252, 0.95));
+  box-shadow: 0 12px 28px rgba(15, 39, 51, 0.08);
+}
+
+.accountHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.accountHeader strong {
+  display: block;
+  color: #102531;
+  font-size: 18px;
+}
+
+.accountAvatar {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(254, 115, 63, 0.18), rgba(17, 173, 234, 0.16));
+  color: #143444;
+  font-size: 18px;
+}
+
+.accountRole {
+  margin-top: 4px;
+  color: #6d8391;
+  font-size: 13px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detailRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #e4ebf0;
+  background: #f8fbfd;
+}
+
+.detailRow span {
+  color: #6f8390;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detailRow strong {
+  color: #102531;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.accountActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+@media (max-width: 800px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .redirectPanel {
+    align-items: flex-start;
+  }
+}
