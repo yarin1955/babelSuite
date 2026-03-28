@@ -1,0 +1,12 @@
+load("@babelsuite/kafka", "kafka")
+load("@babelsuite/playwright", "playwright")
+load("@babelsuite/runtime", "container", "mock", "script", "scenario")
+
+broker = container(name="kafka")
+catalog_mock = mock(name="catalog-mock", after=["kafka"])
+orders_mock = mock(name="orders-mock", after=["kafka"])
+seed_topics = script(name="seed-topics", after=["kafka"])
+event_consumer = container(name="event-consumer", after=["kafka", "seed-topics", "orders-mock"])
+storefront_api = container(name="storefront-api", after=["catalog-mock", "orders-mock", "seed-topics"])
+storefront_ui = container(name="storefront-ui", after=["storefront-api"])
+playwright_checkout = scenario(name="playwright-checkout", after=["storefront-ui", "event-consumer"])

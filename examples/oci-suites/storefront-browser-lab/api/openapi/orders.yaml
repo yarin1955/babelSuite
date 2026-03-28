@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: Storefront Orders API
+  version: 1.0.0
+servers:
+  - url: http://storefront-api:8080
+paths:
+  /catalog/products:
+    get:
+      operationId: listProducts
+      summary: Return products shown in the storefront grid.
+      parameters:
+        - in: query
+          name: scenario
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                  campaign:
+                    type: string
+  /orders:
+    post:
+      operationId: createOrder
+      summary: Create an order and emit a checkout event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Order accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderResponse"
+        "409":
+          description: Item out of stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    Product:
+      type: object
+      required: [sku, name, price]
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        price:
+          type: integer
+    CreateOrderRequest:
+      type: object
+      required: [sku, quantity, email]
+      properties:
+        sku:
+          type: string
+        quantity:
+          type: integer
+        email:
+          type: string
+          format: email
+    CreateOrderResponse:
+      type: object
+      required: [orderId, status, eventPublished]
+      properties:
+        orderId:
+          type: string
+        status:
+          type: string
+        eventPublished:
+          type: boolean
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

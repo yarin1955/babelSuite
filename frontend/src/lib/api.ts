@@ -163,6 +163,8 @@ export interface CatalogPackage {
   score: number
   pullCommand: string
   forkCommand: string
+  inspectable: boolean
+  starred: boolean
 }
 
 export interface ExecutionProfileOption {
@@ -274,6 +276,12 @@ export interface SuiteFolderEntry {
   files: string[]
 }
 
+export interface SuiteSourceFile {
+  path: string
+  language: string
+  content: string
+}
+
 export interface SuiteExchangeExample {
   name: string
   sourceArtifact: string
@@ -325,6 +333,7 @@ export interface SuiteDefinition {
   suiteStar: string
   profiles: ExecutionProfileOption[]
   folders: SuiteFolderEntry[]
+  sourceFiles: SuiteSourceFile[]
   contracts: string[]
   apiSurfaces: SuiteApiSurface[]
 }
@@ -456,6 +465,23 @@ export async function syncRegistry(registryId: string) {
 export async function listCatalogPackages() {
   const response = await request<{ packages: CatalogPackage[] }>('/api/v1/catalog/packages')
   return response.packages
+}
+
+export async function listCatalogFavorites() {
+  const response = await request<{ packageIds: string[] }>('/api/v1/catalog/favorites')
+  return response.packageIds
+}
+
+export async function addCatalogFavorite(packageId: string) {
+  return request<{ packageId: string; starred: boolean }>(`/api/v1/catalog/favorites/${encodeURIComponent(packageId)}`, {
+    method: 'POST',
+  })
+}
+
+export async function removeCatalogFavorite(packageId: string) {
+  return request<{ packageId: string; starred: boolean }>(`/api/v1/catalog/favorites/${encodeURIComponent(packageId)}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function getSuite(suiteId: string) {

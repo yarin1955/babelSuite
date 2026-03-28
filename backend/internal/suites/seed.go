@@ -5,17 +5,17 @@ func seedSuites() map[string]Definition {
 		"payment-suite": {
 			ID:          "payment-suite",
 			Title:       "Payment Suite",
-			Repository:  "harbor.internal/core-platform/payment-suite",
+			Repository:  "localhost:5000/core-platform/payment-suite",
 			Owner:       "Core Platform",
-			Provider:    "Harbor",
+			Provider:    "Zot",
 			Version:     "v2.4.1",
 			Tags:        []string{"latest", "v2.4.1", "v2.4.0", "v2.3.8"},
 			Description: "Bank-grade reference environment with Postgres, Kafka, Wiremock, and a full fraud worker topology.",
 			Modules:     []string{"postgres", "kafka", "wiremock"},
 			Status:      "Official",
 			Score:       94,
-			PullCommand: "babelctl run harbor.internal/core-platform/payment-suite:v2.4.1",
-			ForkCommand: "babelctl fork harbor.internal/core-platform/payment-suite:v2.4.1 ./payment-suite-local",
+			PullCommand: "babelctl run localhost:5000/core-platform/payment-suite:v2.4.1",
+			ForkCommand: "babelctl fork localhost:5000/core-platform/payment-suite:v2.4.1 ./payment-suite-local",
 			SuiteStar: `load("@babelsuite/postgres", "pg")
 load("@babelsuite/kafka", "kafka")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
@@ -159,17 +159,17 @@ checkout_smoke = scenario(name="checkout-smoke", after=["payment-gateway", "frau
 		"fleet-control-room": {
 			ID:          "fleet-control-room",
 			Title:       "Fleet Control Room",
-			Repository:  "jfrog.company.test/platform/fleet-control-room",
+			Repository:  "localhost:5000/platform/fleet-control-room",
 			Owner:       "Mobility QA",
-			Provider:    "JFrog",
+			Provider:    "Zot",
 			Version:     "v1.8.0",
 			Tags:        []string{"latest", "v1.8.0", "v1.7.5"},
 			Description: "End-to-end vehicle orchestration environment with Redis, gRPC contracts, and mocked telemetry spikes.",
 			Modules:     []string{"redis", "grpc", "prometheus"},
 			Status:      "Verified",
 			Score:       88,
-			PullCommand: "babelctl run jfrog.company.test/platform/fleet-control-room:v1.8.0",
-			ForkCommand: "babelctl fork jfrog.company.test/platform/fleet-control-room:v1.8.0 ./fleet-lab",
+			PullCommand: "babelctl run localhost:5000/platform/fleet-control-room:v1.8.0",
+			ForkCommand: "babelctl fork localhost:5000/platform/fleet-control-room:v1.8.0 ./fleet-lab",
 			SuiteStar: `load("@babelsuite/redis", "redis")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 
@@ -282,20 +282,171 @@ fleet_smoke = scenario(name="fleet-smoke", after=["control-room-ui", "telemetry-
 				},
 			},
 		},
+		"storefront-browser-lab": {
+			ID:          "storefront-browser-lab",
+			Title:       "Storefront Browser Lab",
+			Repository:  "localhost:5000/qa/storefront-browser-lab",
+			Owner:       "Release Engineering",
+			Provider:    "Zot",
+			Version:     "v1.3.0",
+			Tags:        []string{"latest", "v1.3.0", "v1.2.5"},
+			Description: "Browser-first commerce lab with Kafka event streams, Playwright checkout journeys, and mock APIs for catalog and order flows.",
+			Modules:     []string{"kafka", "playwright", "mock-api"},
+			Status:      "Verified",
+			Score:       90,
+			PullCommand: "babelctl run localhost:5000/qa/storefront-browser-lab:v1.3.0",
+			ForkCommand: "babelctl fork localhost:5000/qa/storefront-browser-lab:v1.3.0 ./storefront-browser-lab",
+			SuiteStar: `load("@babelsuite/kafka", "kafka")
+load("@babelsuite/playwright", "playwright")
+load("@babelsuite/runtime", "container", "mock", "script", "scenario")
+
+broker = container(name="kafka")
+catalog_mock = mock(name="catalog-mock", after=["kafka"])
+orders_mock = mock(name="orders-mock", after=["kafka"])
+seed_topics = script(name="seed-topics", after=["kafka"])
+event_consumer = container(name="event-consumer", after=["kafka", "seed-topics", "orders-mock"])
+storefront_api = container(name="storefront-api", after=["catalog-mock", "orders-mock", "seed-topics"])
+storefront_ui = container(name="storefront-ui", after=["storefront-api"])
+playwright_checkout = scenario(name="playwright-checkout", after=["storefront-ui", "event-consumer"])`,
+			Profiles: []ProfileOption{
+				{FileName: "local.yaml", Label: "Local Debug", Description: "Opens browser traces, seeded demo users, and single-worker Kafka consumption.", Default: true},
+				{FileName: "ci.yaml", Label: "CI Browser", Description: "Headless Playwright suite with tighter timeouts and deterministic mocks."},
+				{FileName: "promo.yaml", Label: "Promo Burst", Description: "High-throughput cart and checkout traffic with promotional catalog fixtures."},
+			},
+			Folders: []FolderEntry{
+				{Name: "profiles", Role: "Core", Description: "Browser, Kafka, and mock dispatch overrides for local, CI, and campaign traffic.", Files: []string{"local.yaml", "ci.yaml", "promo.yaml"}},
+				{Name: "api", Role: "Core", Description: "Order and catalog contracts exposed to the UI and background consumer.", Files: []string{"openapi/orders.yaml", "proto/storefront_events.proto"}},
+				{Name: "mock", Role: "Core", Description: "Mock API payloads for product catalog and order submission paths.", Files: []string{"catalog/list-products.json", "orders/create-order.json"}},
+				{Name: "scripts", Role: "Core", Description: "Kafka bootstrap and browser fixture warm-up hooks.", Files: []string{"seed_topics.sh", "warm_cache.ts"}},
+				{Name: "scenarios", Role: "Core", Description: "Playwright coverage for checkout success and cart abandonment journeys.", Files: []string{"playwright_checkout.spec.ts", "cart_abandonment.spec.ts"}},
+				{Name: "fixtures", Role: "Core", Description: "Seeded products, campaigns, and browser-side user sessions.", Files: []string{"products.json", "users.json"}},
+				{Name: "policies", Role: "Core", Description: "Event schema and checkout latency validation rules.", Files: []string{"event_schema.rego", "checkout_latency.rego"}},
+			},
+			Contracts: []string{
+				"Playwright scenarios consume strict base URLs from suite outputs rather than hard-coded localhost ports.",
+				"Kafka publishes checkout and cart events through a fixed topic contract so browser assertions can wait on stable signals.",
+				"Mock APIs under mock/ provide deterministic catalog and order responses without changing the immutable api/ contracts.",
+			},
+			APISurfaces: []APISurface{
+				{
+					ID:          "storefront-api",
+					Title:       "Storefront Orders API",
+					Protocol:    "REST",
+					MockHost:    "https://storefront-browser-lab.mock.internal",
+					Description: "Catalog and order endpoints served through deterministic mock APIs so Playwright can validate browser flows without backend drift.",
+					Operations: []APIOperation{
+						{
+							ID:           "list-products",
+							Method:       "GET",
+							Name:         "/catalog/products",
+							Summary:      "Return the product grid shown to the storefront browser before checkout begins.",
+							ContractPath: "api/openapi/orders.yaml#/paths/~1catalog~1products/get",
+							MockPath:     "mock/catalog/list-products.json",
+							MockURL:      "https://storefront-browser-lab.mock.internal/catalog/products?scenario=promo",
+							CurlCommand:  `curl "https://storefront-browser-lab.mock.internal/catalog/products?scenario=promo" -H "accept: application/json"`,
+							Dispatcher:   "QUERY",
+							Exchanges: []ExchangeExample{
+								{
+									Name:             "promo-grid",
+									SourceArtifact:   "mock/catalog/list-products.json",
+									DispatchCriteria: "scenario=promo",
+									RequestHeaders: []Header{
+										{Name: "accept", Value: "application/json"},
+										{Name: "x-suite-profile", Value: "promo.yaml"},
+									},
+									RequestBody:       "",
+									ResponseStatus:    "200",
+									ResponseMediaType: "application/json",
+									ResponseHeaders: []Header{
+										{Name: "x-mock-source", Value: "catalog-promo"},
+									},
+									ResponseBody: `{
+  "products": [
+    { "sku": "sku_1001", "name": "Starter Keyboard", "price": 4900 },
+    { "sku": "sku_2024", "name": "Launch Headset", "price": 12900 }
+  ],
+  "campaign": "spring-promo"
+}`,
+								},
+							},
+						},
+						{
+							ID:           "create-order",
+							Method:       "POST",
+							Name:         "/orders",
+							Summary:      "Submit a checkout order and emit a Kafka event consumed by the browser verification lane.",
+							ContractPath: "api/openapi/orders.yaml#/paths/~1orders/post",
+							MockPath:     "mock/orders/create-order.json",
+							MockURL:      "https://storefront-browser-lab.mock.internal/orders?scenario=happy-path",
+							CurlCommand:  `curl -X POST "https://storefront-browser-lab.mock.internal/orders?scenario=happy-path" -H "content-type: application/json" -d '{"sku":"sku_1001","quantity":1,"email":"shopper@demo.test"}'`,
+							Dispatcher:   "QUERY_HEADER",
+							Exchanges: []ExchangeExample{
+								{
+									Name:             "happy-path",
+									SourceArtifact:   "mock/orders/create-order.json",
+									DispatchCriteria: "scenario=happy-path",
+									RequestHeaders: []Header{
+										{Name: "content-type", Value: "application/json"},
+										{Name: "x-browser-suite", Value: "playwright"},
+									},
+									RequestBody: `{
+  "sku": "sku_1001",
+  "quantity": 1,
+  "email": "shopper@demo.test"
+}`,
+									ResponseStatus:    "201",
+									ResponseMediaType: "application/json",
+									ResponseHeaders: []Header{
+										{Name: "x-kafka-topic", Value: "checkout-events"},
+									},
+									ResponseBody: `{
+  "orderId": "ord_7001",
+  "status": "accepted",
+  "eventPublished": true
+}`,
+								},
+								{
+									Name:             "out-of-stock",
+									SourceArtifact:   "mock/orders/create-order.json",
+									DispatchCriteria: "scenario=out-of-stock",
+									RequestHeaders: []Header{
+										{Name: "content-type", Value: "application/json"},
+									},
+									RequestBody: `{
+  "sku": "sku_4040",
+  "quantity": 1,
+  "email": "shopper@demo.test"
+}`,
+									ResponseStatus:    "409",
+									ResponseMediaType: "application/json",
+									ResponseHeaders: []Header{
+										{Name: "x-mock-source", Value: "inventory-guard"},
+									},
+									ResponseBody: `{
+  "code": "OUT_OF_STOCK",
+  "message": "Requested item is not available."
+}`,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 		"identity-broker": {
 			ID:          "identity-broker",
 			Title:       "Identity Broker",
-			Repository:  "harbor.internal/security/identity-broker",
+			Repository:  "localhost:5000/security/identity-broker",
 			Owner:       "Security Enablement",
-			Provider:    "Harbor",
+			Provider:    "Zot",
 			Version:     "v3.0.2",
 			Tags:        []string{"latest", "v3.0.2", "v3.0.1"},
 			Description: "OIDC and SAML integration sandbox with deterministic login failures, cert rotation, and secret injection paths.",
 			Modules:     []string{"vault", "wiremock", "postgres"},
 			Status:      "Official",
 			Score:       91,
-			PullCommand: "babelctl run harbor.internal/security/identity-broker:v3.0.2",
-			ForkCommand: "babelctl fork harbor.internal/security/identity-broker:v3.0.2 ./identity-broker-local",
+			PullCommand: "babelctl run localhost:5000/security/identity-broker:v3.0.2",
+			ForkCommand: "babelctl fork localhost:5000/security/identity-broker:v3.0.2 ./identity-broker-local",
 			SuiteStar: `load("@babelsuite/postgres", "pg")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 

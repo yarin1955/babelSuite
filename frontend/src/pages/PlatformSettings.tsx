@@ -32,7 +32,7 @@ const AGENT_TYPES = [
   { value: 'kubernetes', label: 'Kubernetes' },
 ] as const
 
-const REGISTRY_PROVIDERS = ['Harbor', 'JFrog Artifactory', 'AWS ECR', 'Generic OCI'] as const
+const REGISTRY_PROVIDERS = ['Zot', 'Generic OCI', 'Harbor', 'JFrog Artifactory', 'AWS ECR'] as const
 const SECRET_PROVIDERS = [
   { value: 'none', label: 'No external manager' },
   { value: 'vault', label: 'HashiCorp Vault' },
@@ -546,7 +546,7 @@ export default function PlatformSettings() {
                     </label>
                     <label className='platform-field platform-field--full'>
                       <span>Registry URL</span>
-                      <input value={selectedRegistry.registryUrl} onChange={(e) => updateRegistry('registryUrl', e.target.value)} placeholder='https://harbor.internal.company.com' />
+                      <input value={selectedRegistry.registryUrl} onChange={(e) => updateRegistry('registryUrl', e.target.value)} placeholder='http://localhost:5000' />
                     </label>
                     <label className='platform-field'>
                       <span>Username / Service Account</span>

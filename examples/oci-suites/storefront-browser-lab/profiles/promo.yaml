@@ -1,0 +1,20 @@
+name: Promo Burst
+browser:
+  headed: false
+  traces: on
+runtime:
+  profile: promo
+  baseUrl: http://storefront-ui:3000
+  apiBaseUrl: http://storefront-api:8080
+kafka:
+  brokers:
+    - kafka:9092
+  topics:
+    - checkout-events
+    - promo-events
+mock:
+  catalogScenario: promo
+  ordersScenario: happy-path
+campaign:
+  code: spring-promo
+  maxConcurrentShoppers: 50

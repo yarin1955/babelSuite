@@ -13,9 +13,10 @@ import (
 )
 
 type Store struct {
-	client     *mongo.Client
-	users      *mongo.Collection
-	workspaces *mongo.Collection
+	client           *mongo.Client
+	users            *mongo.Collection
+	workspaces       *mongo.Collection
+	favoritePackages *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -32,9 +33,10 @@ func New(uri, dbName string) (*Store, error) {
 
 	db := client.Database(dbName)
 	st := &Store{
-		client:     client,
-		users:      db.Collection("users"),
-		workspaces: db.Collection("workspaces"),
+		client:           client,
+		users:            db.Collection("users"),
+		workspaces:       db.Collection("workspaces"),
+		favoritePackages: db.Collection("favorite_packages"),
 	}
 
 	unique := options.Index().SetUnique(true)
@@ -43,6 +45,10 @@ func New(uri, dbName string) (*Store, error) {
 	_, _ = st.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user_id", Value: 1}}, Options: unique})
 	_, _ = st.workspaces.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "slug", Value: 1}}, Options: unique})
 	_, _ = st.workspaces.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "workspace_id", Value: 1}}, Options: unique})
+	_, _ = st.favoritePackages.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "user_id", Value: 1}, {Key: "package_id", Value: 1}},
+		Options: unique,
+	})
 
 	return st, nil
 }
@@ -91,6 +97,46 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain
 	return &user, wrap(err)
 }
 
+func (s *Store) ListFavoritePackageIDs(ctx context.Context, userID string) ([]string, error) {
+	cursor, err := s.favoritePackages.Find(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return nil, wrap(err)
+	}
+	defer cursor.Close(ctx)
+
+	packageIDs := make([]string, 0)
+	for cursor.Next(ctx) {
+		var favorite domain.FavoritePackage
+		if err := cursor.Decode(&favorite); err != nil {
+			return nil, err
+		}
+		if favorite.PackageID != "" {
+			packageIDs = append(packageIDs, favorite.PackageID)
+		}
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return packageIDs, nil
+}
+
+func (s *Store) SaveFavoritePackage(ctx context.Context, favorite *domain.FavoritePackage) error {
+	_, err := s.favoritePackages.InsertOne(ctx, favorite)
+	if errors.Is(wrap(err), store.ErrDuplicate) {
+		return nil
+	}
+	return wrap(err)
+}
+
+func (s *Store) RemoveFavoritePackage(ctx context.Context, userID, packageID string) error {
+	_, err := s.favoritePackages.DeleteOne(ctx, bson.M{
+		"user_id":    userID,
+		"package_id": packageID,
+	})
+	return wrap(err)
+}
+
 func wrap(err error) error {
 	if err == nil {
 		return nil
@@ -103,4 +149,3 @@ func wrap(err error) error {
 	}
 	return err
 }
-

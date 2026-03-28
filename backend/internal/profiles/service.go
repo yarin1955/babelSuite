@@ -565,6 +565,8 @@ func baseProfileYAML(suiteID string) string {
 		return "env:\n  LOG_LEVEL: info\n  PAYMENTS_API_BASE_URL: http://payment-gateway.internal\n  FRAUD_STRATEGY: standard\nservices:\n  postgresURL: postgres://test:test@db:5432/payments\n  kafkaBroker: kafka:9092\n"
 	case "fleet-control-room":
 		return "env:\n  LOG_LEVEL: info\n  TELEMETRY_PROFILE: balanced\n  DISPATCHER_BASE_URL: http://dispatcher-api.internal\nservices:\n  redisAddress: redis-cache:6379\n  plannerRefreshInterval: 5s\n"
+	case "storefront-browser-lab":
+		return "env:\n  LOG_LEVEL: info\n  STOREFRONT_BASE_URL: http://storefront-ui.internal\n  PLAYWRIGHT_BROWSER: chromium\nservices:\n  kafkaBroker: kafka:9092\n  mockApiBaseUrl: http://storefront-api.internal\n"
 	case "identity-broker":
 		return "env:\n  LOG_LEVEL: info\n  SESSION_STORE: postgres\n  OIDC_DISCOVERY_URL: http://oidc-mock.internal/.well-known/openid-configuration\nservices:\n  postgresURL: postgres://test:test@broker-db:5432/identity\n  sessionQueue: session-worker\n"
 	default:
@@ -581,6 +583,10 @@ func baseProfileSecrets(suiteID string) []SecretReference {
 	case "fleet-control-room":
 		return []SecretReference{
 			{Key: "MAPBOX_TOKEN", Provider: "Vault", Ref: "kv/fleet-control-room/mapbox-token"},
+		}
+	case "storefront-browser-lab":
+		return []SecretReference{
+			{Key: "PLAYWRIGHT_STORAGE_STATE", Provider: "Vault", Ref: "kv/storefront-browser-lab/playwright-storage-state"},
 		}
 	case "identity-broker":
 		return []SecretReference{
@@ -610,6 +616,15 @@ func seedProfileYAML(suiteID, fileName string) string {
 			return "env:\n  TELEMETRY_PROFILE: burst\n  ENABLE_ROUTE_HEATMAP: true\nservices:\n  plannerWorkers: 6\n  ingestBatchSize: 500\n"
 		case "staging.yaml":
 			return "env:\n  DISPATCHER_BASE_URL: https://dispatcher.staging.company.test\n  TELEMETRY_PROFILE: realistic\nservices:\n  plannerWorkers: 3\n  uiPort: 8080\n"
+		}
+	case "storefront-browser-lab":
+		switch fileName {
+		case "local.yaml":
+			return "env:\n  LOG_LEVEL: debug\n  PLAYWRIGHT_TRACE: on\n  MOCK_SCENARIO: local\nservices:\n  uiPort: 14010\n  consumerWorkers: 1\n"
+		case "ci.yaml":
+			return "env:\n  PLAYWRIGHT_HEADLESS: true\n  PLAYWRIGHT_TRACE: retain-on-failure\n  MOCK_SCENARIO: ci\nservices:\n  uiPort: 8080\n  consumerWorkers: 2\n"
+		case "promo.yaml":
+			return "env:\n  CAMPAIGN_MODE: spring_promo\n  PLAYWRIGHT_HEADLESS: true\n  MOCK_SCENARIO: promo\nservices:\n  consumerWorkers: 4\n  productSeedSet: promo-heavy\n"
 		}
 	case "identity-broker":
 		switch fileName {
@@ -651,6 +666,21 @@ func seedProfileSecrets(suiteID, fileName string) []SecretReference {
 		case "staging.yaml":
 			return []SecretReference{
 				{Key: "ROUTING_API_KEY", Provider: "Vault", Ref: "kv/fleet-control-room/staging-routing-key"},
+			}
+		}
+	case "storefront-browser-lab":
+		switch fileName {
+		case "local.yaml":
+			return []SecretReference{
+				{Key: "SHOPPER_SESSION_COOKIE", Provider: "Local Secret", Ref: "secrets://developer/shopper-session-cookie"},
+			}
+		case "ci.yaml":
+			return []SecretReference{
+				{Key: "PLAYWRIGHT_RECORD_KEY", Provider: "Vault", Ref: "kv/storefront-browser-lab/ci-record-key"},
+			}
+		case "promo.yaml":
+			return []SecretReference{
+				{Key: "CAMPAIGN_SIGNING_KEY", Provider: "Vault", Ref: "kv/storefront-browser-lab/promo-signing-key"},
 			}
 		}
 	case "identity-broker":

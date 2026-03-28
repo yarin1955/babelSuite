@@ -21,6 +21,9 @@ type Store interface {
 	GetUserByID(ctx context.Context, id string) (*domain.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*domain.User, error)
+	ListFavoritePackageIDs(ctx context.Context, userID string) ([]string, error)
+	SaveFavoritePackage(ctx context.Context, favorite *domain.FavoritePackage) error
+	RemoveFavoritePackage(ctx context.Context, userID, packageID string) error
 
 	Close(ctx context.Context) error
 }

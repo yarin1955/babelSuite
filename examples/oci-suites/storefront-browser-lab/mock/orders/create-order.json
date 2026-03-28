@@ -1,0 +1,17 @@
+{
+  "happy-path": {
+    "status": 201,
+    "body": {
+      "orderId": "ord_7001",
+      "status": "accepted",
+      "eventPublished": true
+    }
+  },
+  "out-of-stock": {
+    "status": 409,
+    "body": {
+      "code": "OUT_OF_STOCK",
+      "message": "Requested item is not available."
+    }
+  }
+}

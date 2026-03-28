@@ -1,0 +1,22 @@
+name: Local Debug
+browser:
+  headed: true
+  traces: on
+  video: retain-on-failure
+runtime:
+  profile: local
+  baseUrl: http://storefront-ui:3000
+  apiBaseUrl: http://storefront-api:8080
+kafka:
+  brokers:
+    - kafka:9092
+  topics:
+    - checkout-events
+    - cart-events
+mock:
+  catalogScenario: standard
+  ordersScenario: happy-path
+users:
+  seed:
+    - email: shopper@demo.test
+      password: demo-password

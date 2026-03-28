@@ -25,3 +25,5 @@ backend/.cache/
 backend/bin/
 backend/coverage.out
 backend/*.test
+
+data/

@@ -1,0 +1,17 @@
+{
+  "default": {
+    "products": [
+      { "sku": "sku_1001", "name": "Starter Keyboard", "price": 4900 },
+      { "sku": "sku_2024", "name": "Launch Headset", "price": 12900 }
+    ],
+    "campaign": "standard"
+  },
+  "promo": {
+    "products": [
+      { "sku": "sku_1001", "name": "Starter Keyboard", "price": 3900 },
+      { "sku": "sku_2024", "name": "Launch Headset", "price": 10900 },
+      { "sku": "sku_9000", "name": "Flash Cable Bundle", "price": 1900 }
+    ],
+    "campaign": "spring-promo"
+  }
+}

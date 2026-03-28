@@ -96,6 +96,7 @@ type stubStore struct {
 	usersByID        map[string]*domain.User
 	usersByEmail     map[string]*domain.User
 	usersByUsername  map[string]*domain.User
+	favoritesByUser  map[string]map[string]struct{}
 }
 
 func newStubStore() *stubStore {
@@ -105,6 +106,7 @@ func newStubStore() *stubStore {
 		usersByID:        map[string]*domain.User{},
 		usersByEmail:     map[string]*domain.User{},
 		usersByUsername:  map[string]*domain.User{},
+		favoritesByUser:  map[string]map[string]struct{}{},
 	}
 }
 
@@ -174,6 +176,42 @@ func (s *stubStore) GetUserByUsername(_ context.Context, username string) (*doma
 		return nil, store.ErrNotFound
 	}
 	return user, nil
+}
+
+func (s *stubStore) ListFavoritePackageIDs(_ context.Context, userID string) ([]string, error) {
+	packageSet, ok := s.favoritesByUser[userID]
+	if !ok {
+		return []string{}, nil
+	}
+
+	packageIDs := make([]string, 0, len(packageSet))
+	for packageID := range packageSet {
+		packageIDs = append(packageIDs, packageID)
+	}
+	return packageIDs, nil
+}
+
+func (s *stubStore) SaveFavoritePackage(_ context.Context, favorite *domain.FavoritePackage) error {
+	if favorite == nil {
+		return nil
+	}
+	if _, ok := s.favoritesByUser[favorite.UserID]; !ok {
+		s.favoritesByUser[favorite.UserID] = map[string]struct{}{}
+	}
+	s.favoritesByUser[favorite.UserID][favorite.PackageID] = struct{}{}
+	return nil
+}
+
+func (s *stubStore) RemoveFavoritePackage(_ context.Context, userID, packageID string) error {
+	packageSet, ok := s.favoritesByUser[userID]
+	if !ok {
+		return nil
+	}
+	delete(packageSet, packageID)
+	if len(packageSet) == 0 {
+		delete(s.favoritesByUser, userID)
+	}
+	return nil
 }
 
 func (s *stubStore) Close(context.Context) error {

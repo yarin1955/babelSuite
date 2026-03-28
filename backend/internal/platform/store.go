@@ -211,25 +211,14 @@ func DefaultSettings() PlatformSettings {
 		Registries: []OCIRegistry{
 			{
 				RegistryID:      "catalog-primary",
-				Name:            "Harbor Production",
-				Provider:        "Harbor",
-				RegistryURL:     "https://harbor.internal.company.com",
-				Username:        "svc-babelsuite",
-				Secret:          "vault://kv/platform/harbor/token",
-				RepositoryScope: "platform/catalog",
+				Name:            "Local Zot",
+				Provider:        "Zot",
+				RegistryURL:     "http://localhost:5000",
+				Username:        "",
+				Secret:          "",
+				RepositoryScope: "*",
 				SyncStatus:      "Indexed",
 				LastSyncedAt:    &indexedAt,
-			},
-			{
-				RegistryID:      "modules-ecr",
-				Name:            "AWS ECR Modules",
-				Provider:        "AWS ECR",
-				RegistryURL:     "https://123456789012.dkr.ecr.eu-west-1.amazonaws.com",
-				Username:        "AWS",
-				Secret:          "vault://kv/platform/ecr/password",
-				RepositoryScope: "modules",
-				Region:          "eu-west-1",
-				SyncStatus:      "Pending",
 			},
 		},
 		Secrets: SecretsConfig{
@@ -338,4 +327,3 @@ func compact(values []string) []string {
 	}
 	return result
 }
-

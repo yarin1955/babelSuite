@@ -1,0 +1,12 @@
+[
+  {
+    "email": "shopper@demo.test",
+    "password": "demo-password",
+    "segment": "standard"
+  },
+  {
+    "email": "promo@demo.test",
+    "password": "demo-password",
+    "segment": "promo"
+  }
+]

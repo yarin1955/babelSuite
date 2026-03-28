@@ -872,6 +872,13 @@ func seedExecutionMetadata() map[string]suiteRuntimeMeta {
 			FailureTarget:  "login-smoke",
 			DefaultTrigger: "CI",
 		},
+		"storefront-browser-lab": {
+			Author:         "Lena Hart",
+			Branch:         "feature/browser-checkout-lab",
+			Message:        "Exercise the storefront browser lane with Playwright, mock APIs, and Kafka-backed checkout events.",
+			FailureTarget:  "playwright-checkout",
+			DefaultTrigger: "Manual",
+		},
 	}
 }
 

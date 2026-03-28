@@ -1,0 +1,20 @@
+[
+  {
+    "sku": "sku_1001",
+    "name": "Starter Keyboard",
+    "price": 4900,
+    "tags": ["input", "starter"]
+  },
+  {
+    "sku": "sku_2024",
+    "name": "Launch Headset",
+    "price": 12900,
+    "tags": ["audio", "launch"]
+  },
+  {
+    "sku": "sku_9000",
+    "name": "Flash Cable Bundle",
+    "price": 1900,
+    "tags": ["accessory", "promo"]
+  }
+]

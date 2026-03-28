@@ -409,7 +409,11 @@ function LogLine({
       <span className='exec-log-line__num'>{index}</span>
       <span className='exec-log-line__time'>{line.timestamp}</span>
       {showPrefix && <span className='exec-log-line__src'>[{line.source}]</span>}
-      <code className='exec-log-line__text'>{line.text}</code>
+      <code className='exec-log-line__text'>{
+        showPrefix
+          ? line.text.replace(new RegExp(`^\\[${line.source}\\]\\s*`), '')
+          : line.text
+      }</code>
     </div>
   )
 }

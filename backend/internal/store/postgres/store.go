@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS users (
   pass_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS favorite_packages (
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  package_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, package_id)
+);
 `)
 	return err
 }
@@ -123,6 +130,50 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain
 		username,
 	).Scan(&user.UserID, &user.WorkspaceID, &user.Username, &user.Email, &user.FullName, &user.IsAdmin, &user.PassHash, &user.CreatedAt)
 	return &user, wrap(err)
+}
+
+func (s *Store) ListFavoritePackageIDs(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT package_id FROM favorite_packages WHERE user_id = $1 ORDER BY created_at DESC, package_id ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	defer rows.Close()
+
+	packageIDs := make([]string, 0)
+	for rows.Next() {
+		var packageID string
+		if err := rows.Scan(&packageID); err != nil {
+			return nil, err
+		}
+		if packageID != "" {
+			packageIDs = append(packageIDs, packageID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return packageIDs, nil
+}
+
+func (s *Store) SaveFavoritePackage(ctx context.Context, favorite *domain.FavoritePackage) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO favorite_packages (user_id, package_id, created_at) VALUES ($1, $2, $3)
+		 ON CONFLICT (user_id, package_id) DO NOTHING`,
+		favorite.UserID, favorite.PackageID, favorite.CreatedAt,
+	)
+	return wrap(err)
+}
+
+func (s *Store) RemoveFavoritePackage(ctx context.Context, userID, packageID string) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM favorite_packages WHERE user_id = $1 AND package_id = $2`,
+		userID, packageID,
+	)
+	return wrap(err)
 }
 
 func wrap(err error) error {

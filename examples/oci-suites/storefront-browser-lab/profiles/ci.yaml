@@ -1,0 +1,19 @@
+name: CI Browser
+browser:
+  headed: false
+  traces: retain-on-failure
+  video: off
+runtime:
+  profile: ci
+  baseUrl: http://storefront-ui:3000
+  apiBaseUrl: http://storefront-api:8080
+kafka:
+  brokers:
+    - kafka:9092
+  topics:
+    - checkout-events
+mock:
+  catalogScenario: standard
+  ordersScenario: happy-path
+assertions:
+  timeoutMs: 10000

@@ -15,14 +15,36 @@ import {
   FaRegStar,
   FaServer,
   FaShieldHalved,
+  FaStar,
   FaXmark,
 } from 'react-icons/fa6'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
-import { getSession, getSuite, listCatalogPackages, type CatalogPackage, type SuiteDefinition } from '../lib/api'
+import {
+  addCatalogFavorite,
+  getSession,
+  getSuite,
+  listCatalogPackages,
+  removeCatalogFavorite,
+  type CatalogPackage,
+  type SuiteDefinition,
+} from '../lib/api'
 import './Catalog.css'
 
-type SortKey = 'score' | 'title' | 'version'
+type SortKey = 'starred' | 'title' | 'version'
+
+const CAPABILITY_FILTERS = [
+  { id: 'openapi', label: 'OpenAPI', terms: ['openapi', 'rest api', 'rest'] },
+  { id: 'grpc', label: 'gRPC', terms: ['grpc', 'protobuf', 'proto'] },
+  { id: 'kafka', label: 'Kafka', terms: ['kafka'] },
+  { id: 'redis', label: 'Redis', terms: ['redis'] },
+  { id: 'postgres', label: 'Postgres', terms: ['postgres'] },
+  { id: 'wiremock', label: 'Wiremock', terms: ['wiremock'] },
+  { id: 'mock-api', label: 'Mock API', terms: ['mock-api', 'mock api'] },
+  { id: 'playwright', label: 'Playwright', terms: ['playwright'] },
+  { id: 'vault', label: 'Vault', terms: ['vault'] },
+  { id: 'prometheus', label: 'Prometheus', terms: ['prometheus'] },
+] as const
 
 const LOGO_GRADIENTS = [
   'linear-gradient(135deg, #173b5b 0%, #1f7ea8 100%)',
@@ -41,8 +63,6 @@ function logoGradient(seed: string): string {
   return LOGO_GRADIENTS[Math.abs(h) % LOGO_GRADIENTS.length]
 }
 
-const CAPABILITY_FALLBACK = ['postgres', 'kafka', 'wiremock', 'vault', 'grpc', 'redis', 'prometheus', 'elasticsearch']
-
 export default function Catalog() {
   const navigate = useNavigate()
   const searchRef = useRef<HTMLInputElement>(null)
@@ -51,7 +71,7 @@ export default function Catalog() {
   const [query, setQuery] = useState('')
   const [provider, setProvider] = useState('All')
   const [activeCapabilities, setActiveCapabilities] = useState<Set<string>>(new Set())
-  const [sort, setSort] = useState<SortKey>('score')
+  const [sort, setSort] = useState<SortKey>('starred')
   const [copiedId, setCopiedId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -60,6 +80,7 @@ export default function Catalog() {
   const [inspectSuite, setInspectSuite] = useState<SuiteDefinition | null>(null)
   const [inspectLoading, setInspectLoading] = useState(false)
   const [inspectError, setInspectError] = useState('')
+  const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<string>>(new Set())
   const deferredQuery = useDeferredValue(query)
   const session = getSession()
 
@@ -102,33 +123,75 @@ export default function Catalog() {
       if (item.kind !== tab) return false
       if (provider !== 'All' && item.provider !== provider) return false
       if (activeCapabilities.size > 0) {
-        const haystack = [...item.modules, ...item.tags].join(' ').toLowerCase()
-        if (![...activeCapabilities].every((cap) => haystack.includes(cap))) return false
+        for (const capability of activeCapabilities) {
+          if (!matchesCapability(item, capability)) {
+            return false
+          }
+        }
       }
-      const hay = [item.title, item.repository, item.owner, item.description, item.modules.join(' ')].join(' ').toLowerCase()
+      const hay = [item.title, item.repository, item.owner, item.description, item.modules.join(' '), item.tags.join(' ')].join(' ').toLowerCase()
       return hay.includes(deferredQuery.trim().toLowerCase())
     })
     return [...filtered].sort((a, b) => {
-      if (sort === 'score') return b.score - a.score
+      if (sort === 'starred') {
+        const left = a.starred ? 1 : 0
+        const right = b.starred ? 1 : 0
+        if (left !== right) {
+          return right - left
+        }
+        return a.title.localeCompare(b.title)
+      }
       if (sort === 'title') return a.title.localeCompare(b.title)
       return b.version.localeCompare(a.version)
     })
-  }, [deferredQuery, packages, provider, activeCapabilities, tab, sort])
+  }, [activeCapabilities, deferredQuery, packages, provider, tab, sort])
 
-  const capabilities = useMemo(() => {
-    const words = new Set<string>()
-    packages.forEach((p) => {
-      p.modules.forEach((m) => words.add(m.replace(/^@[^/]+\//, '').toLowerCase()))
-      p.tags.forEach((t) => words.add(t.toLowerCase()))
-    })
-    const derived = [...words].filter((w) => w.length > 2).sort()
-    return derived.length > 0 ? derived : CAPABILITY_FALLBACK
-  }, [packages])
+  const availableCapabilities = useMemo(() => {
+    return CAPABILITY_FILTERS
+      .map((capability) => ({
+        ...capability,
+        count: packages.filter((item) => item.kind === tab && matchesCapability(item, capability.id)).length,
+      }))
+      .filter((capability) => capability.count > 0)
+  }, [packages, tab])
 
-  const toggleCapability = (cap: string) => {
-    setActiveCapabilities((prev) => {
-      const next = new Set(prev)
-      next.has(cap) ? next.delete(cap) : next.add(cap)
+  const toggleFavorite = (packageId: string) => {
+    const current = packages.find((item) => item.id === packageId)
+    if (!current || pendingFavoriteIds.has(packageId)) {
+      return
+    }
+
+    const nextStarred = !current.starred
+    setError('')
+    setPendingFavoriteIds((previous) => new Set(previous).add(packageId))
+    setPackages((previous) =>
+      previous.map((item) => (item.id === packageId ? { ...item, starred: nextStarred } : item)),
+    )
+
+    void (nextStarred ? addCatalogFavorite(packageId) : removeCatalogFavorite(packageId))
+      .catch((err) => {
+        setPackages((previous) =>
+          previous.map((item) => (item.id === packageId ? { ...item, starred: current.starred } : item)),
+        )
+        setError(err instanceof Error ? err.message : 'Could not update the saved star.')
+      })
+      .finally(() => {
+        setPendingFavoriteIds((previous) => {
+          const next = new Set(previous)
+          next.delete(packageId)
+          return next
+        })
+      })
+  }
+
+  const toggleCapability = (capabilityId: string) => {
+    setActiveCapabilities((previous) => {
+      const next = new Set(previous)
+      if (next.has(capabilityId)) {
+        next.delete(capabilityId)
+      } else {
+        next.add(capabilityId)
+      }
       return next
     })
   }
@@ -147,6 +210,12 @@ export default function Catalog() {
   }
 
   const hasActiveFilters = provider !== 'All' || activeCapabilities.size > 0 || query.trim() !== ''
+  const activeInspectItem = useMemo(() => {
+    if (!inspectItem) {
+      return null
+    }
+    return packages.find((item) => item.id === inspectItem.id) ?? inspectItem
+  }, [inspectItem, packages])
 
   return (
     <AppShell
@@ -241,25 +310,25 @@ export default function Catalog() {
             </div>
           )}
 
-          {/* Capabilities */}
-          {capabilities.length > 0 && (
-          <div className='catalog-section'>
-            <p className='catalog-section__label'>Capabilities</p>
-            <div className='catalog-capability-list'>
-              {capabilities.map((cap) => (
-                <button
-                  key={cap}
-                  type='button'
-                  className={`catalog-capability${activeCapabilities.has(cap) ? ' catalog-capability--active' : ''}`}
-                  onClick={() => toggleCapability(cap)}
-                >
-                  {activeCapabilities.has(cap) && <FaCircleCheck className='catalog-capability__check' />}
-                  {cap}
-                </button>
-              ))}
+          {availableCapabilities.length > 0 && (
+            <div className='catalog-section'>
+              <p className='catalog-section__label'>Capabilities</p>
+              <div className='catalog-capability-list'>
+                {availableCapabilities.map((capability) => (
+                  <button
+                    key={capability.id}
+                    type='button'
+                    className={`catalog-capability${activeCapabilities.has(capability.id) ? ' catalog-capability--active' : ''}`}
+                    onClick={() => toggleCapability(capability.id)}
+                  >
+                    <span>{capability.label}</span>
+                    <span className='catalog-capability__count'>{capability.count}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
           )}
+
         </aside>
 
         {/* ── Results ── */}
@@ -292,7 +361,7 @@ export default function Catalog() {
                 onChange={(e) => setSort(e.target.value as SortKey)}
                 aria-label='Sort packages'
               >
-                <option value='score'>Relevance</option>
+                <option value='starred'>Starred first</option>
                 <option value='title'>Name A–Z</option>
                 <option value='version'>Version</option>
               </select>
@@ -314,12 +383,18 @@ export default function Catalog() {
                   <button type='button' onClick={() => setProvider('All')} aria-label={`Remove ${provider} filter`}><FaXmark /></button>
                 </span>
               )}
-              {[...activeCapabilities].map((cap) => (
-                <span key={cap} className='catalog-filter-chip'>
-                  {cap}
-                  <button type='button' onClick={() => toggleCapability(cap)} aria-label={`Remove ${cap} filter`}><FaXmark /></button>
-                </span>
-              ))}
+              {[...activeCapabilities].map((capabilityId) => {
+                const capability = CAPABILITY_FILTERS.find((candidate) => candidate.id === capabilityId)
+                if (!capability) {
+                  return null
+                }
+                return (
+                  <span key={capability.id} className='catalog-filter-chip'>
+                    {capability.label}
+                    <button type='button' onClick={() => toggleCapability(capability.id)} aria-label={`Remove ${capability.label} filter`}><FaXmark /></button>
+                  </span>
+                )
+              })}
             </div>
           )}
 
@@ -348,10 +423,13 @@ export default function Catalog() {
                 <PackageCard
                   key={item.id}
                   item={item}
+                  starred={item.starred}
                   copiedId={copiedId}
+                  favoriteBusy={pendingFavoriteIds.has(item.id)}
                   onInspect={() => openInspect(item)}
                   onCopyRun={() => void copyCommand(item.id + '-run', item.pullCommand)}
                   onCopyFork={() => void copyCommand(item.id + '-fork', item.forkCommand)}
+                  onToggleFavorite={() => toggleFavorite(item.id)}
                 />
               ))}
 
@@ -378,13 +456,16 @@ export default function Catalog() {
       )}
     </div>
 
-    {inspectItem && (
+    {activeInspectItem && (
       <InspectModal
-        item={inspectItem}
+        item={activeInspectItem}
         suite={inspectSuite}
+        starred={activeInspectItem.starred}
         loading={inspectLoading}
         error={inspectError}
+        favoriteBusy={pendingFavoriteIds.has(activeInspectItem.id)}
         onClose={closeInspect}
+        onToggleFavorite={() => toggleFavorite(activeInspectItem.id)}
       />
     )}
     </AppShell>
@@ -396,14 +477,25 @@ export default function Catalog() {
 interface InspectModalProps {
   item: CatalogPackage
   suite: SuiteDefinition | null
+  starred: boolean
   loading: boolean
   error: string
+  favoriteBusy: boolean
   onClose: () => void
+  onToggleFavorite: () => void
 }
 
-function InspectModal({ item, suite, loading, error, onClose }: InspectModalProps) {
+function InspectModal({ item, suite, starred, loading, error, favoriteBusy, onClose, onToggleFavorite }: InspectModalProps) {
   const [selected, setSelected] = useState<string>('suite.star')
   const [copyId, setCopyId] = useState('')
+  const fallbackSourceFile = useMemo(() => buildRegistryPreviewFile(item, error), [item, error])
+  const suiteSourceFiles = suite?.sourceFiles ?? []
+  const suiteFolders = suite?.folders ?? []
+  const suiteProfiles = suite?.profiles ?? []
+  const sourceFileByPath = useMemo(
+    () => new Map(suiteSourceFiles.map((file) => [file.path, file])),
+    [suiteSourceFiles],
+  )
 
   const copy = async (id: string, value: string) => {
     await navigator.clipboard.writeText(value)
@@ -418,17 +510,16 @@ function InspectModal({ item, suite, loading, error, onClose }: InspectModalProp
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const activeFolder = suite?.folders.find((f) => f.name === selected)
+  useEffect(() => {
+    setSelected(suite ? 'suite.star' : fallbackSourceFile.path)
+  }, [fallbackSourceFile.path, suite, item.id])
 
-  const treeItems: Array<{ id: string; label: string; icon: ReactNode; kind: 'file' | 'folder' }> = [
-    { id: 'suite.star', label: 'suite.star', icon: <FaFile />, kind: 'file' },
-    ...(suite?.folders.map((f) => ({
-      id: f.name,
-      label: `${f.name}/`,
-      icon: <FaFolderOpen />,
-      kind: 'folder' as const,
-    })) ?? []),
-  ]
+  const activeSourceFile = sourceFileByPath.get(selected)
+  const visibleSourceFile = activeSourceFile ?? (!suite ? fallbackSourceFile : null)
+  const visibleModules = suite?.modules ?? item.modules
+  const pullCommand = suite?.pullCommand ?? item.pullCommand
+  const forkCommand = suite?.forkCommand ?? item.forkCommand
+  const showRichSourceUnavailable = !loading && Boolean(suite) && selected !== 'suite.star' && !activeSourceFile
 
   return createPortal(
     <div className='ci-backdrop' onClick={onClose}>
@@ -453,7 +544,17 @@ function InspectModal({ item, suite, loading, error, onClose }: InspectModalProp
               {item.owner} · {item.repository} · <strong>{item.version}</strong>
             </p>
           </div>
-          <div className='ci-header__score'><FaRegStar />{item.score.toFixed(1)}</div>
+          <button
+            type='button'
+            className={`ci-header__star${starred ? ' ci-header__star--active' : ''}`}
+            aria-pressed={starred}
+            aria-label={starred ? `Unstar ${item.title}` : `Star ${item.title}`}
+            title={starred ? 'Unstar' : 'Star'}
+            disabled={favoriteBusy}
+            onClick={onToggleFavorite}
+          >
+            {starred ? <FaStar /> : <FaRegStar />}
+          </button>
           <button type='button' className='ci-close' onClick={onClose} aria-label='Close'><FaXmark /></button>
         </div>
 
@@ -464,21 +565,57 @@ function InspectModal({ item, suite, loading, error, onClose }: InspectModalProp
             <p className='ci-tree__label'>Package Files</p>
             {loading
               ? [1, 2, 3, 4, 5].map((n) => <div key={n} className='ci-tree__skeleton' />)
-              : treeItems.map((t) => (
-                  <button
-                    key={t.id}
-                    type='button'
-                    className={`ci-tree__item${selected === t.id ? ' ci-tree__item--active' : ''}`}
-                    onClick={() => setSelected(t.id)}
-                  >
-                    <span className='ci-tree__item-icon'>{t.icon}</span>
-                    <span>{t.label}</span>
-                  </button>
-                ))}
-            {suite && (
+              : (
+                  <>
+                    {suite ? (
+                      <button
+                        type='button'
+                        className={`ci-tree__item${selected === 'suite.star' ? ' ci-tree__item--active' : ''}`}
+                        onClick={() => setSelected('suite.star')}
+                      >
+                        <span className='ci-tree__item-icon'><FaFile /></span>
+                        <span>suite.star</span>
+                      </button>
+                    ) : (
+                      <button
+                        type='button'
+                        className={`ci-tree__item${selected === fallbackSourceFile.path ? ' ci-tree__item--active' : ''}`}
+                        onClick={() => setSelected(fallbackSourceFile.path)}
+                      >
+                        <span className='ci-tree__item-icon'><FaFile /></span>
+                        <span>{fallbackSourceFile.path}</span>
+                      </button>
+                    )}
+                    {suiteFolders.map((folder) => (
+                      <div key={folder.name} className='ci-tree__group'>
+                        <div className='ci-tree__folder'>
+                          <span className='ci-tree__item-icon'><FaFolderOpen /></span>
+                          <span>{folder.name}/</span>
+                        </div>
+                        {folder.files.map((filePath) => {
+                          const sourcePath = `${folder.name}/${filePath}`
+                          const file = sourceFileByPath.get(sourcePath)
+                          return (
+                            <button
+                              key={sourcePath}
+                              type='button'
+                              className={`ci-tree__item ci-tree__item--child${selected === sourcePath ? ' ci-tree__item--active' : ''}`}
+                              onClick={() => setSelected(sourcePath)}
+                              disabled={!file}
+                            >
+                              <span className='ci-tree__item-icon'><FaFile /></span>
+                              <span>{filePath}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </>
+                )}
+            {suiteProfiles.length > 0 && (
               <>
                 <p className='ci-tree__label' style={{ marginTop: 16 }}>Profiles</p>
-                {suite.profiles.map((p) => (
+                {suiteProfiles.map((p) => (
                   <div key={p.fileName} className='ci-tree__profile'>
                     <span>{p.label}</span>
                     {p.default && <span className='ci-tree__default'>default</span>}
@@ -495,10 +632,6 @@ function InspectModal({ item, suite, loading, error, onClose }: InspectModalProp
                 <div className='ci-spinner' />
                 <p>Loading package…</p>
               </div>
-            )}
-
-            {error && (
-              <div className='ci-content__error'>{error}</div>
             )}
 
             {!loading && !error && suite && selected === 'suite.star' && (
@@ -525,35 +658,48 @@ function InspectModal({ item, suite, loading, error, onClose }: InspectModalProp
               </>
             )}
 
-            {!loading && !error && suite && activeFolder && (
+            {!loading && visibleSourceFile && selected !== 'suite.star' && (
               <>
                 <div className='ci-content__toolbar'>
-                  <span className='ci-content__filename'><FaFolderOpen /> {activeFolder.name}/</span>
-                  <span className='ci-folder-role'>{activeFolder.role}</span>
+                  <span className='ci-content__filename'><FaFile /> {visibleSourceFile.path}</span>
+                  <span className='ci-folder-role'>{visibleSourceFile.language}</span>
+                  <button
+                    type='button'
+                    className={`ci-copy-btn${copyId === visibleSourceFile.path ? ' ci-copy-btn--ok' : ''}`}
+                    onClick={() => void copy(visibleSourceFile.path, visibleSourceFile.content)}
+                  >
+                    <FaCopy />
+                    <span>{copyId === visibleSourceFile.path ? 'Copied!' : 'Copy'}</span>
+                  </button>
                 </div>
-                <div className='ci-folder-body'>
-                  <p className='ci-folder-desc'>{activeFolder.description}</p>
-                  <div className='ci-folder-files'>
-                    {activeFolder.files.map((f) => (
-                      <div key={f} className='ci-folder-file'>
-                        <FaFile className='ci-folder-file__icon' />
-                        <span>{f}</span>
-                      </div>
-                    ))}
-                    {activeFolder.files.length === 0 && (
-                      <p className='ci-folder-empty'>No files in this folder.</p>
-                    )}
+                {error && (
+                  <div className='ci-content__notice'>
+                    {error}
                   </div>
+                )}
+                <div className='ci-code'>
+                  {visibleSourceFile.content.split('\n').map((line, i) => (
+                    <div key={`${visibleSourceFile.path}-${i + 1}`} className='ci-code__line'>
+                      <span className='ci-code__num'>{String(i + 1).padStart(3, ' ')}</span>
+                      <code className='ci-code__text'>{renderSourceLine(line, visibleSourceFile.language)}</code>
+                    </div>
+                  ))}
                 </div>
               </>
             )}
 
-            {!loading && !error && suite && (
+            {showRichSourceUnavailable && (
+              <div className='ci-content__empty'>
+                Source content for this file is not available yet. The suite published the folder entry, but not the file preview.
+              </div>
+            )}
+
+            {!loading && (
               <div className='ci-footer'>
                 <button
                   type='button'
                   className={`ci-cmd-btn${copyId === 'pull' ? ' ci-cmd-btn--ok' : ''}`}
-                  onClick={() => void copy('pull', suite.pullCommand)}
+                  onClick={() => void copy('pull', pullCommand)}
                 >
                   <FaCopy />
                   <span>{copyId === 'pull' ? 'Copied!' : 'Copy pull command'}</span>
@@ -561,14 +707,14 @@ function InspectModal({ item, suite, loading, error, onClose }: InspectModalProp
                 <button
                   type='button'
                   className={`ci-cmd-btn ci-cmd-btn--ghost${copyId === 'fork' ? ' ci-cmd-btn--ok' : ''}`}
-                  onClick={() => void copy('fork', suite.forkCommand)}
+                  onClick={() => void copy('fork', forkCommand)}
                 >
                   <FaDownload />
                   <span>{copyId === 'fork' ? 'Copied!' : 'Fork'}</span>
                 </button>
-                {item.modules.length > 0 && (
+                {visibleModules.length > 0 && (
                   <div className='ci-modules'>
-                    {item.modules.map((m) => (
+                    {visibleModules.map((m) => (
                       <span key={m} className='ci-module-pill'>
                         <FaCubes />{m.replace('@babelsuite/', '')}
                       </span>
@@ -593,7 +739,8 @@ function renderStarLine(line: string): ReactNode[] {
   const pat = /"[^"]*"|\b(load|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
   let cur = 0
   for (const m of code.matchAll(pat)) {
-    const v = m[0]; const s = m.index ?? 0
+    const v = m[0]
+    const s = m.index ?? 0
     if (s > cur) out.push(code.slice(cur, s))
     const cls = v.startsWith('"') ? 'ci-tok ci-tok--str' : v.startsWith('@') ? 'ci-tok ci-tok--mod' : 'ci-tok ci-tok--kw'
     out.push(<span key={`${s}-${v}`} className={cls}>{v}</span>)
@@ -604,23 +751,120 @@ function renderStarLine(line: string): ReactNode[] {
   return out
 }
 
+function renderSourceLine(line: string, language: string): ReactNode[] {
+  const trimmedLanguage = language.trim().toLowerCase()
+  if (trimmedLanguage === 'yaml' || trimmedLanguage === 'python' || trimmedLanguage === 'bash' || trimmedLanguage === 'rego') {
+    const commentIndex = line.indexOf('#')
+    const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line
+    const comment = commentIndex >= 0 ? line.slice(commentIndex) : ''
+    const fragments = highlightCodeTokens(code)
+    if (comment) {
+      fragments.push(<span key={`comment-${line}`} className='ci-tok ci-tok--cmt'>{comment}</span>)
+    }
+    return fragments
+  }
+
+  return highlightCodeTokens(line)
+}
+
+function highlightCodeTokens(line: string): ReactNode[] {
+  const fragments: ReactNode[] = []
+  const pattern = /"[^"]*"|'[^']*'|\b(message|service|rpc|package|import|const|let|type|interface|export|default|allow|if|true|false|null)\b|@[a-zA-Z0-9/_-]+/g
+  let cursor = 0
+
+  for (const match of line.matchAll(pattern)) {
+    const value = match[0]
+    const start = match.index ?? 0
+    if (start > cursor) {
+      fragments.push(line.slice(cursor, start))
+    }
+
+    const className = value.startsWith('"') || value.startsWith("'")
+      ? 'ci-tok ci-tok--str'
+      : value.startsWith('@')
+        ? 'ci-tok ci-tok--mod'
+        : 'ci-tok ci-tok--kw'
+    fragments.push(<span key={`${start}-${value}`} className={className}>{value}</span>)
+    cursor = start + value.length
+  }
+
+  if (cursor < line.length) {
+    fragments.push(line.slice(cursor))
+  }
+
+  return fragments
+}
+
+function buildRegistryPreviewFile(item: CatalogPackage, error: string): { path: string; language: string; content: string } {
+  const modules = item.modules.length > 0 ? item.modules.map((module) => `  - ${module}`) : ['  - none published']
+  const tags = item.tags.length > 0 ? item.tags.map((tag) => `  - ${tag}`) : ['  - latest']
+  const lines = [
+    '# BabelSuite registry preview',
+    `title: ${item.title}`,
+    `repository: ${item.repository}`,
+    `provider: ${item.provider}`,
+    `version: ${item.version}`,
+    `status: ${item.status}`,
+    'modules:',
+    ...modules,
+    'publishedTags:',
+    ...tags,
+    'commands:',
+    `  pull: ${item.pullCommand}`,
+    `  fork: ${item.forkCommand}`,
+    'description: |',
+    ...item.description.split('\n').map((line) => `  ${line}`),
+  ]
+
+  if (error.trim()) {
+    lines.push(
+      'note: |',
+      `  ${error}`,
+      '  Rich suite files are not available from the backend for this registry package yet.',
+    )
+  }
+
+  return {
+    path: 'registry-preview.yaml',
+    language: 'yaml',
+    content: lines.join('\n') + '\n',
+  }
+}
+
 /* ── Package Card component ───────────────────────────── */
 
 interface PackageCardProps {
   item: CatalogPackage
+  starred: boolean
   copiedId: string
+  favoriteBusy: boolean
   onInspect: () => void
   onCopyRun: () => void
   onCopyFork: () => void
+  onToggleFavorite: () => void
 }
 
-function PackageCard({ item, copiedId, onInspect, onCopyRun, onCopyFork }: PackageCardProps) {
+function matchesCapability(item: CatalogPackage, capabilityId: string) {
+  const capability = CAPABILITY_FILTERS.find((candidate) => candidate.id === capabilityId)
+  if (!capability) {
+    return false
+  }
+
+  const haystack = [item.title, item.repository, item.description, item.modules.join(' ')].join(' ').toLowerCase()
+  return capability.terms.some((term) => haystack.includes(term))
+}
+
+function PackageCard({ item, starred, copiedId, favoriteBusy, onInspect, onCopyRun, onCopyFork, onToggleFavorite }: PackageCardProps) {
   const runCopied = copiedId === item.id + '-run'
   const forkCopied = copiedId === item.id + '-fork'
+  const visibleModules = item.modules.slice(0, 3)
+  const hiddenModuleCount = Math.max(item.modules.length - visibleModules.length, 0)
+  const publishedVersions = countPublishedVersions(item.tags)
+  const versionSummary = publishedVersions > 1 ? `${publishedVersions} versions available` : '1 version available'
 
   return (
     <article className='catalog-card'>
-      {/* Header row: logo + headline + score */}
+      {/* Header row: logo + headline + star */}
       <div className='catalog-card__header'>
         <div className='catalog-card__logo' aria-hidden='true' style={{ background: logoGradient(item.id) }}>
           {item.title.slice(0, 2).toUpperCase()}
@@ -649,34 +893,42 @@ function PackageCard({ item, copiedId, onInspect, onCopyRun, onCopyFork }: Packa
           </p>
         </div>
 
-        <div className='catalog-card__score'>
-          <FaRegStar />
-          <span>{item.score.toFixed(1)}</span>
-        </div>
+        <button
+          type='button'
+          className={`catalog-card__star${starred ? ' catalog-card__star--active' : ''}`}
+          aria-pressed={starred}
+          aria-label={starred ? `Unstar ${item.title}` : `Star ${item.title}`}
+          title={starred ? 'Unstar' : 'Star'}
+          disabled={favoriteBusy}
+          onClick={onToggleFavorite}
+        >
+          {starred ? <FaStar /> : <FaRegStar />}
+        </button>
       </div>
 
       {/* Description */}
       <p className='catalog-card__description'>{item.description}</p>
 
       {/* Module + tag pills */}
-      {(item.modules.length > 0 || item.tags.length > 0) && (
+      {visibleModules.length > 0 && (
         <div className='catalog-card__pills'>
-          {item.modules.map((m) => (
+          {visibleModules.map((m) => (
             <span key={m} className='catalog-pill catalog-pill--module'>
               <FaCubes /> {m.replace('@babelsuite/', '')}
             </span>
           ))}
-          {item.tags.map((tag) => (
-            <span key={tag} className='catalog-pill catalog-pill--tag'>{tag}</span>
-          ))}
+          {hiddenModuleCount > 0 && <span className='catalog-pill catalog-pill--more'>+{hiddenModuleCount} more</span>}
         </div>
       )}
 
       {/* Footer: source + actions */}
       <div className='catalog-card__footer'>
-        <span className='catalog-card__provider'>
-          <FaServer /> {item.provider}
-        </span>
+        <div className='catalog-card__meta'>
+          <span className='catalog-card__provider'>
+            <FaServer /> {item.provider}
+          </span>
+          <span className='catalog-card__versions'>{versionSummary}</span>
+        </div>
 
         <div className='catalog-card__actions'>
           {item.kind === 'suite' && (
@@ -705,4 +957,14 @@ function PackageCard({ item, copiedId, onInspect, onCopyRun, onCopyFork }: Packa
       </div>
     </article>
   )
+}
+
+function countPublishedVersions(tags: string[]): number {
+  const stableTags = new Set(
+    tags
+      .map((tag) => tag.trim())
+      .filter((tag) => tag !== '' && tag.toLowerCase() !== 'latest'),
+  )
+
+  return Math.max(stableTags.size, 1)
 }

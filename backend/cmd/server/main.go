@@ -64,16 +64,16 @@ func main() {
 	suiteService := suites.NewService()
 	profileStore := profiles.NewFileStore(resolveWorkspacePath(envOr("PROFILES_FILE", "babelsuite-profiles.yaml")))
 	profileService := profiles.NewService(suiteService, profileStore)
+	platformStore := platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
 	suiteHandler := suites.NewHandler(profileService, jwtSvc)
 	profileHandler := profiles.NewHandler(profileService, jwtSvc)
-	catalogHandler := catalog.NewHandler(catalog.NewService(suiteService), jwtSvc)
+	catalogHandler := catalog.NewHandler(catalog.NewService(suiteService, platformStore), st, jwtSvc)
 	engineStore := engine.NewStore()
 	engineHandler := engine.NewHandler(engineStore, jwtSvc)
 	executionWatcher := enginewatchers.NewExecutionWatcher(engineStore)
 	executionService := execution.NewService(profileService, executionWatcher)
 	defer executionService.Close()
 	executionHandler := execution.NewHandler(executionService, engineStore, jwtSvc)
-	platformStore := platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
 	platformHandler := platform.NewHandler(platformStore, jwtSvc)
 	sandboxService := sandbox.NewService()
 	defer sandboxService.Close()
@@ -135,7 +135,7 @@ func cors(frontendURL string, next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Vary", "Origin")
 

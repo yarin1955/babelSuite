@@ -21,7 +21,7 @@ import AppShell from '../../components/AppShell'
 import SlidingPanel from '../../components/SlidingPanel'
 import '../PlatformSettings.css'
 
-const REGISTRY_PROVIDERS = ['Harbor', 'JFrog Artifactory', 'AWS ECR', 'Generic OCI'] as const
+const REGISTRY_PROVIDERS = ['Zot', 'Generic OCI', 'Harbor', 'JFrog Artifactory', 'AWS ECR'] as const
 
 export default function Registries() {
   const [savedSettings, setSavedSettings] = useState<PlatformSettings | null>(null)
@@ -292,7 +292,7 @@ export default function Registries() {
               </div>
               <div className='bs-form-row'>
                 <label>Registry URL</label>
-                <input value={panelRegistry.registryUrl} onChange={(e) => updatePanelRegistry('registryUrl', e.target.value)} placeholder='https://harbor.internal.company.com' />
+                <input value={panelRegistry.registryUrl} onChange={(e) => updatePanelRegistry('registryUrl', e.target.value)} placeholder='http://localhost:5000' />
               </div>
               <div className='bs-form-row bs-form-row--two'>
                 <div>

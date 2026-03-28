@@ -23,6 +23,12 @@ type FolderEntry struct {
 	Files       []string `json:"files"`
 }
 
+type SourceFile struct {
+	Path     string `json:"path"`
+	Language string `json:"language"`
+	Content  string `json:"content"`
+}
+
 type Header struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
@@ -79,6 +85,7 @@ type Definition struct {
 	SuiteStar   string          `json:"suiteStar"`
 	Profiles    []ProfileOption `json:"profiles"`
 	Folders     []FolderEntry   `json:"folders"`
+	SourceFiles []SourceFile    `json:"sourceFiles"`
 	Contracts   []string        `json:"contracts"`
 	APISurfaces []APISurface    `json:"apiSurfaces"`
 }
@@ -90,7 +97,7 @@ type Service struct {
 
 func NewService() *Service {
 	return &Service{
-		suites: seedSuites(),
+		suites: hydrateSuites(seedSuites()),
 	}
 }
 
@@ -129,6 +136,7 @@ func cloneDefinition(input Definition) Definition {
 	output.Contracts = append([]string{}, input.Contracts...)
 	output.Profiles = cloneProfiles(input.Profiles)
 	output.Folders = cloneFolders(input.Folders)
+	output.SourceFiles = cloneSourceFiles(input.SourceFiles)
 	output.APISurfaces = cloneSurfaces(input.APISurfaces)
 	return output
 }
@@ -144,6 +152,14 @@ func cloneFolders(input []FolderEntry) []FolderEntry {
 	for index, folder := range input {
 		output[index] = folder
 		output[index].Files = append([]string{}, folder.Files...)
+	}
+	return output
+}
+
+func cloneSourceFiles(input []SourceFile) []SourceFile {
+	output := make([]SourceFile, len(input))
+	for index, file := range input {
+		output[index] = file
 	}
 	return output
 }
