@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package babelsuite.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/babelsuite/babelsuite/proto/babelsuite/v1;babelsuitev1";
+
+message SandboxUsage {
+  double cpu_percent = 1;
+  int64 memory_bytes = 2;
+  int64 memory_limit_bytes = 3;
+  double memory_percent = 4;
+}
+
+message SandboxContainer {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  string state = 4;
+  string status = 5;
+  repeated string ports = 6;
+  google.protobuf.Timestamp started_at = 7;
+  int32 exit_code = 8;
+  SandboxUsage usage = 9;
+}
+
+message SandboxNetwork {
+  string id = 1;
+  string name = 2;
+  string driver = 3;
+  string scope = 4;
+}
+
+message SandboxVolume {
+  string name = 1;
+  string driver = 2;
+  string mountpoint = 3;
+}
+
+message SandboxRecord {
+  string sandbox_id = 1;
+  string run_id = 2;
+  string suite = 3;
+  string owner = 4;
+  string profile = 5;
+  string status = 6;
+  string summary = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp last_heartbeat_at = 9;
+  int32 orchestrator_pid = 10;
+  string orchestrator_state = 11;
+  bool is_zombie = 12;
+  bool can_reap = 13;
+  SandboxUsage resource_usage = 14;
+  repeated SandboxContainer containers = 15;
+  repeated SandboxNetwork networks = 16;
+  repeated SandboxVolume volumes = 17;
+  repeated string warnings = 18;
+}
+
+message SandboxesSummary {
+  int32 active_sandboxes = 1;
+  int32 zombie_sandboxes = 2;
+  int32 containers = 3;
+  int32 networks = 4;
+  int32 volumes = 5;
+  double total_cpu_percent = 6;
+  int64 total_memory_bytes = 7;
+}
+
+message ListSandboxesRequest {}
+
+message SandboxesResponse {
+  bool docker_available = 1;
+  google.protobuf.Timestamp updated_at = 2;
+  SandboxesSummary summary = 3;
+  repeated SandboxRecord sandboxes = 4;
+  repeated string warnings = 5;
+}
+
+message ReapSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message ReapAllSandboxesRequest {}
+
+message ReapResult {
+  string scope = 1;
+  string target = 2;
+  int32 removed_containers = 3;
+  int32 removed_networks = 4;
+  int32 removed_volumes = 5;
+  repeated string warnings = 6;
+}
+
+service SandboxService {
+  rpc ListSandboxes(ListSandboxesRequest) returns (SandboxesResponse);
+  rpc ReapSandbox(ReapSandboxRequest) returns (ReapResult);
+  rpc ReapAllSandboxes(ReapAllSandboxesRequest) returns (ReapResult);
+}

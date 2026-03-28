@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package babelsuite.v1;
+
+import "google/protobuf/timestamp.proto";
+import "execution_service.proto";
+import "sandbox_service.proto";
+
+option go_package = "github.com/babelsuite/babelsuite/backend/gen/babelsuite/v1;bsv1";
+
+service EventService {
+  rpc StreamExecutionEvents(GetExecutionEventsRequest) returns (stream ExecutionEventStream);
+  rpc StreamExecutionLogs(GetExecutionLogsRequest) returns (stream ExecutionLogStream);
+  rpc StreamSandboxEvents(GetSandboxEventsRequest) returns (stream SandboxEventStream);
+}
+
+message GetExecutionEventsRequest {
+  string execution_id = 1;
+  int32 since = 2;
+}
+
+message ExecutionEventStream {
+  int32 id = 1;
+  string execution_id = 2;
+  string execution_status = 3;
+  string duration = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  ExecutionEvent event = 6;
+}
+
+message GetExecutionLogsRequest {
+  string execution_id = 1;
+  int32 since = 2;
+}
+
+message ExecutionLogLine {
+  string source = 1;
+  string timestamp = 2;
+  string level = 3;
+  string text = 4;
+}
+
+message ExecutionLogStream {
+  int32 id = 1;
+  string execution_id = 2;
+  ExecutionLogLine line = 3;
+}
+
+message GetSandboxEventsRequest {
+  int32 since = 1;
+}
+
+message SandboxEventStream {
+  int32 id = 1;
+  string reason = 2;
+  SandboxesResponse snapshot = 3;
+}

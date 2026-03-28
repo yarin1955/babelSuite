@@ -12,11 +12,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool *pgxpool.Pool
+}
 
 func New(dsn string) (*Store, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, err
@@ -24,11 +27,103 @@ func New(dsn string) (*Store, error) {
 	if err := pool.Ping(ctx); err != nil {
 		return nil, err
 	}
-	s := &Store{pool: pool}
-	return s, s.migrate(ctx)
+
+	st := &Store{pool: pool}
+	if err := st.migrate(ctx); err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
-func (s *Store) Close(_ context.Context) error { s.pool.Close(); return nil }
+func (s *Store) Close(_ context.Context) error {
+	s.pool.Close()
+	return nil
+}
+
+func (s *Store) migrate(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `
+CREATE TABLE IF NOT EXISTS workspaces (
+  workspace_id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
+  username TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL UNIQUE,
+  full_name TEXT NOT NULL,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
+  pass_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`)
+	return err
+}
+
+func (s *Store) CreateWorkspace(ctx context.Context, workspace *domain.Workspace) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO workspaces (workspace_id, slug, name, created_at) VALUES ($1, $2, $3, $4)`,
+		workspace.WorkspaceID, workspace.Slug, workspace.Name, workspace.CreatedAt,
+	)
+	return wrap(err)
+}
+
+func (s *Store) GetWorkspaceByID(ctx context.Context, id string) (*domain.Workspace, error) {
+	var workspace domain.Workspace
+	err := s.pool.QueryRow(ctx,
+		`SELECT workspace_id, slug, name, created_at FROM workspaces WHERE workspace_id = $1`,
+		id,
+	).Scan(&workspace.WorkspaceID, &workspace.Slug, &workspace.Name, &workspace.CreatedAt)
+	return &workspace, wrap(err)
+}
+
+func (s *Store) GetWorkspaceBySlug(ctx context.Context, slug string) (*domain.Workspace, error) {
+	var workspace domain.Workspace
+	err := s.pool.QueryRow(ctx,
+		`SELECT workspace_id, slug, name, created_at FROM workspaces WHERE slug = $1`,
+		slug,
+	).Scan(&workspace.WorkspaceID, &workspace.Slug, &workspace.Name, &workspace.CreatedAt)
+	return &workspace, wrap(err)
+}
+
+func (s *Store) CreateUser(ctx context.Context, user *domain.User) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO users (user_id, workspace_id, username, email, full_name, is_admin, pass_hash, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		user.UserID, user.WorkspaceID, user.Username, user.Email, user.FullName, user.IsAdmin, user.PassHash, user.CreatedAt,
+	)
+	return wrap(err)
+}
+
+func (s *Store) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
+	var user domain.User
+	err := s.pool.QueryRow(ctx,
+		`SELECT user_id, workspace_id, username, email, full_name, is_admin, pass_hash, created_at FROM users WHERE user_id = $1`,
+		id,
+	).Scan(&user.UserID, &user.WorkspaceID, &user.Username, &user.Email, &user.FullName, &user.IsAdmin, &user.PassHash, &user.CreatedAt)
+	return &user, wrap(err)
+}
+
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	var user domain.User
+	err := s.pool.QueryRow(ctx,
+		`SELECT user_id, workspace_id, username, email, full_name, is_admin, pass_hash, created_at FROM users WHERE email = $1`,
+		email,
+	).Scan(&user.UserID, &user.WorkspaceID, &user.Username, &user.Email, &user.FullName, &user.IsAdmin, &user.PassHash, &user.CreatedAt)
+	return &user, wrap(err)
+}
+
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
+	var user domain.User
+	err := s.pool.QueryRow(ctx,
+		`SELECT user_id, workspace_id, username, email, full_name, is_admin, pass_hash, created_at FROM users WHERE username = $1`,
+		username,
+	).Scan(&user.UserID, &user.WorkspaceID, &user.Username, &user.Email, &user.FullName, &user.IsAdmin, &user.PassHash, &user.CreatedAt)
+	return &user, wrap(err)
+}
 
 func wrap(err error) error {
 	if err == nil {
@@ -37,205 +132,10 @@ func wrap(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.ErrNotFound
 	}
-	var pg *pgconn.PgError
-	if errors.As(err, &pg) && pg.Code == "23505" {
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return store.ErrDuplicate
 	}
 	return err
-}
-
-func (s *Store) migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `
-CREATE TABLE IF NOT EXISTS orgs (
-  org_id     TEXT PRIMARY KEY,
-  slug       TEXT UNIQUE NOT NULL,
-  name       TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS users (
-  user_id    TEXT PRIMARY KEY,
-  org_id     TEXT NOT NULL REFERENCES orgs(org_id),
-  username   TEXT UNIQUE NOT NULL,
-  email      TEXT UNIQUE NOT NULL,
-  name       TEXT NOT NULL,
-  is_admin   BOOLEAN NOT NULL DEFAULT false,
-  pass_hash  TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
-CREATE TABLE IF NOT EXISTS runs (
-  run_id      TEXT PRIMARY KEY,
-  org_id      TEXT NOT NULL,
-  package_id  TEXT NOT NULL DEFAULT '',
-  image_ref   TEXT NOT NULL DEFAULT '',
-  profile     TEXT NOT NULL DEFAULT '',
-  agent_id    TEXT NOT NULL DEFAULT '',
-  status      TEXT NOT NULL DEFAULT 'pending',
-  started_at  TIMESTAMPTZ,
-  finished_at TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS steps (
-  step_id     TEXT PRIMARY KEY,
-  run_id      TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  status      TEXT NOT NULL DEFAULT 'pending',
-  exit_code   INT  NOT NULL DEFAULT 0,
-  error       TEXT NOT NULL DEFAULT '',
-  started_at  TIMESTAMPTZ,
-  finished_at TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS run_logs (
-  log_id  TEXT PRIMARY KEY,
-  run_id  TEXT NOT NULL,
-  step_id TEXT NOT NULL,
-  line    INT  NOT NULL,
-  data    TEXT NOT NULL DEFAULT '',
-  time    BIGINT NOT NULL DEFAULT 0,
-  type    INT  NOT NULL DEFAULT 0,
-  trace_id TEXT NOT NULL DEFAULT '',
-  span_id  TEXT NOT NULL DEFAULT '',
-  UNIQUE(step_id, line)
-);
-CREATE INDEX IF NOT EXISTS idx_runs_org_status    ON runs(org_id, status);
-CREATE INDEX IF NOT EXISTS idx_steps_run_id       ON steps(run_id);
-CREATE INDEX IF NOT EXISTS idx_run_logs_step_line ON run_logs(step_id, line);
-ALTER TABLE run_logs ADD COLUMN IF NOT EXISTS trace_id TEXT NOT NULL DEFAULT '';
-ALTER TABLE run_logs ADD COLUMN IF NOT EXISTS span_id TEXT NOT NULL DEFAULT '';
-ALTER TABLE steps ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0;
-ALTER TABLE steps ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT '';
-ALTER TABLE runs ADD COLUMN IF NOT EXISTS profile TEXT NOT NULL DEFAULT '';
-CREATE TABLE IF NOT EXISTS agents (
-  agent_id     TEXT PRIMARY KEY,
-  org_id       TEXT NOT NULL,
-  name         TEXT NOT NULL,
-  token        TEXT UNIQUE NOT NULL,
-  runtime_target_id TEXT NOT NULL DEFAULT '',
-  desired_backend  TEXT NOT NULL DEFAULT '',
-  desired_platform TEXT NOT NULL DEFAULT '',
-  desired_target_name TEXT NOT NULL DEFAULT '',
-  desired_target_url  TEXT NOT NULL DEFAULT '',
-  platform     TEXT NOT NULL DEFAULT '',
-  backend      TEXT NOT NULL DEFAULT '',
-  target_name  TEXT NOT NULL DEFAULT '',
-  target_url   TEXT NOT NULL DEFAULT '',
-  capacity     INT  NOT NULL DEFAULT 1,
-  version      TEXT NOT NULL DEFAULT '',
-  labels       TEXT NOT NULL DEFAULT '{}',
-  last_contact TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_work    TIMESTAMPTZ,
-  no_schedule  BOOLEAN NOT NULL DEFAULT false,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_work TIMESTAMPTZ;
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS runtime_target_id TEXT NOT NULL DEFAULT '';
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_backend TEXT NOT NULL DEFAULT '';
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_platform TEXT NOT NULL DEFAULT '';
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_target_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_target_url TEXT NOT NULL DEFAULT '';
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS target_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS target_url TEXT NOT NULL DEFAULT '';
-CREATE TABLE IF NOT EXISTS runtime_targets (
-  runtime_target_id TEXT PRIMARY KEY,
-  org_id            TEXT NOT NULL REFERENCES orgs(org_id),
-  name              TEXT NOT NULL,
-  backend           TEXT NOT NULL DEFAULT 'docker',
-  platform          TEXT NOT NULL DEFAULT '',
-  endpoint_url      TEXT NOT NULL DEFAULT '',
-  namespace         TEXT NOT NULL DEFAULT '',
-  insecure_skip_tls_verify BOOLEAN NOT NULL DEFAULT false,
-  username          TEXT NOT NULL DEFAULT '',
-  password          TEXT NOT NULL DEFAULT '',
-  bearer_token      TEXT NOT NULL DEFAULT '',
-  tls_ca_data       TEXT NOT NULL DEFAULT '',
-  tls_cert_data     TEXT NOT NULL DEFAULT '',
-  tls_key_data      TEXT NOT NULL DEFAULT '',
-  labels            TEXT NOT NULL DEFAULT '{}',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(org_id, name)
-);
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS insecure_skip_tls_verify BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT '';
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS bearer_token TEXT NOT NULL DEFAULT '';
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS tls_ca_data TEXT NOT NULL DEFAULT '';
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS tls_cert_data TEXT NOT NULL DEFAULT '';
-ALTER TABLE runtime_targets ADD COLUMN IF NOT EXISTS tls_key_data TEXT NOT NULL DEFAULT '';
-CREATE TABLE IF NOT EXISTS profiles (
-  profile_id       TEXT PRIMARY KEY,
-  org_id           TEXT NOT NULL REFERENCES orgs(org_id),
-  name             TEXT NOT NULL,
-  description      TEXT NOT NULL DEFAULT '',
-  format           TEXT NOT NULL DEFAULT 'yaml',
-  content          TEXT NOT NULL DEFAULT '',
-  revision         INT  NOT NULL DEFAULT 1,
-  created_by       TEXT NOT NULL DEFAULT '',
-  created_by_name  TEXT NOT NULL DEFAULT '',
-  updated_by       TEXT NOT NULL DEFAULT '',
-  updated_by_name  TEXT NOT NULL DEFAULT '',
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(org_id, name)
-);
-CREATE TABLE IF NOT EXISTS oidc_providers (
-  provider_id   TEXT PRIMARY KEY,
-  name          TEXT NOT NULL,
-  issuer_url    TEXT NOT NULL,
-  client_id     TEXT NOT NULL,
-  client_secret TEXT NOT NULL,
-  scopes        TEXT NOT NULL DEFAULT '',
-  enabled       BOOLEAN NOT NULL DEFAULT true,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);`)
-	return err
-}
-
-func (s *Store) CreateOrg(ctx context.Context, o *domain.Org) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO orgs(org_id,slug,name,created_at) VALUES($1,$2,$3,$4)`,
-		o.OrgID, o.Slug, o.Name, o.CreatedAt)
-	return wrap(err)
-}
-
-func (s *Store) GetOrgBySlug(ctx context.Context, slug string) (*domain.Org, error) {
-	var o domain.Org
-	err := s.pool.QueryRow(ctx, `SELECT org_id,slug,name,created_at FROM orgs WHERE slug=$1`, slug).
-		Scan(&o.OrgID, &o.Slug, &o.Name, &o.CreatedAt)
-	return &o, wrap(err)
-}
-
-func (s *Store) GetOrgByID(ctx context.Context, id string) (*domain.Org, error) {
-	var o domain.Org
-	err := s.pool.QueryRow(ctx, `SELECT org_id,slug,name,created_at FROM orgs WHERE org_id=$1`, id).
-		Scan(&o.OrgID, &o.Slug, &o.Name, &o.CreatedAt)
-	return &o, wrap(err)
-}
-
-func (s *Store) CreateUser(ctx context.Context, u *domain.User) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO users(user_id,org_id,username,email,name,is_admin,pass_hash,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-		u.UserID, u.OrgID, u.Username, u.Email, u.Name, u.IsAdmin, u.PassHash, u.CreatedAt)
-	return wrap(err)
-}
-
-func (s *Store) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
-	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,is_admin,pass_hash,created_at FROM users WHERE user_id=$1`, id).
-		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.PassHash, &u.CreatedAt)
-	return &u, wrap(err)
-}
-
-func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,is_admin,pass_hash,created_at FROM users WHERE username=$1`, username).
-		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.PassHash, &u.CreatedAt)
-	return &u, wrap(err)
-}
-
-func (s *Store) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
-	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT user_id,org_id,username,email,name,is_admin,pass_hash,created_at FROM users WHERE email=$1`, email).
-		Scan(&u.UserID, &u.OrgID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.PassHash, &u.CreatedAt)
-	return &u, wrap(err)
 }

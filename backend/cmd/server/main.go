@@ -5,108 +5,145 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
-	"github.com/babelsuite/babelsuite/internal/agents"
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/catalog"
+	"github.com/babelsuite/babelsuite/internal/engine"
+	enginewatchers "github.com/babelsuite/babelsuite/internal/engine/watchers"
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/execution"
+	"github.com/babelsuite/babelsuite/internal/platform"
 	"github.com/babelsuite/babelsuite/internal/profiles"
-	"github.com/babelsuite/babelsuite/internal/runs"
-	"github.com/babelsuite/babelsuite/internal/sso"
+	"github.com/babelsuite/babelsuite/internal/sandbox"
 	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
-	"github.com/babelsuite/babelsuite/internal/telemetry"
+	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 func main() {
-	envloader.Load()
+	envloader.Load(".env", "../.env")
 
-	shutdownTelemetry, telemetryErr := telemetry.Setup(context.Background(), telemetry.Config{
-		ServiceName:    "babelsuite-server",
-		ServiceVersion: "0.1.0",
-	})
-	if telemetryErr != nil {
-		log.Fatalf("telemetry: %v", telemetryErr)
-	}
-	defer shutdownTelemetry(context.Background())
+	var (
+		st  store.Store
+		err error
+	)
 
-	var st store.Store
-	var err error
-
-	switch os.Getenv("DB_DRIVER") {
-	case "postgres":
-		dsn := os.Getenv("POSTGRES_DSN")
-		if dsn == "" {
+	dbDriver := strings.ToLower(strings.TrimSpace(os.Getenv("DB_DRIVER")))
+	switch dbDriver {
+	case "", "mongo", "mongodb":
+		mongoURI := envOr("MONGO_URI", "mongodb://localhost:27017")
+		mongoDB := envOr("MONGO_DB", "babelsuite")
+		st, err = mongostore.New(mongoURI, mongoDB)
+		dbDriver = "mongo"
+	case "postgres", "postgresql":
+		postgresDSN := os.Getenv("POSTGRES_DSN")
+		if postgresDSN == "" {
 			log.Fatal("POSTGRES_DSN is required when DB_DRIVER=postgres")
 		}
-		st, err = pgstore.New(dsn)
+		st, err = pgstore.New(postgresDSN)
+		dbDriver = "postgres"
 	default:
-		uri := os.Getenv("MONGO_URI")
-		if uri == "" {
-			uri = "mongodb://localhost:27017"
-		}
-		db := os.Getenv("MONGO_DB")
-		if db == "" {
-			db = "babelsuite"
-		}
-		st, err = mongostore.New(uri, db)
+		log.Fatalf("unsupported DB_DRIVER %q", dbDriver)
 	}
 	if err != nil {
 		log.Fatalf("store: %v", err)
 	}
-	defer st.Close(nil)
+	defer st.Close(context.Background())
 
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "change-me"
-	}
+	auth.Seed(context.Background(), st, os.Getenv("ADMIN_EMAIL"), os.Getenv("ADMIN_PASSWORD"))
 
-	auth.Seed(context.Background(), st, os.Getenv("ADMIN_USERNAME"), os.Getenv("ADMIN_PASSWORD"))
-
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
-	}
-
-	jwtSvc := auth.NewJWT(secret)
-	handler := auth.NewHandler(st, jwtSvc)
-	catalogHandler := catalog.NewHandler(st, jwtSvc)
-	ssoHandler := sso.NewHandler(st, jwtSvc, frontendURL)
-	agentsHandler := agents.NewHandler(st, jwtSvc)
-	profilesHandler := profiles.NewHandler(st, jwtSvc)
-	runsHandler := runs.NewHandler(st, jwtSvc)
+	frontendURL := envOr("FRONTEND_URL", "http://localhost:5173")
+	jwtSvc := auth.NewJWT(envOr("JWT_SECRET", "change-me"))
+	handler := auth.NewHandler(st, jwtSvc, auth.DefaultSSOProviders(
+		os.Getenv("GITHUB_OAUTH_URL"),
+		os.Getenv("GITLAB_OAUTH_URL"),
+	))
+	suiteService := suites.NewService()
+	profileStore := profiles.NewFileStore(resolveWorkspacePath(envOr("PROFILES_FILE", "babelsuite-profiles.yaml")))
+	profileService := profiles.NewService(suiteService, profileStore)
+	suiteHandler := suites.NewHandler(profileService, jwtSvc)
+	profileHandler := profiles.NewHandler(profileService, jwtSvc)
+	catalogHandler := catalog.NewHandler(catalog.NewService(suiteService), jwtSvc)
+	engineStore := engine.NewStore()
+	engineHandler := engine.NewHandler(engineStore, jwtSvc)
+	executionWatcher := enginewatchers.NewExecutionWatcher(engineStore)
+	executionService := execution.NewService(profileService, executionWatcher)
+	defer executionService.Close()
+	executionHandler := execution.NewHandler(executionService, engineStore, jwtSvc)
+	platformStore := platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
+	platformHandler := platform.NewHandler(platformStore, jwtSvc)
+	sandboxService := sandbox.NewService()
+	defer sandboxService.Close()
+	sandboxHandler := sandbox.NewHandler(sandboxService, jwtSvc)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok","dbDriver":"` + dbDriver + `"}`))
+	})
 	handler.Register(mux)
 	catalogHandler.Register(mux)
-	ssoHandler.Register(mux)
-	agentsHandler.Register(mux)
-	profilesHandler.Register(mux)
-	runsHandler.Register(mux)
+	engineHandler.Register(mux)
+	profileHandler.Register(mux)
+	suiteHandler.Register(mux)
+	executionHandler.Register(mux)
+	platformHandler.Register(mux)
+	sandboxHandler.Register(mux)
 
-	// CORS middleware for frontend dev server
-	corsed := corsMiddleware(mux)
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = ":8090"
+	addr := envOr("PORT", "8090")
+	if !strings.HasPrefix(addr, ":") {
+		addr = ":" + addr
 	}
-	log.Printf("babelsuite server on %s  db=%s", port, os.Getenv("DB_DRIVER"))
-	if err := http.ListenAndServe(port, telemetry.WrapHandler(corsed, "babelsuite-server")); err != nil {
+
+	log.Printf("babelsuite server listening on %s using %s", addr, dbDriver)
+	if err := http.ListenAndServe(addr, cors(frontendURL, mux)); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+func envOr(key, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func resolveWorkspacePath(path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	parentPath := filepath.Join("..", path)
+	if _, err := os.Stat(parentPath); err == nil {
+		return parentPath
+	}
+	return path
+}
+
+func cors(frontendURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = frontendURL
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Vary", "Origin")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }

@@ -7,33 +7,45 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const TokenTTL = 72 * time.Hour
+
 type Claims struct {
-	UserID  string `json:"user_id"`
-	OrgID   string `json:"org_id"`
-	IsAdmin bool   `json:"is_admin"`
+	UserID      string `json:"userId"`
+	WorkspaceID string `json:"workspaceId"`
+	IsAdmin     bool   `json:"isAdmin"`
 	jwt.RegisteredClaims
 }
 
-type JWTService struct{ secret []byte }
+type JWTService struct {
+	secret []byte
+}
 
-func NewJWT(secret string) *JWTService { return &JWTService{secret: []byte(secret)} }
+func NewJWT(secret string) *JWTService {
+	return &JWTService{secret: []byte(secret)}
+}
 
-func (j *JWTService) Sign(userID, orgID string, isAdmin bool) (string, error) {
+func (j *JWTService) Sign(userID, workspaceID string, isAdmin bool) (string, time.Time, error) {
+	expiresAt := time.Now().UTC().Add(TokenTTL)
 	claims := Claims{
-		UserID:  userID,
-		OrgID:   orgID,
-		IsAdmin: isAdmin,
+		UserID:      userID,
+		WorkspaceID: workspaceID,
+		IsAdmin:     isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
 		},
 	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(j.secret)
+
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(j.secret)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return token, expiresAt, nil
 }
 
 func (j *JWTService) Verify(token string) (*Claims, error) {
-	t, err := jwt.ParseWithClaims(token, &Claims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+	parsed, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
 		return j.secret, nil
@@ -41,9 +53,11 @@ func (j *JWTService) Verify(token string) (*Claims, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, ok := t.Claims.(*Claims)
-	if !ok || !t.Valid {
+
+	claims, ok := parsed.Claims.(*Claims)
+	if !ok || !parsed.Valid {
 		return nil, errors.New("invalid token")
 	}
-	return c, nil
+	return claims, nil
 }
+

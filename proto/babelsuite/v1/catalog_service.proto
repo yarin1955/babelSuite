@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package babelsuite.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/babelsuite/babelsuite/backend/gen/babelsuite/v1;bsv1";
+
+service CatalogService {
+  rpc ListCatalogPackages(google.protobuf.Empty) returns (ListCatalogPackagesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/catalog/packages"
+    };
+  }
+
+  rpc GetCatalogPackage(GetCatalogPackageRequest) returns (CatalogPackage) {
+    option (google.api.http) = {
+      get: "/api/v1/catalog/packages/{package_id}"
+    };
+  }
+}
+
+message GetCatalogPackageRequest {
+  string package_id = 1;
+}
+
+message CatalogPackage {
+  string id = 1;
+  string kind = 2;
+  string title = 3;
+  string repository = 4;
+  string owner = 5;
+  string provider = 6;
+  string version = 7;
+  repeated string tags = 8;
+  string description = 9;
+  repeated string modules = 10;
+  string status = 11;
+  int32 score = 12;
+  string pull_command = 13;
+  string fork_command = 14;
+}
+
+message ListCatalogPackagesResponse {
+  repeated CatalogPackage packages = 1;
+}

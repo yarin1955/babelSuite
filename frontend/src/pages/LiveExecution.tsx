@@ -1,0 +1,577 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import {
+  FaArrowsRotate,
+  FaCopy,
+  FaDiagramProject,
+  FaPause,
+  FaPlay,
+  FaXmark,
+} from 'react-icons/fa6'
+import { useNavigate, useParams } from 'react-router-dom'
+import AppShell from '../components/AppShell'
+import { createExecution, type ExecutionLogLine } from '../lib/api'
+import { useExecutionStream } from '../hooks/useExecutionStream'
+import {
+  deriveRuntimeStatus,
+  groupTopologyByLevel,
+  parseSuiteTopology,
+  type RuntimeStatus,
+} from '../lib/suites'
+import './LiveExecution.css'
+
+export default function LiveExecution() {
+  const navigate = useNavigate()
+  const params = useParams()
+  const executionId = params.executionId ?? ''
+  const {
+    execution,
+    logs,
+    loading,
+    error,
+    paused,
+    setPaused,
+    executionStreamState,
+    logStreamState,
+  } = useExecutionStream(executionId)
+  const [selectedSource, setSelectedSource] = useState<'all' | string>('all')
+  const [showDag, setShowDag] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [restarting, setRestarting] = useState(false)
+  const logRef = useRef<HTMLDivElement | null>(null)
+
+  const topology = useMemo(
+    () => execution ? groupTopologyByLevel(parseSuiteTopology(execution.suite.suiteStar)) : [],
+    [execution],
+  )
+  const flatTopology = useMemo(() => topology.flat(), [topology])
+  const statusMap = useMemo(
+    () => deriveRuntimeStatus(flatTopology, execution?.events ?? []),
+    [execution?.events, flatTopology],
+  )
+  const filteredLogs = useMemo(() => {
+    if (selectedSource === 'all') return logs
+    return logs.filter((line) => line.source === selectedSource)
+  }, [logs, selectedSource])
+
+  useEffect(() => {
+    if (!logRef.current || paused) return
+    logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [filteredLogs, paused])
+
+  const copyVisibleLogs = async () => {
+    const text = filteredLogs
+      .map((line) => (selectedSource === 'all' ? `[${line.source}] ` : '') + line.text)
+      .join('\n')
+    await navigator.clipboard.writeText(text)
+    setNotice('Copied to clipboard.')
+    window.setTimeout(() => setNotice(''), 1600)
+  }
+
+  const restartExecution = async () => {
+    if (!execution) return
+    setRestarting(true)
+    setActionError('')
+    try {
+      const next = await createExecution({ suiteId: execution.suite.id, profile: execution.profile })
+      navigate(`/executions/${next.id}`)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not restart execution.')
+    } finally {
+      setRestarting(false)
+    }
+  }
+
+  if (!execution) {
+    return (
+      <AppShell section='Live Execution' title='Loading execution' description=''>
+        <div className='execution-page execution-page--empty'>
+          <div className='exec-splash'>
+            <div className={`exec-splash__dot${error ? ' exec-splash__dot--error' : ''}`} />
+            <span>{error || (loading ? 'Connecting to execution stream…' : 'Waiting for execution data…')}</span>
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
+
+  const readyNodes = flatTopology.filter((n) => statusMap[n.id] === 'healthy').length
+  const activeNodes = flatTopology.filter((n) => statusMap[n.id] === 'running').length
+  const failedNodes = flatTopology.filter((n) => statusMap[n.id] === 'failed').length
+  const pendingNodes = flatTopology.filter((n) => statusMap[n.id] === 'pending').length
+  const progress = flatTopology.length === 0
+    ? (execution.status === 'Healthy' ? 100 : 0)
+    : Math.round(((readyNodes + activeNodes) / flatTopology.length) * 100)
+
+  const alert = notice || actionError || error
+
+  return (
+    <AppShell
+      section='Live Execution'
+      title={execution.suite.title}
+      description=''
+      actions={(
+        <>
+          <button
+            type='button'
+            className='exec-toolbar-btn exec-toolbar-btn--ghost'
+            onClick={() => setShowDag(true)}
+          >
+            <FaDiagramProject />
+            <span>Graph</span>
+          </button>
+          <button
+            type='button'
+            className='exec-toolbar-btn exec-toolbar-btn--ghost'
+            onClick={() => navigate(`/suites/${execution.suite.id}`)}
+          >
+            <span>Suite</span>
+          </button>
+          <button
+            type='button'
+            className='exec-toolbar-btn exec-toolbar-btn--ghost'
+            onClick={() => void restartExecution()}
+            disabled={restarting}
+          >
+            <FaArrowsRotate />
+            <span>{restarting ? 'Restarting…' : 'Restart'}</span>
+          </button>
+          <button
+            type='button'
+            className={`exec-toolbar-btn${paused ? ' exec-toolbar-btn--paused' : ''}`}
+            onClick={() => setPaused((p) => !p)}
+          >
+            {paused ? <FaPlay /> : <FaPause />}
+            <span>{paused ? 'Resume' : 'Pause'}</span>
+          </button>
+        </>
+      )}
+    >
+      <div className='execution-page'>
+
+        {/* ── Execution header strip ── */}
+        <div className='exec-header'>
+          <div className='exec-header__left'>
+            <div className='exec-header__row'>
+              <code className='exec-header__id'>{execution.id.slice(0, 12)}</code>
+              <ExecStatusBadge status={execution.status} />
+            </div>
+            <p className='exec-header__sub'>
+              {execution.suite.repository}
+              {execution.message ? ` · ${execution.message}` : ''}
+            </p>
+          </div>
+
+          <div className='exec-header__meta'>
+            <ExecMeta label='Profile' value={execution.profile} />
+            <ExecMeta label='Trigger' value={execution.trigger} />
+            {execution.branch && <ExecMeta label='Branch' value={execution.branch} />}
+            {execution.commit && <ExecMeta label='Commit' value={execution.commit.slice(0, 7)} mono />}
+            <ExecMeta label='Started' value={formatDateTime(execution.startedAt)} />
+            {execution.duration && <ExecMeta label='Duration' value={execution.duration} />}
+          </div>
+        </div>
+
+        {/* ── Progress bar ── */}
+        <div className='exec-progress'>
+          <div
+            className={`exec-progress__fill${execution.status === 'Booting' ? ' exec-progress__fill--live' : ''}`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        {/* ── Alert banner ── */}
+        {alert && (
+          <div className={`exec-alert${actionError || error ? ' exec-alert--error' : ''}`}>
+            {alert}
+          </div>
+        )}
+
+        {/* ── Body: terminal + sidebar ── */}
+        <div className='exec-body'>
+
+          {/* ── Terminal panel ── */}
+          <section className='exec-terminal'>
+
+            {/* Source filter tabs */}
+            <div className='exec-tabs'>
+              <button
+                type='button'
+                className={`exec-tab${selectedSource === 'all' ? ' exec-tab--active' : ''}`}
+                onClick={() => setSelectedSource('all')}
+              >
+                <ExecDot status={statusFromExecution(execution.status)} />
+                <span>All</span>
+                {logs.length > 0 && <em className='exec-tab__count'>{logs.length}</em>}
+              </button>
+
+              {flatTopology.map((node) => {
+                const cnt = logs.filter((l) => l.source === node.id).length
+                return (
+                  <button
+                    key={node.id}
+                    type='button'
+                    className={`exec-tab${selectedSource === node.id ? ' exec-tab--active' : ''}`}
+                    onClick={() => setSelectedSource(node.id)}
+                  >
+                    <ExecDot status={statusMap[node.id]} />
+                    <span>{node.name}</span>
+                    {cnt > 0 && <em className='exec-tab__count'>{cnt}</em>}
+                  </button>
+                )
+              })}
+
+              <div className='exec-tabs__spacer' />
+
+              <button
+                type='button'
+                className='exec-tab-action'
+                title='Copy visible logs'
+                onClick={() => void copyVisibleLogs()}
+              >
+                <FaCopy />
+              </button>
+              <button
+                type='button'
+                className='exec-tab-action'
+                title={paused ? 'Resume stream' : 'Pause stream'}
+                onClick={() => setPaused((p) => !p)}
+              >
+                {paused ? <FaPlay /> : <FaPause />}
+              </button>
+            </div>
+
+            {/* Log body */}
+            <div className='exec-log' ref={logRef}>
+              {filteredLogs.length === 0 ? (
+                <div className='exec-log__empty'>
+                  {loading ? 'Connecting…' : 'Waiting for log output from the execution stream.'}
+                </div>
+              ) : (
+                filteredLogs.map((line, index) => (
+                  <LogLine
+                    key={`${line.timestamp}-${line.source}-${index}`}
+                    line={line}
+                    showPrefix={selectedSource === 'all'}
+                    index={index + 1}
+                  />
+                ))
+              )}
+            </div>
+
+            {/* Stream status bar */}
+            <div className='exec-stream-bar'>
+              <StreamPill state={logStreamState} paused={paused} label='logs' />
+              <span className='exec-stream-bar__sep'>·</span>
+              <span className='exec-stream-bar__count'>{filteredLogs.length} lines</span>
+              <div className='exec-stream-bar__right'>
+                <StreamPill state={executionStreamState} paused={paused} label='events' />
+              </div>
+            </div>
+          </section>
+
+          {/* ── Topology sidebar ── */}
+          <aside className='exec-sidebar'>
+            <div className='exec-sidebar__head'>
+              <span>Topology</span>
+              {selectedSource !== 'all' && (
+                <button type='button' className='exec-sidebar__reset' onClick={() => setSelectedSource('all')}>
+                  clear
+                </button>
+              )}
+            </div>
+
+            <div className='exec-sidebar__nodes'>
+              {topology.map((wave, wi) => (
+                <div key={`wave-${wi}`} className='exec-wave'>
+                  <span className='exec-wave__label'>Wave {wi + 1}</span>
+                  {wave.map((node) => {
+                    const st = statusMap[node.id]
+                    const cnt = logs.filter((l) => l.source === node.id).length
+                    return (
+                      <button
+                        key={node.id}
+                        type='button'
+                        className={`exec-node exec-node--${st}${selectedSource === node.id ? ' exec-node--selected' : ''}`}
+                        onClick={() => setSelectedSource(node.id)}
+                      >
+                        <ExecDot status={st} />
+                        <div className='exec-node__info'>
+                          <strong>{node.name}</strong>
+                          <span>{node.kind}</span>
+                        </div>
+                        {cnt > 0 && <em className='exec-node__count'>{cnt}</em>}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* Stats footer */}
+            <div className='exec-sidebar__stats'>
+              <div className='exec-stat'>
+                <strong data-color='healthy'>{readyNodes}</strong>
+                <small>healthy</small>
+              </div>
+              <div className='exec-stat'>
+                <strong data-color='running'>{activeNodes}</strong>
+                <small>running</small>
+              </div>
+              <div className='exec-stat'>
+                <strong data-color='failed'>{failedNodes}</strong>
+                <small>failed</small>
+              </div>
+              <div className='exec-stat'>
+                <strong>{pendingNodes}</strong>
+                <small>pending</small>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      {showDag && (
+        <ExecutionDag
+          topology={topology}
+          flatTopology={flatTopology}
+          statusMap={statusMap}
+          selectedSource={selectedSource}
+          onSelectSource={(id) => { setSelectedSource(id); setShowDag(false) }}
+          onClose={() => setShowDag(false)}
+        />
+      )}
+    </AppShell>
+  )
+}
+
+/* ── Sub-components ─────────────────────────────────────── */
+
+function ExecDot({ status }: { status: RuntimeStatus }) {
+  return <span className={`exec-dot exec-dot--${status}`} />
+}
+
+function ExecStatusBadge({ status }: { status: 'Booting' | 'Healthy' | 'Failed' }) {
+  return (
+    <span className={`exec-status-badge exec-status-badge--${status.toLowerCase()}`}>
+      <ExecDot status={statusFromExecution(status)} />
+      {status}
+    </span>
+  )
+}
+
+function ExecMeta({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className='exec-meta'>
+      <span>{label}</span>
+      <strong className={mono ? 'exec-meta__mono' : undefined}>{value}</strong>
+    </div>
+  )
+}
+
+function StreamPill({
+  state,
+  paused,
+  label,
+}: {
+  state: 'connecting' | 'live' | 'reconnecting' | 'closed'
+  paused: boolean
+  label: string
+}) {
+  if (paused) return <span className='exec-stream-pill'>paused</span>
+  const live = state === 'live'
+  return (
+    <span className={`exec-stream-pill${live ? ' exec-stream-pill--live' : ''}`}>
+      <span className={`exec-stream-dot${live ? ' exec-stream-dot--live' : ''}`} />
+      {live
+        ? `${label} live`
+        : state === 'reconnecting'
+          ? `${label} reconnecting`
+          : state === 'closed'
+            ? `${label} closed`
+            : `${label} connecting`}
+    </span>
+  )
+}
+
+function LogLine({
+  line,
+  showPrefix,
+  index,
+}: {
+  line: ExecutionLogLine
+  showPrefix: boolean
+  index: number
+}) {
+  return (
+    <div className={`exec-log-line exec-log-line--${line.level}${showPrefix ? ' exec-log-line--multi' : ''}`}>
+      <span className='exec-log-line__num'>{index}</span>
+      <span className='exec-log-line__time'>{line.timestamp}</span>
+      {showPrefix && <span className='exec-log-line__src'>[{line.source}]</span>}
+      <code className='exec-log-line__text'>{line.text}</code>
+    </div>
+  )
+}
+
+/* ── DAG overlay ────────────────────────────────────────── */
+
+const DAG_NODE_W = 180
+const DAG_NODE_H = 62
+const DAG_COL_GAP = 110
+const DAG_ROW_GAP = 20
+const DAG_PAD = 40
+
+function ExecutionDag({
+  topology,
+  flatTopology,
+  statusMap,
+  selectedSource,
+  onSelectSource,
+  onClose,
+}: {
+  topology: ReturnType<typeof groupTopologyByLevel>
+  flatTopology: ReturnType<typeof groupTopologyByLevel>[number]
+  statusMap: Record<string, RuntimeStatus>
+  selectedSource: string
+  onSelectSource: (id: string) => void
+  onClose: () => void
+}) {
+  const maxNodes = Math.max(...topology.map((w) => w.length), 1)
+  const totalH = maxNodes * (DAG_NODE_H + DAG_ROW_GAP) - DAG_ROW_GAP
+
+  const positions = useMemo(() => {
+    const map = new Map<string, { x: number; y: number }>()
+    topology.forEach((wave, wi) => {
+      const colH = wave.length * (DAG_NODE_H + DAG_ROW_GAP) - DAG_ROW_GAP
+      const startY = (totalH - colH) / 2 + DAG_PAD
+      wave.forEach((node, ni) => {
+        map.set(node.id, {
+          x: wi * (DAG_NODE_W + DAG_COL_GAP) + DAG_PAD,
+          y: startY + ni * (DAG_NODE_H + DAG_ROW_GAP),
+        })
+      })
+    })
+    return map
+  }, [topology, totalH])
+
+  const canvasW = topology.length * (DAG_NODE_W + DAG_COL_GAP) - DAG_COL_GAP + DAG_PAD * 2
+  const canvasH = totalH + DAG_PAD * 2
+
+  const edges = useMemo(() => {
+    const result: Array<{ fromId: string; toId: string; status: RuntimeStatus }> = []
+    flatTopology.forEach((node) => {
+      const toPos = positions.get(node.id)
+      if (!toPos) return
+      node.dependsOn.forEach((depId) => {
+        const fromPos = positions.get(depId)
+        if (!fromPos) return
+        result.push({ fromId: depId, toId: node.id, status: statusMap[depId] })
+      })
+    })
+    return result
+  }, [flatTopology, positions, statusMap])
+
+  return createPortal(
+    <div className='dag-overlay'>
+      <div className='dag-header'>
+        <span className='dag-header__title'>Topology Graph</span>
+        <div className='dag-header__hint'>Click a node to filter logs</div>
+        <button type='button' className='dag-close' onClick={onClose}>
+          <FaXmark />
+          <span>Close</span>
+        </button>
+      </div>
+
+      <div className='dag-scroll'>
+        <div className='dag-canvas' style={{ width: canvasW, height: canvasH }}>
+
+          {/* SVG edge layer */}
+          <svg
+            className='dag-svg'
+            width={canvasW}
+            height={canvasH}
+          >
+            <defs>
+              <marker id='dag-arrow-pending'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
+                <path d='M0,0 L6,3 L0,6 Z' fill='#1e3a4e' />
+              </marker>
+              <marker id='dag-arrow-running'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
+                <path d='M0,0 L6,3 L0,6 Z' fill='#0DADEA' />
+              </marker>
+              <marker id='dag-arrow-healthy'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
+                <path d='M0,0 L6,3 L0,6 Z' fill='#18BE94' />
+              </marker>
+              <marker id='dag-arrow-failed'   markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
+                <path d='M0,0 L6,3 L0,6 Z' fill='#E96D76' />
+              </marker>
+            </defs>
+
+            {edges.map(({ fromId, toId, status }) => {
+              const fp = positions.get(fromId)
+              const tp = positions.get(toId)
+              if (!fp || !tp) return null
+              const sx = fp.x + DAG_NODE_W
+              const sy = fp.y + DAG_NODE_H / 2
+              const tx = tp.x - 6
+              const ty = tp.y + DAG_NODE_H / 2
+              const cx = sx + (tx - sx) / 2
+              const stroke =
+                status === 'healthy' ? '#18BE94'
+                : status === 'running' ? '#0DADEA'
+                : status === 'failed'  ? '#E96D76'
+                : '#1e3a4e'
+              return (
+                <path
+                  key={`${fromId}-${toId}`}
+                  className={`dag-edge${status === 'running' ? ' dag-edge--running' : ''}`}
+                  d={`M ${sx} ${sy} C ${cx} ${sy}, ${cx} ${ty}, ${tx} ${ty}`}
+                  fill='none'
+                  stroke={stroke}
+                  strokeWidth={1.5}
+                  strokeOpacity={0.55}
+                  markerEnd={`url(#dag-arrow-${status})`}
+                />
+              )
+            })}
+          </svg>
+
+          {/* Node cards */}
+          {flatTopology.map((node) => {
+            const pos = positions.get(node.id)
+            if (!pos) return null
+            const st = statusMap[node.id]
+            return (
+              <button
+                key={node.id}
+                type='button'
+                className={`dag-node dag-node--${st}${selectedSource === node.id ? ' dag-node--selected' : ''}`}
+                style={{ left: pos.x, top: pos.y, width: DAG_NODE_W, height: DAG_NODE_H }}
+                onClick={() => onSelectSource(node.id)}
+              >
+                <ExecDot status={st} />
+                <div className='dag-node__text'>
+                  <strong>{node.name}</strong>
+                  <span>{node.kind}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+/* ── Helpers ────────────────────────────────────────────── */
+
+function statusFromExecution(status: 'Booting' | 'Healthy' | 'Failed'): RuntimeStatus {
+  if (status === 'Healthy') return 'healthy'
+  if (status === 'Failed') return 'failed'
+  return 'running'
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString()
+}

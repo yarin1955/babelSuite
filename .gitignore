@@ -1,30 +1,27 @@
-# ── Go ────────────────────────────────────────────────────────────────────────
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-/backend/bin/
-
-# ── Node / Frontend ───────────────────────────────────────────────────────────
-node_modules/
-frontend/dist/
-frontend/.vite/
-
-# ── Environment ───────────────────────────────────────────────────────────────
+# Local environment and editor state
 .env
-*.local
-
-# ── OS ────────────────────────────────────────────────────────────────────────
+.gocache/
+.claude/
+.idea/
+.vscode/
 .DS_Store
 Thumbs.db
 
-# ── IDE ───────────────────────────────────────────────────────────────────────
-.vscode/
-.idea/
-*.swp
-*.swo
+# Local runtime files
+backend-start.log
+backend-start.err.log
+babelsuite-config.yaml
 
-.gocache
+# Frontend build outputs mirrored at repo root for safety
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
+# Backend build and test outputs mirrored at repo root for safety
+backend/.cache/
+backend/bin/
+backend/coverage.out
+backend/*.test

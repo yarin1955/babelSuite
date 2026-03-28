@@ -14,202 +14,336 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var slugRe = regexp.MustCompile(`^[a-z0-9-]{2,40}$`)
+var (
+	emailRE     = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+	slugStripRE = regexp.MustCompile(`[^a-z0-9]+`)
+	spacesRE    = regexp.MustCompile(`\s+`)
+)
 
-type Handler struct {
-	store store.Store
-	jwt   *JWTService
+type SSOProvider struct {
+	ProviderID  string `json:"providerId"`
+	Name        string `json:"name"`
+	ButtonLabel string `json:"buttonLabel"`
+	StartURL    string `json:"startUrl,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	Hint        string `json:"hint,omitempty"`
 }
 
-func NewHandler(s store.Store, jwt *JWTService) *Handler {
-	return &Handler{store: s, jwt: jwt}
+type Handler struct {
+	store        store.Store
+	jwt          *JWTService
+	ssoProviders []SSOProvider
+}
+
+type signUpRequest struct {
+	FullName string `json:"fullName"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type signInRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type authResponse struct {
+	Token     string            `json:"token"`
+	User      *domain.User      `json:"user"`
+	Workspace *domain.Workspace `json:"workspace"`
+	ExpiresAt time.Time         `json:"expiresAt"`
+}
+
+func NewHandler(st store.Store, jwt *JWTService, ssoProviders []SSOProvider) *Handler {
+	return &Handler{store: st, jwt: jwt, ssoProviders: ssoProviders}
+}
+
+func DefaultSSOProviders(githubURL, gitlabURL string) []SSOProvider {
+	return []SSOProvider{
+		buildProvider("github", "GitHub", githubURL),
+		buildProvider("gitlab", "GitLab", gitlabURL),
+	}
+}
+
+func buildProvider(providerID, name, startURL string) SSOProvider {
+	provider := SSOProvider{
+		ProviderID:  providerID,
+		Name:        name,
+		ButtonLabel: "Continue with " + name,
+		StartURL:    strings.TrimSpace(startURL),
+		Enabled:     strings.TrimSpace(startURL) != "",
+	}
+	if !provider.Enabled {
+		provider.Hint = "Set " + strings.ToUpper(providerID) + "_OAUTH_URL on the backend to enable this SSO path."
+	}
+	return provider
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /auth/register", h.register)
-	mux.HandleFunc("POST /auth/login", h.login)
+	mux.HandleFunc("POST /api/v1/auth/sign-up", h.signUp)
+	mux.HandleFunc("POST /api/v1/auth/sign-in", h.signIn)
+	mux.HandleFunc("GET /api/v1/auth/me", h.me)
+	mux.HandleFunc("GET /api/v1/auth/sso/providers", h.listSSOProviders)
+
+	mux.HandleFunc("POST /auth/register", h.signUp)
+	mux.HandleFunc("POST /auth/login", h.signIn)
 	mux.HandleFunc("GET /auth/me", h.me)
+	mux.HandleFunc("GET /auth/sso/providers", h.listSSOProviders)
 }
 
-// ── register ─────────────────────────────────────────────────────────────────
-
-type registerReq struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
+func (h *Handler) listSSOProviders(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"providers": h.ssoProviders})
 }
 
-func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
-	var req registerReq
+func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
+	var req signUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
+		writeError(w, http.StatusBadRequest, "Invalid request body.")
 		return
 	}
-	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+
+	req.FullName = strings.TrimSpace(req.FullName)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	req.Name = strings.TrimSpace(req.Name)
 
-	if req.Username == "" || req.Email == "" || req.Name == "" || req.Password == "" {
-		writeErr(w, http.StatusBadRequest, "username, email, name and password are required")
+	if req.FullName == "" || req.Email == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "Full name, email, and password are required.")
 		return
 	}
-	if len(req.Password) < 6 {
-		writeErr(w, http.StatusBadRequest, "password must be at least 6 characters")
+	if !emailRE.MatchString(req.Email) {
+		writeError(w, http.StatusBadRequest, "Enter a valid email address.")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "Password must be at least 8 characters.")
+		return
+	}
+	if _, err := h.store.GetUserByEmail(r.Context(), req.Email); err == nil {
+		writeError(w, http.StatusConflict, "An account already exists for that email address.")
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusInternalServerError, "Could not create your account right now.")
 		return
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	passHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusInternalServerError, "Could not create your account right now.")
 		return
 	}
 
-	// auto-create a personal org named after the username
-	slug := req.Username
-	if !slugRe.MatchString(slug) {
-		slug = uuid.NewString()[:8]
+	workspace, err := h.createWorkspace(r, req.FullName, req.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not create your workspace right now.")
+		return
 	}
-	org := &domain.Org{
-		OrgID:     uuid.NewString(),
-		Slug:      slug,
-		Name:      req.Name + "'s workspace",
-		CreatedAt: time.Now().UTC(),
-	}
-	if err := h.store.CreateOrg(r.Context(), org); err != nil {
+
+	user, err := h.createUser(r, req.FullName, req.Email, string(passHash), workspace.WorkspaceID)
+	if err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
-			// slug taken → make it unique
-			org.OrgID = uuid.NewString()
-			org.Slug = slug + "-" + uuid.NewString()[:6]
-			if err := h.store.CreateOrg(r.Context(), org); err != nil {
-				writeErr(w, http.StatusInternalServerError, "internal error")
-				return
-			}
-		} else {
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			writeError(w, http.StatusConflict, "An account already exists for that email address.")
 			return
 		}
-	}
-
-	user := &domain.User{
-		UserID:    uuid.NewString(),
-		OrgID:     org.OrgID,
-		Username:  req.Username,
-		Email:     req.Email,
-		Name:      req.Name,
-		PassHash:  string(hash),
-		CreatedAt: time.Now().UTC(),
-	}
-	if err := h.store.CreateUser(r.Context(), user); err != nil {
-		if errors.Is(err, store.ErrDuplicate) {
-			writeErr(w, http.StatusConflict, "username or email already taken")
-			return
-		}
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusInternalServerError, "Could not create your account right now.")
 		return
 	}
 
-	token, err := h.jwt.Sign(user.UserID, org.OrgID, user.IsAdmin)
+	token, expiresAt, err := h.jwt.Sign(user.UserID, user.WorkspaceID, user.IsAdmin)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusInternalServerError, "Could not create your session right now.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"token": token,
-		"user":  user,
-		"org":   org,
+
+	writeJSON(w, http.StatusCreated, authResponse{
+		Token:     token,
+		User:      user,
+		Workspace: workspace,
+		ExpiresAt: expiresAt,
 	})
 }
 
-// ── login ─────────────────────────────────────────────────────────────────────
-
-type loginReq struct {
-	Username string `json:"username"` // username OR email
-	Password string `json:"password"`
-}
-
-func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
-	var req loginReq
+func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
+	var req signInRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	req.Username = strings.TrimSpace(req.Username)
-
-	if req.Username == "" || req.Password == "" {
-		writeErr(w, http.StatusBadRequest, "username and password are required")
+		writeError(w, http.StatusBadRequest, "Invalid request body.")
 		return
 	}
 
-	// find by username or email
-	var user *domain.User
-	var err error
-	if strings.Contains(req.Username, "@") {
-		user, err = h.store.GetUserByEmail(r.Context(), strings.ToLower(req.Username))
-	} else {
-		user, err = h.store.GetUserByUsername(r.Context(), strings.ToLower(req.Username))
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Email == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "Email and password are required.")
+		return
 	}
+
+	user, err := h.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusUnauthorized, "invalid credentials")
+			writeError(w, http.StatusUnauthorized, "Incorrect email or password.")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusInternalServerError, "Could not sign you in right now.")
 		return
 	}
-
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PassHash), []byte(req.Password)); err != nil {
-		writeErr(w, http.StatusUnauthorized, "invalid credentials")
+		writeError(w, http.StatusUnauthorized, "Incorrect email or password.")
 		return
 	}
 
-	org, err := h.store.GetOrgByID(r.Context(), user.OrgID)
+	workspace, err := h.store.GetWorkspaceByID(r.Context(), user.WorkspaceID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusInternalServerError, "Could not sign you in right now.")
 		return
 	}
 
-	token, err := h.jwt.Sign(user.UserID, org.OrgID, user.IsAdmin)
+	token, expiresAt, err := h.jwt.Sign(user.UserID, user.WorkspaceID, user.IsAdmin)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusInternalServerError, "Could not create your session right now.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token": token,
-		"user":  user,
-		"org":   org,
+
+	writeJSON(w, http.StatusOK, authResponse{
+		Token:     token,
+		User:      user,
+		Workspace: workspace,
+		ExpiresAt: expiresAt,
 	})
 }
 
-// ── me ────────────────────────────────────────────────────────────────────────
-
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	bearer := r.Header.Get("Authorization")
-	if !strings.HasPrefix(bearer, "Bearer ") {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
+	if token == "" {
+		writeError(w, http.StatusUnauthorized, "Missing bearer token.")
 		return
 	}
-	claims, err := h.jwt.Verify(strings.TrimPrefix(bearer, "Bearer "))
+
+	claims, err := h.jwt.Verify(token)
 	if err != nil {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
 		return
 	}
+
 	user, err := h.store.GetUserByID(r.Context(), claims.UserID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
+		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
 		return
 	}
+
 	writeJSON(w, http.StatusOK, user)
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+func (h *Handler) createWorkspace(r *http.Request, fullName, email string) (*domain.Workspace, error) {
+	baseSlug := slugify(firstNonEmpty(fullName, emailPrefix(email)))
+	if baseSlug == "" {
+		baseSlug = "workspace"
+	}
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	for attempt := 0; attempt < 5; attempt++ {
+		slug := baseSlug
+		if attempt > 0 {
+			slug = slug + "-" + uuid.NewString()[:6]
+		}
+
+		workspace := &domain.Workspace{
+			WorkspaceID: uuid.NewString(),
+			Slug:        slug,
+			Name:        firstName(fullName) + "'s workspace",
+			CreatedAt:   time.Now().UTC(),
+		}
+		if err := h.store.CreateWorkspace(r.Context(), workspace); err != nil {
+			if errors.Is(err, store.ErrDuplicate) {
+				continue
+			}
+			return nil, err
+		}
+		return workspace, nil
+	}
+
+	return nil, store.ErrDuplicate
 }
 
-func writeErr(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+func (h *Handler) createUser(r *http.Request, fullName, email, passHash, workspaceID string) (*domain.User, error) {
+	baseUsername := usernameBase(fullName, email)
+	if baseUsername == "" {
+		baseUsername = "member"
+	}
+
+	for attempt := 0; attempt < 5; attempt++ {
+		username := baseUsername
+		if attempt > 0 {
+			username = username + "-" + uuid.NewString()[:6]
+		}
+
+		user := &domain.User{
+			UserID:      uuid.NewString(),
+			WorkspaceID: workspaceID,
+			Username:    username,
+			Email:       email,
+			FullName:    fullName,
+			IsAdmin:     false,
+			PassHash:    passHash,
+			CreatedAt:   time.Now().UTC(),
+		}
+
+		if err := h.store.CreateUser(r.Context(), user); err != nil {
+			if errors.Is(err, store.ErrDuplicate) {
+				continue
+			}
+			return nil, err
+		}
+		return user, nil
+	}
+
+	return nil, store.ErrDuplicate
+}
+
+func usernameBase(fullName, email string) string {
+	candidate := slugify(fullName)
+	if candidate == "" {
+		candidate = slugify(emailPrefix(email))
+	}
+	if candidate == "" {
+		return "member"
+	}
+	return candidate
+}
+
+func emailPrefix(email string) string {
+	if at := strings.Index(email, "@"); at > 0 {
+		return email[:at]
+	}
+	return email
+}
+
+func slugify(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = spacesRE.ReplaceAllString(value, "-")
+	value = slugStripRE.ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-")
+	return value
+}
+
+func firstName(fullName string) string {
+	parts := strings.Fields(strings.TrimSpace(fullName))
+	if len(parts) == 0 {
+		return "Your"
+	}
+	return parts[0]
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
 }

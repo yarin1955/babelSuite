@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package babelsuite.v1;
+
+option go_package = "github.com/babelsuite/babelsuite/proto/babelsuite/v1;babelsuitev1";
+
+message SecretReference {
+  string key = 1;
+  string provider = 2;
+  string ref = 3;
+}
+
+message ProfileRecord {
+  string id = 1;
+  string name = 2;
+  string file_name = 3;
+  string description = 4;
+  string scope = 5;
+  string yaml = 6;
+  repeated SecretReference secret_refs = 7;
+  bool is_default = 8;
+  string extends_id = 9;
+  bool launchable = 10;
+  string updated_at = 11;
+}
+
+message ProfileSuiteSummary {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string repository = 4;
+  int32 profile_count = 5;
+  int32 launchable_count = 6;
+  string default_profile_file_name = 7;
+}
+
+message ListProfileSuitesRequest {}
+
+message ListProfileSuitesResponse {
+  repeated ProfileSuiteSummary suites = 1;
+}
+
+message GetSuiteProfilesRequest {
+  string suite_id = 1;
+}
+
+message SuiteProfiles {
+  string suite_id = 1;
+  string suite_title = 2;
+  string suite_description = 3;
+  string repository = 4;
+  string default_profile_id = 5;
+  string default_profile_file_name = 6;
+  repeated ProfileRecord profiles = 7;
+}
+
+message CreateProfileRequest {
+  string suite_id = 1;
+  string name = 2;
+  string file_name = 3;
+  string description = 4;
+  string scope = 5;
+  string yaml = 6;
+  repeated SecretReference secret_refs = 7;
+  bool is_default = 8;
+  string extends_id = 9;
+}
+
+message UpdateProfileRequest {
+  string suite_id = 1;
+  string profile_id = 2;
+  string name = 3;
+  string file_name = 4;
+  string description = 5;
+  string scope = 6;
+  string yaml = 7;
+  repeated SecretReference secret_refs = 8;
+  bool is_default = 9;
+  string extends_id = 10;
+}
+
+message DeleteProfileRequest {
+  string suite_id = 1;
+  string profile_id = 2;
+}
+
+message SetDefaultProfileRequest {
+  string suite_id = 1;
+  string profile_id = 2;
+}
+
+service ProfileService {
+  rpc ListProfileSuites(ListProfileSuitesRequest) returns (ListProfileSuitesResponse);
+  rpc GetSuiteProfiles(GetSuiteProfilesRequest) returns (SuiteProfiles);
+  rpc CreateProfile(CreateProfileRequest) returns (SuiteProfiles);
+  rpc UpdateProfile(UpdateProfileRequest) returns (SuiteProfiles);
+  rpc DeleteProfile(DeleteProfileRequest) returns (SuiteProfiles);
+  rpc SetDefaultProfile(SetDefaultProfileRequest) returns (SuiteProfiles);
+}

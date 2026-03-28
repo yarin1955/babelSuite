@@ -1,132 +1,85 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
+import { FaAngleRight, FaBoxArchive, FaGear, FaKey, FaServer } from 'react-icons/fa6'
 import { useNavigate } from 'react-router-dom'
-import {
-  FaArrowRight, FaBoxOpen, FaGear, FaRobot, FaSliders, FaUser,
-} from 'react-icons/fa6'
-import Layout from '../components/Layout'
-import Page from '../components/Page'
-import styles from './Settings.module.css'
-
-interface StoredUser {
-  name?: string
-  username?: string
-  email?: string
-  is_admin?: boolean
-}
-
-function currentUser(): StoredUser | null {
-  try {
-    const raw = localStorage.getItem('user')
-    return raw ? JSON.parse(raw) as StoredUser : null
-  } catch {
-    return null
-  }
-}
+import { getPlatformSettings, type PlatformSettings } from '../lib/api'
+import AppShell from '../components/AppShell'
+import './PlatformSettings.css'
 
 export default function Settings() {
-  const nav = useNavigate()
-  const user = currentUser()
-  const isAdmin = user?.is_admin === true
+  const navigate = useNavigate()
+  const [platform, setPlatform] = useState<PlatformSettings | null>(null)
 
-  const managerItems = useMemo(() => [
+  useEffect(() => {
+    void getPlatformSettings().then(setPlatform).catch(() => null)
+  }, [])
+
+  const sections = [
     {
-      title: 'Agent Pools',
-      description: 'Configure worker tokens, runtime classes, and named execution targets.',
+      path: '/settings/general',
+      icon: FaGear,
+      title: 'General',
+      description: platform
+        ? `${platform.mode} mode — last saved ${platform.updatedAt ? new Date(platform.updatedAt).toLocaleDateString() : 'never'}`
+        : 'Platform deployment mode and instance description.',
+    },
+    {
       path: '/settings/agents',
-      icon: <FaRobot />,
+      icon: FaServer,
+      title: 'Execution Agents',
+      description: platform
+        ? `${platform.agents.length} configured agent${platform.agents.length !== 1 ? 's' : ''} — local, remote Docker, and Kubernetes targets`
+        : 'Configure environments where suites execute.',
     },
     {
-      title: 'Catalog Sources',
-      description: 'Connect registries and sync suite packages into the workspace catalog.',
-      path: '/settings/catalog?tab=registries',
-      icon: <FaGear />,
+      path: '/settings/registries',
+      icon: FaBoxArchive,
+      title: 'OCI Registries',
+      description: platform
+        ? `${platform.registries.length} upstream source${platform.registries.length !== 1 ? 's' : ''} with manual sync and provider auth`
+        : 'Control where BabelSuite discovers suites and modules.',
     },
     {
-      title: 'Suite Availability',
-      description: 'Enable or disable the packages that appear on the Suites page for users.',
-      path: '/settings/catalog?tab=packages',
-      icon: <FaBoxOpen />,
+      path: '/settings/secrets',
+      icon: FaKey,
+      title: 'Global Secrets',
+      description: platform
+        ? `${platform.secrets.globalOverrides.length} global override${platform.secrets.globalOverrides.length !== 1 ? 's' : ''} — ${platform.secrets.provider === 'none' ? 'no external secrets manager' : platform.secrets.provider}`
+        : 'Configure Vault or AWS Secrets Manager and global overrides.',
     },
-    {
-      title: 'Shared Profiles',
-      description: 'Create and edit reusable YAML or JSON environment profiles for suite runs.',
-      path: '/settings/profiles',
-      icon: <FaSliders />,
-    },
-  ], [])
+  ]
 
   return (
-    <Layout>
-      <Page title='Settings'>
-        <div className={styles.shell}>
-          {isAdmin ? (
-            <section className={styles.section}>
-              <div className={styles.sectionTop}>
-                <div className={styles.eyebrow}>Manager controls</div>
-                <h2>Workspace configuration</h2>
-                <p>Open the control surfaces admins use to manage catalogs, agents, registries, and shared profiles.</p>
-              </div>
-              <div className={styles.redirectList}>
-                {managerItems.map(item => (
-                  <button key={item.path} className={styles.redirectPanel} onClick={() => nav(item.path)}>
-                    <div className={styles.redirectIcon}>{item.icon}</div>
-                    <div className={styles.redirectContent}>
-                      <div className={styles.redirectTitle}>{item.title}</div>
-                      <div className={styles.redirectDescription}>{item.description}</div>
-                    </div>
-                    <div className={styles.redirectArrow}><FaArrowRight /></div>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <section className={styles.section}>
-            <div className={styles.sectionTop}>
-              <div className={styles.eyebrow}>Account</div>
-              <h2>Your access</h2>
-              <p>Review the current signed-in identity and workspace role.</p>
-            </div>
-            <div className={styles.accountCard}>
-              <div className={styles.accountHeader}>
-                <div className={styles.accountAvatar}><FaUser /></div>
-                <div>
-                  <strong>{user?.name || 'Unknown user'}</strong>
-                  <div className={styles.accountRole}>{isAdmin ? 'Manager' : 'Member'}</div>
+    <AppShell
+      section='Settings'
+      title='Platform Administration'
+      description='Configure BabelSuite runtime targets, catalog sources, and secret management.'
+      actions={platform ? (
+        <span className='platform-badge'>{platform.mode} mode</span>
+      ) : undefined}
+    >
+      <div className='platform-page'>
+        <div className='settings-index'>
+          {sections.map((section) => {
+            const Icon = section.icon
+            return (
+              <button
+                key={section.path}
+                className='settings-index__card'
+                onClick={() => navigate(section.path)}
+              >
+                <div className='platform-overview__icon'>
+                  <Icon />
                 </div>
-              </div>
-
-              <div className={styles.detailGrid}>
-                <div className={styles.detailRow}>
-                  <span>Name</span>
-                  <strong>{user?.name || 'Unknown'}</strong>
+                <div className='settings-index__body'>
+                  <strong>{section.title}</strong>
+                  <p>{section.description}</p>
                 </div>
-                <div className={styles.detailRow}>
-                  <span>Username</span>
-                  <strong>{user?.username ? `@${user.username}` : 'Unknown'}</strong>
-                </div>
-                <div className={styles.detailRow}>
-                  <span>Email</span>
-                  <strong>{user?.email || 'Unknown'}</strong>
-                </div>
-                <div className={styles.detailRow}>
-                  <span>Role</span>
-                  <strong>{isAdmin ? 'Manager' : 'Member'}</strong>
-                </div>
-              </div>
-
-              {!isAdmin && (
-                <div className={styles.accountActions}>
-                  <button className='app-button app-button--secondary' onClick={() => nav('/profiles')}>
-                    <FaSliders />
-                    Open profiles
-                  </button>
-                </div>
-              )}
-            </div>
-          </section>
+                <FaAngleRight className='settings-index__arrow' />
+              </button>
+            )
+          })}
         </div>
-      </Page>
-    </Layout>
+      </div>
+    </AppShell>
   )
 }

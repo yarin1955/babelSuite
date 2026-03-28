@@ -13,18 +13,9 @@ import (
 )
 
 type Store struct {
-	client         *mongo.Client
-	users          *mongo.Collection
-	orgs           *mongo.Collection
-	registries     *mongo.Collection
-	packages       *mongo.Collection
-	profiles       *mongo.Collection
-	runtimeTargets *mongo.Collection
-	oidcProviders  *mongo.Collection
-	agents         *mongo.Collection
-	runs           *mongo.Collection
-	steps          *mongo.Collection
-	logs           *mongo.Collection
+	client     *mongo.Client
+	users      *mongo.Collection
+	workspaces *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -40,37 +31,65 @@ func New(uri, dbName string) (*Store, error) {
 	}
 
 	db := client.Database(dbName)
-	s := &Store{
-		client:         client,
-		users:          db.Collection("users"),
-		orgs:           db.Collection("orgs"),
-		registries:     db.Collection("registries"),
-		packages:       db.Collection("catalog_packages"),
-		profiles:       db.Collection("profiles"),
-		runtimeTargets: db.Collection("runtime_targets"),
-		oidcProviders:  db.Collection("oidc_providers"),
-		agents:         db.Collection("agents"),
-		runs:           db.Collection("runs"),
-		steps:          db.Collection("steps"),
-		logs:           db.Collection("run_logs"),
+	st := &Store{
+		client:     client,
+		users:      db.Collection("users"),
+		workspaces: db.Collection("workspaces"),
 	}
 
-	uniq := options.Index().SetUnique(true)
-	s.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "username", Value: 1}}, Options: uniq})
-	s.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "email", Value: 1}}, Options: uniq})
-	s.orgs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "slug", Value: 1}}, Options: uniq})
-	s.packages.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "image_ref", Value: 1}}, Options: uniq})
-	s.profiles.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "name", Value: 1}}, Options: uniq})
-	s.profiles.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "profile_id", Value: 1}}, Options: uniq})
-	s.runtimeTargets.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "org_id", Value: 1}, {Key: "name", Value: 1}}, Options: uniq})
-	s.runtimeTargets.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "runtime_target_id", Value: 1}}, Options: uniq})
-	s.agents.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "token", Value: 1}}, Options: uniq})
-	s.steps.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "run_id", Value: 1}}})
-	s.logs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "step_id", Value: 1}, {Key: "line", Value: 1}}})
-	return s, nil
+	unique := options.Index().SetUnique(true)
+	_, _ = st.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "email", Value: 1}}, Options: unique})
+	_, _ = st.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "username", Value: 1}}, Options: unique})
+	_, _ = st.users.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user_id", Value: 1}}, Options: unique})
+	_, _ = st.workspaces.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "slug", Value: 1}}, Options: unique})
+	_, _ = st.workspaces.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "workspace_id", Value: 1}}, Options: unique})
+
+	return st, nil
 }
 
-func (s *Store) Close(ctx context.Context) error { return s.client.Disconnect(ctx) }
+func (s *Store) Close(ctx context.Context) error {
+	return s.client.Disconnect(ctx)
+}
+
+func (s *Store) CreateWorkspace(ctx context.Context, workspace *domain.Workspace) error {
+	_, err := s.workspaces.InsertOne(ctx, workspace)
+	return wrap(err)
+}
+
+func (s *Store) GetWorkspaceByID(ctx context.Context, id string) (*domain.Workspace, error) {
+	var workspace domain.Workspace
+	err := s.workspaces.FindOne(ctx, bson.M{"workspace_id": id}).Decode(&workspace)
+	return &workspace, wrap(err)
+}
+
+func (s *Store) GetWorkspaceBySlug(ctx context.Context, slug string) (*domain.Workspace, error) {
+	var workspace domain.Workspace
+	err := s.workspaces.FindOne(ctx, bson.M{"slug": slug}).Decode(&workspace)
+	return &workspace, wrap(err)
+}
+
+func (s *Store) CreateUser(ctx context.Context, user *domain.User) error {
+	_, err := s.users.InsertOne(ctx, user)
+	return wrap(err)
+}
+
+func (s *Store) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
+	var user domain.User
+	err := s.users.FindOne(ctx, bson.M{"user_id": id}).Decode(&user)
+	return &user, wrap(err)
+}
+
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	var user domain.User
+	err := s.users.FindOne(ctx, bson.M{"email": email}).Decode(&user)
+	return &user, wrap(err)
+}
+
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
+	var user domain.User
+	err := s.users.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	return &user, wrap(err)
+}
 
 func wrap(err error) error {
 	if err == nil {
@@ -85,37 +104,3 @@ func wrap(err error) error {
 	return err
 }
 
-func (s *Store) CreateOrg(ctx context.Context, o *domain.Org) error {
-	_, err := s.orgs.InsertOne(ctx, o)
-	return wrap(err)
-}
-
-func (s *Store) GetOrgBySlug(ctx context.Context, slug string) (*domain.Org, error) {
-	var o domain.Org
-	return &o, wrap(s.orgs.FindOne(ctx, bson.M{"slug": slug}).Decode(&o))
-}
-
-func (s *Store) GetOrgByID(ctx context.Context, id string) (*domain.Org, error) {
-	var o domain.Org
-	return &o, wrap(s.orgs.FindOne(ctx, bson.M{"org_id": id}).Decode(&o))
-}
-
-func (s *Store) CreateUser(ctx context.Context, u *domain.User) error {
-	_, err := s.users.InsertOne(ctx, u)
-	return wrap(err)
-}
-
-func (s *Store) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
-	var u domain.User
-	return &u, wrap(s.users.FindOne(ctx, bson.M{"user_id": id}).Decode(&u))
-}
-
-func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	var u domain.User
-	return &u, wrap(s.users.FindOne(ctx, bson.M{"username": username}).Decode(&u))
-}
-
-func (s *Store) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
-	var u domain.User
-	return &u, wrap(s.users.FindOne(ctx, bson.M{"email": email}).Decode(&u))
-}

@@ -1,459 +1,721 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import Editor from '@monaco-editor/react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import {
-  FaFloppyDisk, FaPenToSquare, FaPlus, FaTrash,
+  FaChevronDown,
+  FaCodeBranch,
+  FaFloppyDisk,
+  FaLayerGroup,
+  FaPlus,
+  FaShieldHalved,
+  FaTrash,
+  FaWandMagicSparkles,
 } from 'react-icons/fa6'
-import Layout from '../components/Layout'
-import Page from '../components/Page'
-import '../lib/monaco'
-import styles from './Profiles.module.css'
+import AppShell from '../components/AppShell'
+import SlidingPanel from '../components/SlidingPanel'
+import {
+  createSuiteProfile,
+  deleteSuiteProfile,
+  getSuiteProfiles,
+  listProfileSuites,
+  setDefaultSuiteProfile,
+  updateSuiteProfile,
+  type ProfileRecord,
+  type ProfileSuiteSummary,
+  type SuiteProfilesResponse,
+} from '../lib/api'
+import './Profiles.css'
 
-const API = 'http://localhost:8090'
-const PANEL_ANIMATION_MS = 240
-
-interface Profile {
-  profile_id: string
-  org_id: string
-  name: string
-  description: string
-  format: 'yaml' | 'json'
-  content: string
-  revision: number
-  created_by: string
-  created_by_name: string
-  updated_by: string
-  updated_by_name: string
-  created_at: string
-  updated_at: string
-}
-
-interface DraftProfile extends Profile {
-  isNew: boolean
-}
-
-type PanelMode = 'create' | 'edit'
-
-const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
-
-const yamlTemplate = `services:
-  api:
-    env:
-      FEATURE_FLAG: "enabled"
-      REGION: "emea"
-
-tests:
-  env:
-    BASE_URL: "https://example.internal"
-`
-
-const jsonTemplate = JSON.stringify({
-  services: {
-    api: {
-      env: {
-        FEATURE_FLAG: 'enabled',
-        REGION: 'emea',
-      },
-    },
-  },
-  tests: {
-    env: {
-      BASE_URL: 'https://example.internal',
-    },
-  },
-}, null, 2)
-
-const blankDraft = (format: 'yaml' | 'json' = 'yaml'): DraftProfile => ({
-  profile_id: '',
-  org_id: '',
-  name: '',
-  description: '',
-  format,
-  content: format === 'json' ? jsonTemplate : yamlTemplate,
-  revision: 0,
-  created_by: '',
-  created_by_name: '',
-  updated_by: '',
-  updated_by_name: '',
-  created_at: '',
-  updated_at: '',
-  isNew: true,
-})
-
-const serializeDraft = (profile: DraftProfile | null) => profile
-  ? JSON.stringify({ name: profile.name, description: profile.description, format: profile.format, content: profile.content })
-  : ''
-
-const timeAgo = (iso?: string) => {
-  if (!iso) return 'never'
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
-}
+const NEW_PROFILE_ID = '__new__'
 
 export default function Profiles() {
-  const nav = useNavigate()
-  const location = useLocation()
-  const inSettingsFlow = location.pathname.startsWith('/settings/')
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [loading, setLoading] = useState(true)
-  const [pageErr, setPageErr] = useState('')
+  const [suiteSummaries, setSuiteSummaries] = useState<ProfileSuiteSummary[]>([])
+  const [selectedSuiteId, setSelectedSuiteId] = useState('')
+  const [suiteData, setSuiteData] = useState<SuiteProfilesResponse | null>(null)
+  const [selectedProfileId, setSelectedProfileId] = useState('')
   const [search, setSearch] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [draft, setDraft] = useState<ProfileRecord | null>(null)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [openSections, setOpenSections] = useState({
+    yaml: true,
+    secrets: true,
+    merge: true,
+  })
 
-  const [panelMode, setPanelMode] = useState<PanelMode | null>(null)
-  const [panelMounted, setPanelMounted] = useState(false)
-  const [panelVisible, setPanelVisible] = useState(false)
-  const [panelLoading, setPanelLoading] = useState(false)
-  const [panelSaving, setPanelSaving] = useState(false)
-  const [panelErr, setPanelErr] = useState('')
-  const [panelDraft, setPanelDraft] = useState<DraftProfile | null>(null)
-  const [panelSnapshot, setPanelSnapshot] = useState('')
-  const closeTimerRef = useRef<number | null>(null)
+  const profiles = suiteData?.profiles ?? []
+  const selectedSuite = suiteSummaries.find((suite) => suite.id === selectedSuiteId) ?? suiteSummaries[0] ?? null
+  const selectedProfile = !isCreating
+    ? profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0] ?? null
+    : null
 
-  const filteredProfiles = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return profiles
-    return profiles.filter(profile =>
-      [profile.name, profile.description, profile.updated_by_name, profile.created_by_name].join(' ').toLowerCase().includes(q),
-    )
-  }, [profiles, search])
+  useEffect(() => {
+    let active = true
 
-  const panelDirty = panelSnapshot !== serializeDraft(panelDraft)
-  const panelIsCreate = panelMode === 'create'
-  const panelIsEdit = panelMode === 'edit'
-
-  const loadProfiles = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(`${API}/api/profiles`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        setPageErr((data as { error?: string } | null)?.error || 'Failed to load profiles')
-        return
+    const loadSuites = async () => {
+      try {
+        const suites = await listProfileSuites()
+        if (!active) return
+        setSuiteSummaries(suites)
+        const nextSuiteId = suites.some((suite) => suite.id === selectedSuiteId)
+          ? selectedSuiteId
+          : suites[0]?.id ?? ''
+        setSelectedSuiteId(nextSuiteId)
+      } catch (loadError) {
+        if (!active) return
+        setError(loadError instanceof Error ? loadError.message : 'Could not load suites.')
+        setLoading(false)
       }
-      const list = Array.isArray(data) ? data : []
-      setProfiles(list)
-      setPageErr('')
-    } catch {
-      setPageErr('Failed to load profiles')
-    } finally {
-      setLoading(false)
     }
-  }
 
-  useEffect(() => { void loadProfiles() }, [])
-  useEffect(() => () => {
-    if (closeTimerRef.current != null) {
-      window.clearTimeout(closeTimerRef.current)
-    }
+    void loadSuites()
+    return () => { active = false }
   }, [])
 
-  const openPanel = (mode: PanelMode, draft: DraftProfile | null, loadingState = false) => {
-    if (closeTimerRef.current != null) {
-      window.clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
+  useEffect(() => {
+    if (!selectedSuiteId) {
+      setLoading(false)
+      return
     }
-    setPanelMode(mode)
-    setPanelDraft(draft)
-    setPanelSnapshot(serializeDraft(draft))
-    setPanelLoading(loadingState)
-    setPanelSaving(false)
-    setPanelErr('')
-    setPanelMounted(true)
-    window.requestAnimationFrame(() => setPanelVisible(true))
-  }
 
-  const confirmPanelLeave = () => !panelDirty || window.confirm('Discard unsaved changes?')
+    let active = true
+    setLoading(true)
+    setError('')
+    setMessage('')
 
-  const finishClosePanel = () => {
-    setPanelMode(null)
-    setPanelMounted(false)
-    setPanelVisible(false)
-    setPanelLoading(false)
-    setPanelSaving(false)
-    setPanelErr('')
-    setPanelDraft(null)
-    setPanelSnapshot('')
-  }
-
-  const closePanel = (force = false) => {
-    if (!force && !confirmPanelLeave()) return
-    setPanelVisible(false)
-    if (closeTimerRef.current != null) {
-      window.clearTimeout(closeTimerRef.current)
-    }
-    closeTimerRef.current = window.setTimeout(() => {
-      finishClosePanel()
-      closeTimerRef.current = null
-    }, PANEL_ANIMATION_MS)
-  }
-
-  const openCreate = () => {
-    if (!confirmPanelLeave()) return
-    openPanel('create', blankDraft())
-  }
-
-  const openEdit = async (profile: Profile) => {
-    if (!confirmPanelLeave()) return
-    openPanel('edit', null, true)
-    try {
-      const res = await fetch(`${API}/api/profiles/${profile.profile_id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
-      const data = await res.json().catch(() => null)
-      if (!res.ok || !data) {
-        setPanelErr((data as { error?: string } | null)?.error || 'Failed to load profile')
-        setPanelLoading(false)
-        return
+    const loadProfiles = async () => {
+      try {
+        const payload = await getSuiteProfiles(selectedSuiteId)
+        if (!active) return
+        applySuitePayload(payload)
+      } catch (loadError) {
+        if (!active) return
+        setError(loadError instanceof Error ? loadError.message : 'Could not load profiles.')
+        setLoading(false)
       }
-      const next = { ...data, isNew: false } as DraftProfile
-      setPanelDraft(next)
-      setPanelSnapshot(serializeDraft(next))
-      setPanelErr('')
-    } catch {
-      setPanelErr('Failed to load profile')
-    } finally {
-      setPanelLoading(false)
     }
-  }
 
-  const setDraftFormat = (format: 'yaml' | 'json') => {
-    setPanelDraft(current => {
-      if (!current) return current
-      const shouldSwapTemplate = current.content === yamlTemplate || current.content === jsonTemplate
-      return {
-        ...current,
-        format,
-        content: shouldSwapTemplate ? (format === 'json' ? jsonTemplate : yamlTemplate) : current.content,
-      }
+    void loadProfiles()
+    return () => { active = false }
+  }, [selectedSuiteId])
+
+  useEffect(() => {
+    if (isCreating || !selectedProfile) return
+    startTransition(() => {
+      setDraft(structuredClone(selectedProfile))
+      setEditing(false)
+    })
+  }, [selectedProfile, isCreating])
+
+  const filteredProfiles = profiles.filter((profile) => {
+    const haystack = [profile.name, profile.fileName, profile.description, profile.scope].join(' ').toLowerCase()
+    return haystack.includes(search.trim().toLowerCase())
+  })
+
+  const mergeRows = useMemo(() => {
+    if (!draft) return [] as MergeRow[]
+    const baseProfile = profiles.find((profile) => profile.id === draft.extendsId)
+    return buildMergeRows(baseProfile?.yaml ?? '', draft.yaml)
+  }, [draft, profiles])
+
+  const openProfile = (profile: ProfileRecord) => {
+    startTransition(() => {
+      setSelectedProfileId(profile.id)
+      setIsCreating(false)
+      setEditing(false)
+      setMessage('')
+      setError('')
+      setPanelOpen(true)
     })
   }
 
-  const savePanel = async () => {
-    if (!panelDraft) return
-    if (!panelDraft.name.trim()) {
-      setPanelErr('Name is required')
+  const closePanel = () => {
+    if (isCreating) {
+      const fallback = profiles.find((p) => p.id === suiteData?.defaultProfileId) ?? profiles[0] ?? null
+      startTransition(() => {
+        setIsCreating(false)
+        setDraft(fallback ? structuredClone(fallback) : null)
+        setSelectedProfileId(fallback?.id ?? '')
+        setEditing(false)
+        setMessage('')
+        setError('')
+      })
+    } else if (editing && selectedProfile) {
+      startTransition(() => {
+        setDraft(structuredClone(selectedProfile))
+        setEditing(false)
+        setMessage('')
+        setError('')
+      })
+    }
+    setPanelOpen(false)
+  }
+
+  const saveProfile = async () => {
+    if (!draft || !suiteData) return
+
+    const parsed = parseSimpleYaml(draft.yaml)
+    if (parsed.errors.length > 0) {
+      setError(parsed.errors[0])
       return
     }
-    if (panelDraft.format === 'json') {
-      try {
-        JSON.parse(panelDraft.content)
-      } catch {
-        setPanelErr('JSON content is not valid')
-        return
-      }
-    }
 
-    setPanelSaving(true)
+    setSaving(true)
+    setError('')
+
     try {
-      const payload = {
-        name: panelDraft.name.trim(),
-        description: panelDraft.description.trim(),
-        format: panelDraft.format,
-        content: panelDraft.content,
-        base_updated_at: panelIsEdit ? panelDraft.updated_at || undefined : undefined,
-      }
-      const method = panelIsCreate ? 'POST' : 'PUT'
-      const path = panelIsCreate ? '/api/profiles' : `/api/profiles/${panelDraft.profile_id}`
-      const res = await fetch(`${API}${path}`, { method, headers: authHeaders(), body: JSON.stringify(payload) })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setPanelErr(data.error || (panelIsCreate ? 'Create failed' : 'Save failed'))
-        return
-      }
+      const payload = toUpsertPayload(draft)
+      const nextSuite = isCreating
+        ? await createSuiteProfile(suiteData.suiteId, payload)
+        : await updateSuiteProfile(suiteData.suiteId, draft.id, payload)
 
-      if (panelIsCreate) {
-        closePanel(true)
-      } else {
-        const next = { ...data, isNew: false } as DraftProfile
-        setPanelDraft(next)
-        setPanelSnapshot(serializeDraft(next))
-      }
-      setPanelErr('')
-      await loadProfiles()
+      applySuitePayload(nextSuite, isCreating ? draft.fileName : '', isCreating ? '' : draft.id)
+      const suites = await listProfileSuites()
+      setSuiteSummaries(suites)
+      setMessage(isCreating
+        ? 'Profile created. Launchers now see the new suite-scoped override.'
+        : 'Profile saved. Merge preview and launch options were updated.')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save profile.')
     } finally {
-      setPanelSaving(false)
+      setSaving(false)
     }
+  }
+
+  const createProfile = () => {
+    const nextIndex = profiles.filter((profile) => profile.launchable).length + 1
+    const profile: ProfileRecord = {
+      id: NEW_PROFILE_ID,
+      name: `New Profile ${nextIndex}`,
+      fileName: `profile-${nextIndex}.yaml`,
+      description: 'New suite-scoped execution context for an environment override.',
+      scope: 'Local',
+      default: false,
+      extendsId: profiles.find((item) => !item.launchable)?.id ?? profiles[0]?.id ?? '',
+      yaml: 'env:\n  LOG_LEVEL: info\n',
+      secretRefs: [],
+      launchable: true,
+      updatedAt: new Date().toISOString(),
+    }
+
+    startTransition(() => {
+      setSelectedProfileId(NEW_PROFILE_ID)
+      setIsCreating(true)
+      setEditing(true)
+      setDraft(profile)
+      setMessage('New profile drafted locally. Save to make it available in the suite launcher.')
+      setError('')
+      setPanelOpen(true)
+    })
   }
 
   const deleteProfile = async () => {
-    if (!panelDraft || !panelIsEdit) return
-    if (!window.confirm(`Delete profile "${panelDraft.name}"?`)) return
-    const res = await fetch(`${API}/api/profiles/${panelDraft.profile_id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: 'Delete failed' }))
-      setPanelErr(data.error || 'Delete failed')
+    if (!draft || !suiteData) return
+
+    if (isCreating) {
+      closePanel()
       return
     }
-    closePanel(true)
-    await loadProfiles()
+
+    if (!draft.launchable) return
+
+    try {
+      const nextSuite = await deleteSuiteProfile(suiteData.suiteId, draft.id)
+      applySuitePayload(nextSuite)
+      const suites = await listProfileSuites()
+      setSuiteSummaries(suites)
+      setPanelOpen(false)
+      setMessage('Profile removed from the suite-scoped profile set.')
+      setError('')
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete profile.')
+    }
   }
 
-  return (
-    <Layout>
-      <Page
-        title='Profiles'
-        toolbar={
-          <div className={styles.toolbarActions}>
-            {inSettingsFlow && <button className='app-button app-button--secondary' onClick={() => nav('/settings')}>Back to Settings</button>}
-            <button className='app-button app-button--primary' onClick={openCreate}>
-              <FaPlus />
-              New profile
-            </button>
-          </div>
-        }
-      >
-        {pageErr && <div className='auth-error'>{pageErr}</div>}
+  const markDefault = async () => {
+    if (!draft || !suiteData || !draft.launchable || isCreating) return
 
-        <section className={styles.listShell}>
-          <div className={styles.listToolbar}>
-            <div>
-              <div className='panel-card__eyebrow'>Profiles</div>
-              <h3>Shared environment profiles</h3>
-            </div>
-            <div className={styles.listTools}>
-              <input className={styles.searchInput} value={search} onChange={e => setSearch(e.target.value)} placeholder='Filter profiles...' />
-              <span className={styles.listCount}>{filteredProfiles.length} shown</span>
-            </div>
-          </div>
+    try {
+      const nextSuite = await setDefaultSuiteProfile(suiteData.suiteId, draft.id)
+      applySuitePayload(nextSuite, '', draft.id)
+      const suites = await listProfileSuites()
+      setSuiteSummaries(suites)
+      setMessage(`${draft.fileName} is now the default launch profile for ${suiteData.suiteTitle}.`)
+      setError('')
+    } catch (markError) {
+      setError(markError instanceof Error ? markError.message : 'Could not set the default profile.')
+    }
+  }
 
-          <div className='panel-card panel-card--flush'>
-            {loading ? (
-              <div className='app-empty-state'>Loading profiles...</div>
-            ) : filteredProfiles.length === 0 ? (
-              <div className='app-empty-state'>
-                <div className='app-empty-state__title'>{profiles.length === 0 ? 'No profiles yet' : 'No matching profiles'}</div>
-                <div className='app-empty-state__desc'>
-                  {profiles.length === 0
-                    ? 'Create a shared profile to start managing suite environment configuration.'
-                    : 'Try a broader search or clear the current filter.'}
-                </div>
-                {profiles.length === 0 && (
-                  <button className='app-button app-button--primary' onClick={openCreate}>
-                    <FaPlus />
-                    Create profile
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className={styles.profileList}>
-                {filteredProfiles.map(profile => (
-                  <button key={profile.profile_id} className={styles.profileRow} onClick={() => void openEdit(profile)}>
-                    <div className={styles.profileMain}>
-                      <div className={styles.profileTitleRow}>
-                        <strong>{profile.name}</strong>
-                        <span className='app-chip'>{profile.format}</span>
-                        <span className='app-chip'>v{profile.revision}</span>
-                      </div>
-                      <div className={styles.profileDescription}>{profile.description || 'No description'}</div>
-                    </div>
-                    <div className={styles.profileSide}>
-                      <span>{profile.updated_by_name || 'unknown'}</span>
-                      <span>{timeAgo(profile.updated_at)}</span>
-                      <span className={styles.profileAction}><FaPenToSquare />Open</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      </Page>
+  const applySuitePayload = (payload: SuiteProfilesResponse, preferredFileName = '', preferredProfileId = '') => {
+    const nextSelected = payload.profiles.find((profile) => profile.id === preferredProfileId)
+      ?? payload.profiles.find((profile) => profile.fileName === preferredFileName)
+      ?? payload.profiles.find((profile) => profile.id === payload.defaultProfileId)
+      ?? payload.profiles[0]
+      ?? null
 
-      {panelMounted && (
-        <div className={`${styles.panelOverlay} ${panelVisible ? styles.panelOverlayVisible : ''}`} onClick={() => closePanel()}>
-          <aside className={`${styles.panelDrawer} ${panelVisible ? styles.panelDrawerVisible : ''}`} onClick={event => event.stopPropagation()}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>{panelIsCreate ? 'Create profile' : 'Edit profile'}</div>
-                <h3>{panelIsCreate ? 'New shared profile' : panelDraft?.name || 'Profile'}</h3>
-              </div>
-              <div className={styles.panelActions}>
-                {panelIsEdit && panelDraft && (
-                  <button className='app-button app-button--secondary' onClick={() => void deleteProfile()} disabled={panelSaving || panelLoading}>
-                    <FaTrash />
-                    Delete
-                  </button>
-                )}
-                <button className='app-button app-button--secondary' onClick={() => closePanel()} disabled={panelSaving}>Cancel</button>
-                <button className='app-button app-button--primary' onClick={() => void savePanel()} disabled={panelSaving || panelLoading || !panelDraft?.name.trim()}>
-                  <FaFloppyDisk />
-                  {panelSaving ? (panelIsCreate ? 'Creating...' : 'Saving...') : panelIsCreate ? 'Create' : 'Save'}
-                </button>
-              </div>
-            </div>
+    startTransition(() => {
+      setSuiteData(payload)
+      setSelectedProfileId(nextSelected?.id ?? '')
+      setDraft(nextSelected ? structuredClone(nextSelected) : null)
+      setIsCreating(false)
+      setEditing(false)
+      setLoading(false)
+    })
+  }
 
-            <div className={styles.panelBody}>
-              {panelErr && <div className='auth-error'>{panelErr}</div>}
-
-              {panelLoading ? (
-                <div className='app-empty-state'>Loading profile...</div>
-              ) : !panelDraft ? (
-                <div className='app-empty-state'>Profile data is unavailable.</div>
-              ) : (
-                <>
-                  <section className={styles.panelSection}>
-                    <div className={styles.sectionHeading}>General</div>
-                    <div className={styles.formGrid}>
-                      <label className={styles.fieldGroup}>
-                        <span className={styles.fieldLabel}>Name</span>
-                        <input className={styles.fieldInput} value={panelDraft.name} onChange={e => setPanelDraft(curr => curr ? { ...curr, name: e.target.value } : curr)} placeholder='fleet-defaults' />
-                      </label>
-                      <label className={styles.fieldGroup}>
-                        <span className={styles.fieldLabel}>Format</span>
-                        <select className={styles.fieldInput} value={panelDraft.format} onChange={e => setDraftFormat(e.target.value as 'yaml' | 'json')}>
-                          <option value='yaml'>YAML</option>
-                          <option value='json'>JSON</option>
-                        </select>
-                      </label>
-                    </div>
-                    <label className={styles.fieldGroup}>
-                      <span className={styles.fieldLabel}>Description</span>
-                      <input className={styles.fieldInput} value={panelDraft.description} onChange={e => setPanelDraft(curr => curr ? { ...curr, description: e.target.value } : curr)} placeholder='Shared env vars for the default validation lane' />
-                    </label>
-                  </section>
-
-                  <section className={styles.panelSection}>
-                    <div className={styles.panelSectionTop}>
-                      <div>
-                        <div className={styles.sectionHeading}>Content</div>
-                        <div className={styles.sectionCopy}>Edit the raw {panelDraft.format.toUpperCase()} document stored for this shared profile.</div>
-                      </div>
-                      <button className='app-button app-button--secondary' onClick={() => setPanelDraft(curr => curr ? { ...curr, content: curr.format === 'json' ? jsonTemplate : yamlTemplate } : curr)} disabled={panelSaving}>
-                        Reset template
-                      </button>
-                    </div>
-                    <div className={styles.editorWrap}>
-                      <Editor
-                        height='56vh'
-                        language={panelDraft.format}
-                        theme='vs'
-                        value={panelDraft.content}
-                        onChange={value => setPanelDraft(curr => curr ? { ...curr, content: value ?? '' } : curr)}
-                        options={{
-                          automaticLayout: true,
-                          fontSize: 13,
-                          minimap: { enabled: false },
-                          scrollBeyondLastLine: false,
-                          wordWrap: 'on',
-                          tabSize: 2,
-                        }}
-                      />
-                    </div>
-                  </section>
-
-                  {panelIsEdit && (
-                    <section className={styles.panelMeta}>
-                      <span>Created by {panelDraft.created_by_name || 'unknown'} {panelDraft.created_at ? `on ${new Date(panelDraft.created_at).toLocaleString()}` : ''}</span>
-                      <span>Last updated by {panelDraft.updated_by_name || 'unknown'} {panelDraft.updated_at ? `${timeAgo(panelDraft.updated_at)} (${new Date(panelDraft.updated_at).toLocaleString()})` : ''}</span>
-                    </section>
-                  )}
-                </>
-              )}
-            </div>
-          </aside>
+  const panelHeader = (
+    <div className='profiles-panel-header'>
+      <div className='profiles-panel-header__info'>
+        <div className='profiles-panel-header__name'>
+          <strong>{draft?.name ?? 'Profile'}</strong>
+          {draft?.default && <span className='profile-badge profile-badge--default'>Default</span>}
+          {draft && !draft.launchable && <span className='profile-badge profile-badge--base'>Base</span>}
+          {isCreating && <span className='profile-badge profile-badge--new'>New</span>}
         </div>
-      )}
-    </Layout>
+        <p className='profiles-panel-header__file'>{draft?.fileName ?? ''}</p>
+      </div>
+      <div className='profiles-panel-header__actions'>
+        {(editing || isCreating) && (
+          <button
+            type='button'
+            className='profiles-panel-btn profiles-panel-btn--ghost'
+            onClick={() => {
+              if (isCreating) {
+                closePanel()
+              } else if (selectedProfile) {
+                setDraft(structuredClone(selectedProfile))
+                setEditing(false)
+                setMessage('')
+                setError('')
+              }
+            }}
+          >
+            Discard
+          </button>
+        )}
+        <button
+          type='button'
+          className='profiles-panel-btn profiles-panel-btn--ghost'
+          onClick={() => void markDefault()}
+          disabled={!draft?.launchable || isCreating}
+        >
+          <FaLayerGroup />
+          <span>Default</span>
+        </button>
+        <button
+          type='button'
+          className='profiles-panel-btn profiles-panel-btn--danger'
+          onClick={() => void deleteProfile()}
+          disabled={!draft || (!draft.launchable && !isCreating)}
+        >
+          <FaTrash />
+        </button>
+        <button
+          type='button'
+          className='profiles-panel-btn profiles-panel-btn--primary'
+          onClick={() => void saveProfile()}
+          disabled={!draft || saving || (!editing && !isCreating)}
+        >
+          <FaFloppyDisk />
+          <span>{saving ? 'Saving…' : 'Save'}</span>
+        </button>
+      </div>
+    </div>
   )
+
+  return (
+    <AppShell
+      section='Profiles'
+      title='Profiles & Configuration'
+      description='Maintain suite-scoped YAML execution contexts, visualize deep merges on top of the base runtime, and keep secret references out of raw plaintext.'
+    >
+      <div className='profiles-page'>
+        {/* ── Toolbar ── */}
+        <div className='profiles-toolbar'>
+          <div className='profiles-toolbar__filters'>
+            <select
+              className='profiles-toolbar__select'
+              value={selectedSuiteId}
+              onChange={(e) => {
+                setSelectedSuiteId(e.target.value)
+                setSearch('')
+                setMessage('')
+                setError('')
+              }}
+            >
+              {suiteSummaries.map((suite) => (
+                <option key={suite.id} value={suite.id}>{suite.title}</option>
+              ))}
+            </select>
+            <input
+              className='profiles-toolbar__search'
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder='Search profiles…'
+            />
+          </div>
+          <button
+            type='button'
+            className='profiles-new-btn'
+            onClick={createProfile}
+            disabled={!suiteData || loading}
+          >
+            <FaPlus />
+            <span>New Profile</span>
+          </button>
+        </div>
+
+        {/* ── Suite meta bar ── */}
+        {selectedSuite && (
+          <div className='profiles-suite-bar'>
+            <span className='profiles-suite-bar__repo'>{selectedSuite.repository}</span>
+            <span className='profiles-suite-bar__counts'>
+              {selectedSuite.launchableCount} launchable · {selectedSuite.profileCount} total
+            </span>
+          </div>
+        )}
+
+        {/* ── Alerts ── */}
+        {message && <div className='profiles-alert profiles-alert--info'>{message}</div>}
+        {error && <div className='profiles-alert profiles-alert--error'>{error}</div>}
+
+        {/* ── Card grid ── */}
+        {loading ? (
+          <div className='profiles-loading'>
+            <div className='profiles-loading__card' />
+            <div className='profiles-loading__card' />
+            <div className='profiles-loading__card' />
+          </div>
+        ) : filteredProfiles.length === 0 ? (
+          <div className='profiles-empty'>
+            <strong>No profiles found.</strong>
+            <p>Try a different search term, select a different suite, or create a new profile.</p>
+          </div>
+        ) : (
+          <div className='profiles-grid'>
+            {filteredProfiles.map((profile) => (
+              <button
+                key={profile.id}
+                type='button'
+                className={[
+                  'profile-card',
+                  profile.default ? 'profile-card--default' : '',
+                  !profile.launchable ? 'profile-card--base' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => openProfile(profile)}
+              >
+                <div className='profile-card__body'>
+                  <div className='profile-card__top'>
+                    <span className='profile-card__name'>{profile.name}</span>
+                    <div className='profile-card__badges'>
+                      {profile.default && <span className='profile-badge profile-badge--default'>Default</span>}
+                      {!profile.launchable && <span className='profile-badge profile-badge--base'>Base</span>}
+                    </div>
+                  </div>
+                  <p className='profile-card__filename'>{profile.fileName}</p>
+                  {profile.description && (
+                    <p className='profile-card__desc'>{profile.description}</p>
+                  )}
+                </div>
+                <div className='profile-card__footer'>
+                  <span className='profile-card__scope'>{profile.scope}</span>
+                  {profile.secretRefs.length > 0 && (
+                    <span className='profile-card__secrets'>
+                      <FaShieldHalved />
+                      {profile.secretRefs.length}
+                    </span>
+                  )}
+                  <span className='profile-card__date'>
+                    {profile.updatedAt ? new Date(profile.updatedAt).toLocaleDateString() : ''}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Editor panel ── */}
+        <SlidingPanel isOpen={panelOpen} onClose={closePanel} width='700px' header={panelHeader}>
+          <div className='profiles-panel-body'>
+          {message && <div className='profiles-alert profiles-alert--info'>{message}</div>}
+          {error && <div className='profiles-alert profiles-alert--error'>{error}</div>}
+
+          {draft && (
+            <>
+              <CollapsibleSection
+                title='YAML Profile'
+                open={openSections.yaml}
+                onToggle={() => setOpenSections((cur) => ({ ...cur, yaml: !cur.yaml }))}
+              >
+                <div className='profiles-form-grid'>
+                  <label className='profiles-field'>
+                    <span>Display Name</span>
+                    <input
+                      value={draft.name}
+                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, name: e.target.value } : cur) }}
+                    />
+                  </label>
+                  <label className='profiles-field'>
+                    <span>File Name</span>
+                    <input
+                      value={draft.fileName}
+                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, fileName: e.target.value } : cur) }}
+                    />
+                  </label>
+                  <label className='profiles-field'>
+                    <span>Scope</span>
+                    <input
+                      value={draft.scope}
+                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, scope: e.target.value } : cur) }}
+                    />
+                  </label>
+                  <label className='profiles-field'>
+                    <span>Base Profile</span>
+                    <select
+                      value={draft.extendsId ?? ''}
+                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, extendsId: e.target.value } : cur) }}
+                    >
+                      <option value=''>No base</option>
+                      {profiles.filter((p) => p.id !== draft.id).map((p) => (
+                        <option key={p.id} value={p.id}>{p.fileName}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className='profiles-field profiles-field--full'>
+                    <span>Description</span>
+                    <input
+                      value={draft.description}
+                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, description: e.target.value } : cur) }}
+                    />
+                  </label>
+                  <label className='profiles-field profiles-field--full'>
+                    <span>YAML</span>
+                    <textarea
+                      value={draft.yaml}
+                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, yaml: e.target.value } : cur) }}
+                    />
+                  </label>
+                </div>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title='Secret References'
+                open={openSections.secrets}
+                onToggle={() => setOpenSections((cur) => ({ ...cur, secrets: !cur.secrets }))}
+              >
+                <div className='profiles-secrets'>
+                  {draft.secretRefs.map((secret, index) => (
+                    <div key={`${secret.key}-${index}`} className='profiles-secret-row'>
+                      <label className='profiles-field'>
+                        <span>Key</span>
+                        <input
+                          value={secret.key}
+                          onChange={(e) => {
+                            setEditing(true)
+                            setDraft((cur) => {
+                              if (!cur) return cur
+                              const next = structuredClone(cur)
+                              next.secretRefs[index].key = e.target.value
+                              return next
+                            })
+                          }}
+                        />
+                      </label>
+                      <label className='profiles-field'>
+                        <span>Provider</span>
+                        <input
+                          value={secret.provider}
+                          onChange={(e) => {
+                            setEditing(true)
+                            setDraft((cur) => {
+                              if (!cur) return cur
+                              const next = structuredClone(cur)
+                              next.secretRefs[index].provider = e.target.value
+                              return next
+                            })
+                          }}
+                        />
+                      </label>
+                      <label className='profiles-field profiles-field--full'>
+                        <span>Reference</span>
+                        <input
+                          value={secret.ref}
+                          onChange={(e) => {
+                            setEditing(true)
+                            setDraft((cur) => {
+                              if (!cur) return cur
+                              const next = structuredClone(cur)
+                              next.secretRefs[index].ref = e.target.value
+                              return next
+                            })
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                  <button
+                    type='button'
+                    className='profiles-inline-button'
+                    onClick={() => {
+                      setEditing(true)
+                      setDraft((cur) => cur ? {
+                        ...cur,
+                        secretRefs: [...cur.secretRefs, { key: '', provider: 'Vault', ref: '' }],
+                      } : cur)
+                    }}
+                  >
+                    <FaShieldHalved />
+                    <span>Add Secret Reference</span>
+                  </button>
+                </div>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title='Deep Merge Visualizer'
+                open={openSections.merge}
+                onToggle={() => setOpenSections((cur) => ({ ...cur, merge: !cur.merge }))}
+              >
+                <div className='profiles-merge'>
+                  <div className='profiles-merge__header'>
+                    <div>
+                      <FaCodeBranch />
+                      <span>{profiles.find((p) => p.id === draft.extendsId)?.fileName ?? 'No base'}</span>
+                    </div>
+                    <div>
+                      <FaWandMagicSparkles />
+                      <span>{draft.fileName}</span>
+                    </div>
+                  </div>
+                  <div className='profiles-merge__table'>
+                    <div className='profiles-merge__head'>
+                      <span>Key</span>
+                      <span>Base</span>
+                      <span>Override</span>
+                      <span>Result</span>
+                    </div>
+                    {mergeRows.map((row) => (
+                      <div key={row.key} className={`profiles-merge__row${row.conflicted ? ' profiles-merge__row--conflicted' : ''}`}>
+                        <strong>{row.key}</strong>
+                        <span>{row.baseValue || '(none)'}</span>
+                        <span>{row.overrideValue || '(none)'}</span>
+                        <span className='profiles-merge__result'>
+                          {row.resultValue || '(none)'}
+                          <small>{row.source}</small>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleSection>
+            </>
+          )}
+          </div>
+        </SlidingPanel>
+      </div>
+    </AppShell>
+  )
+}
+
+function toUpsertPayload(profile: ProfileRecord) {
+  return {
+    name: profile.name,
+    fileName: profile.fileName,
+    description: profile.description,
+    scope: profile.scope,
+    yaml: profile.yaml,
+    secretRefs: profile.secretRefs,
+    default: profile.default,
+    extendsId: profile.extendsId ?? '',
+  }
+}
+
+function CollapsibleSection(props: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <section className={`profiles-section${props.open ? ' profiles-section--open' : ''}`}>
+      <button type='button' className='profiles-section__header' onClick={props.onToggle}>
+        <span>{props.title}</span>
+        <FaChevronDown />
+      </button>
+      <div className='profiles-section__body'>{props.children}</div>
+    </section>
+  )
+}
+
+interface MergeRow {
+  key: string
+  baseValue: string
+  overrideValue: string
+  resultValue: string
+  source: string
+  conflicted: boolean
+}
+
+function buildMergeRows(baseYaml: string, overrideYaml: string) {
+  const baseParsed = parseSimpleYaml(baseYaml).values
+  const overrideParsed = parseSimpleYaml(overrideYaml).values
+  const keys = Array.from(new Set([...Object.keys(baseParsed), ...Object.keys(overrideParsed)])).sort()
+
+  return keys.map((key) => {
+    const baseValue = baseParsed[key] ?? ''
+    const overrideValue = overrideParsed[key] ?? ''
+    const resultValue = overrideValue || baseValue || ''
+    const conflicted = Boolean(baseValue && overrideValue && baseValue !== overrideValue)
+
+    return {
+      key,
+      baseValue,
+      overrideValue,
+      resultValue,
+      source: overrideValue ? 'Override' : 'Base',
+      conflicted,
+    }
+  })
+}
+
+function parseSimpleYaml(yaml: string) {
+  const values: Record<string, string> = {}
+  const errors: string[] = []
+  const stack: string[] = []
+  const indents: number[] = []
+
+  for (const rawLine of yaml.split('\n')) {
+    if (rawLine.trim() === '' || rawLine.trim().startsWith('#')) continue
+
+    const indent = rawLine.length - rawLine.trimStart().length
+    const trimmed = rawLine.trim()
+    const separatorIndex = trimmed.indexOf(':')
+
+    if (separatorIndex === -1) {
+      errors.push(`Invalid YAML line: "${trimmed}"`)
+      continue
+    }
+
+    while (indents.length > 0 && indent <= indents[indents.length - 1]) {
+      indents.pop()
+      stack.pop()
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim()
+    const value = trimmed.slice(separatorIndex + 1).trim()
+
+    if (value === '') {
+      stack.push(key)
+      indents.push(indent)
+      continue
+    }
+
+    values[[...stack, key].join('.')] = value
+  }
+
+  return { values, errors }
 }
