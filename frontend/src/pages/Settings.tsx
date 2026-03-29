@@ -67,7 +67,7 @@ export default function Settings() {
                 className='settings-index__card'
                 onClick={() => navigate(section.path)}
               >
-                <div className='platform-overview__icon'>
+                <div className='settings-index__icon'>
                   <Icon />
                 </div>
                 <div className='settings-index__body'>

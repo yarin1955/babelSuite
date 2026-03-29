@@ -1,0 +1,93 @@
+suites:
+    fleet-control-room:
+        profiles:
+            - id: base
+              name: Base Runtime
+              fileName: base.yaml
+              description: Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.
+              scope: Base
+              yaml: |-
+                env:
+                  LOG_LEVEL: info
+                  TELEMETRY_PROFILE: balanced
+                  DISPATCHER_BASE_URL: http://dispatcher-api.internal
+                services:
+                  redisAddress: redis-cache:6379
+                  plannerRefreshInterval: 5s
+              secretRefs:
+                - key: MAPBOX_TOKEN
+                  provider: Vault
+                  ref: kv/fleet-control-room/mapbox-token
+              default: false
+              launchable: false
+              updatedAt: 2026-03-29T06:04:44.8064496Z
+            - id: local
+              name: Local Debug
+              fileName: local.yaml
+              description: Browser-forwarded ports and verbose telemetry payloads.
+              scope: Local
+              yaml: |-
+                env:
+                  LOG_LEVEL: debug
+                  TELEMETRY_PROFILE: verbose
+                services:
+                  uiPort: 13000
+                  dispatcherPort: 18081
+              secretRefs:
+                - key: TELEMETRY_TOKEN
+                  provider: Local Secret
+                  ref: secrets://developer/telemetry-token
+              default: false
+              extendsId: base
+              launchable: true
+              updatedAt: 2026-03-29T06:04:44.8064496Z
+            - id: perf
+              name: Performance
+              fileName: perf.yaml
+              description: Synthetic bursts for planner saturation tests.
+              scope: Performance
+              yaml: |-
+                env:
+                  TELEMETRY_PROFILE: burst
+                  ENABLE_ROUTE_HEATMAP: true
+                services:
+                  plannerWorkers: 6
+                  ingestBatchSize: 500
+              secretRefs: []
+              default: false
+              extendsId: base
+              launchable: true
+              updatedAt: 2026-03-29T06:04:44.8064496Z
+            - id: staging
+              name: Staging
+              fileName: staging.yaml
+              description: Shared staging identities and realistic routing backends.
+              scope: Staging
+              yaml: |-
+                env:
+                  DISPATCHER_BASE_URL: https://dispatcher.staging.company.test
+                  TELEMETRY_PROFILE: realistic
+                services:
+                  plannerWorkers: 3
+                  uiPort: 8080
+              secretRefs:
+                - key: ROUTING_API_KEY
+                  provider: Vault
+                  ref: kv/fleet-control-room/staging-routing-key
+              default: false
+              extendsId: base
+              launchable: true
+              updatedAt: 2026-03-29T06:04:44.8064496Z
+            - id: fff
+              name: fef
+              fileName: fff.yaml
+              description: New suite-scoped execution context for an environment override.
+              scope: Local
+              yaml: |-
+                env:
+                  LOG_LEVEL: fdfd
+              secretRefs: []
+              default: true
+              extendsId: perf
+              launchable: true
+              updatedAt: 2026-03-29T06:04:44.8064496Z

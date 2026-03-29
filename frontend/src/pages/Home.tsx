@@ -1,7 +1,6 @@
 import { startTransition, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  FaBolt,
   FaChevronDown,
   FaCircleCheck,
   FaCircleXmark,
@@ -213,20 +212,6 @@ export default function Home() {
     >
       <div className='runs-page'>
         <section className='runs-workbench'>
-          <div className='runs-panel runs-panel--launch'>
-            <div className='runs-panel__header'>
-              <div>
-                <p className='runs-panel__eyebrow'>Execution Modal</p>
-                <h2>Fast path to a booted environment</h2>
-              </div>
-              <button type='button' className='runs-button runs-button--secondary' onClick={() => setShowModal(true)} disabled={launchSuites.length === 0}>
-                <FaBolt />
-                <span>Open Launcher</span>
-              </button>
-            </div>
-
-          </div>
-
           <div className='runs-panel'>
             <div className='runs-panel__header'>
               <div>
@@ -351,7 +336,6 @@ function ExecutionModal({
     <div className='ex-modal' role='presentation'>
       <div className='ex-modal__backdrop' onClick={onClose} />
       <div className='ex-modal__dialog' role='dialog' aria-modal='true' aria-label='New execution'>
-
         <header className='ex-modal__header'>
           <div>
             <p className='ex-modal__eyebrow'>New Execution</p>
@@ -363,7 +347,6 @@ function ExecutionModal({
         </header>
 
         <div className='ex-modal__body'>
-          {/* Suite picker */}
           <div className='ex-section'>
             <p className='ex-label'>Suite</p>
             {launchSuites.length === 1 ? (
@@ -392,7 +375,6 @@ function ExecutionModal({
             )}
           </div>
 
-          {/* Profile picker */}
           <div className='ex-section'>
             <p className='ex-label'>Profile</p>
             <div className='ex-profiles'>
@@ -423,7 +405,6 @@ function ExecutionModal({
             <span>{creating ? 'Executing...' : 'Execute'}</span>
           </button>
         </footer>
-
       </div>
     </div>,
     document.body,

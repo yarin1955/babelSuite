@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { startTransition, useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FaChevronDown,
   FaCodeBranch,
@@ -46,6 +46,20 @@ export default function Profiles() {
     secrets: true,
     merge: true,
   })
+  const [editorMode, setEditorMode] = useState<'yaml' | 'json'>('yaml')
+  const [jsonText, setJsonText] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   const profiles = suiteData?.profiles ?? []
   const selectedSuite = suiteSummaries.find((suite) => suite.id === selectedSuiteId) ?? suiteSummaries[0] ?? null
@@ -108,6 +122,7 @@ export default function Profiles() {
     startTransition(() => {
       setDraft(structuredClone(selectedProfile))
       setEditing(false)
+      setEditorMode('yaml')
     })
   }, [selectedProfile, isCreating])
 
@@ -353,9 +368,11 @@ export default function Profiles() {
               ))}
             </select>
             <input
+              ref={searchRef}
               className='profiles-toolbar__search'
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && searchRef.current?.blur()}
               placeholder='Search profiles…'
             />
           </div>
@@ -406,6 +423,7 @@ export default function Profiles() {
                   'profile-card',
                   profile.default ? 'profile-card--default' : '',
                   !profile.launchable ? 'profile-card--base' : '',
+                  profile.id === selectedProfileId && panelOpen ? 'profile-card--selected' : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => openProfile(profile)}
               >
@@ -494,11 +512,50 @@ export default function Profiles() {
                     />
                   </label>
                   <label className='profiles-field profiles-field--full'>
-                    <span>YAML</span>
-                    <textarea
-                      value={draft.yaml}
-                      onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, yaml: e.target.value } : cur) }}
-                    />
+                    <span>Content</span>
+                    <div className='profiles-editor-wrap'>
+                      <div className='profiles-format-toggle'>
+                        <button
+                          type='button'
+                          className={`profiles-format-toggle__btn${editorMode === 'yaml' ? ' profiles-format-toggle__btn--active' : ''}`}
+                          onClick={() => {
+                            if (editorMode === 'json') {
+                              try {
+                                const yaml = objectToYaml(JSON.parse(jsonText) as Record<string, unknown>)
+                                setDraft((cur) => cur ? { ...cur, yaml } : cur)
+                              } catch { /* keep current yaml if json invalid */ }
+                            }
+                            setEditorMode('yaml')
+                          }}
+                        >YAML</button>
+                        <button
+                          type='button'
+                          className={`profiles-format-toggle__btn${editorMode === 'json' ? ' profiles-format-toggle__btn--active' : ''}`}
+                          onClick={() => {
+                            setJsonText(yamlToJson(draft.yaml))
+                            setEditorMode('json')
+                          }}
+                        >JSON</button>
+                      </div>
+                      {editorMode === 'yaml' ? (
+                        <textarea
+                          value={draft.yaml}
+                          onChange={(e) => { setEditing(true); setDraft((cur) => cur ? { ...cur, yaml: e.target.value } : cur) }}
+                        />
+                      ) : (
+                        <textarea
+                          value={jsonText}
+                          onChange={(e) => {
+                            setJsonText(e.target.value)
+                            try {
+                              const yaml = objectToYaml(JSON.parse(e.target.value) as Record<string, unknown>)
+                              setEditing(true)
+                              setDraft((cur) => cur ? { ...cur, yaml } : cur)
+                            } catch { /* invalid json - don't update yaml */ }
+                          }}
+                        />
+                      )}
+                    </div>
                   </label>
                 </div>
               </CollapsibleSection>
@@ -582,34 +639,39 @@ export default function Profiles() {
               >
                 <div className='profiles-merge'>
                   <div className='profiles-merge__header'>
-                    <div>
+                    <div className='profiles-merge__header-pill profiles-merge__header-pill--base'>
                       <FaCodeBranch />
                       <span>{profiles.find((p) => p.id === draft.extendsId)?.fileName ?? 'No base'}</span>
                     </div>
-                    <div>
+                    <div className='profiles-merge__header-pill profiles-merge__header-pill--override'>
                       <FaWandMagicSparkles />
                       <span>{draft.fileName}</span>
                     </div>
                   </div>
-                  <div className='profiles-merge__table'>
-                    <div className='profiles-merge__head'>
-                      <span>Key</span>
-                      <span>Base</span>
-                      <span>Override</span>
-                      <span>Result</span>
+                  {!draft.extendsId ? (
+                    <div className='profiles-merge__empty'>
+                      No base profile selected. Choose a base profile above to see the deep merge preview.
                     </div>
-                    {mergeRows.map((row) => (
-                      <div key={row.key} className={`profiles-merge__row${row.conflicted ? ' profiles-merge__row--conflicted' : ''}`}>
-                        <strong>{row.key}</strong>
-                        <span>{row.baseValue || '(none)'}</span>
-                        <span>{row.overrideValue || '(none)'}</span>
-                        <span className='profiles-merge__result'>
-                          {row.resultValue || '(none)'}
-                          <small>{row.source}</small>
-                        </span>
+                  ) : mergeRows.length === 0 ? (
+                    <div className='profiles-merge__empty'>
+                      No keys found. Add content to the YAML above to see the merge result.
+                    </div>
+                  ) : (
+                    <div className='profiles-merge__table'>
+                      <div className='profiles-merge__head'>
+                        <span>Key</span>
+                        <span>Base</span>
+                        <span>Override</span>
                       </div>
-                    ))}
-                  </div>
+                      {mergeRows.map((row) => (
+                        <div key={row.key} className={`profiles-merge__row${row.conflicted ? ' profiles-merge__row--conflicted' : ''}`}>
+                          <code className='profiles-merge__key'>{row.key}</code>
+                          <span className='profiles-merge__cell'>{row.baseValue || <em>—</em>}</span>
+                          <span className='profiles-merge__cell profiles-merge__cell--override'>{row.overrideValue || <em>—</em>}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CollapsibleSection>
             </>
@@ -681,6 +743,77 @@ function buildMergeRows(baseYaml: string, overrideYaml: string) {
     }
   })
 }
+
+// ── YAML ↔ JSON conversion ──────────────────────────────
+
+function yamlToJson(yaml: string): string {
+  try {
+    return JSON.stringify(simpleYamlToObject(yaml), null, 2)
+  } catch {
+    return '{}'
+  }
+}
+
+function simpleYamlToObject(yaml: string): Record<string, unknown> {
+  const lines = yaml.split('\n').filter((l) => l.trim() !== '' && !l.trim().startsWith('#'))
+  if (lines.length === 0) return {}
+  return parseYamlLines(lines, 0, 0)[0]
+}
+
+function parseYamlLines(lines: string[], startIdx: number, baseIndent: number): [Record<string, unknown>, number] {
+  const obj: Record<string, unknown> = {}
+  let i = startIdx
+  while (i < lines.length) {
+    const line = lines[i]
+    const indent = line.length - line.trimStart().length
+    if (indent < baseIndent) break
+    const trimmed = line.trim()
+    const colonIdx = trimmed.indexOf(':')
+    if (colonIdx === -1) { i++; continue }
+    const key = trimmed.slice(0, colonIdx).trim()
+    const rest = trimmed.slice(colonIdx + 1).trim()
+    if (rest === '') {
+      const nextLine = lines[i + 1]
+      if (nextLine !== undefined) {
+        const nextIndent = nextLine.length - nextLine.trimStart().length
+        if (nextIndent > indent) {
+          const [child, nextI] = parseYamlLines(lines, i + 1, nextIndent)
+          obj[key] = child
+          i = nextI
+          continue
+        }
+      }
+      obj[key] = null
+    } else {
+      obj[key] = rest
+    }
+    i++
+  }
+  return [obj, i]
+}
+
+function objectToYaml(obj: Record<string, unknown>, indent = 0): string {
+  const prefix = '  '.repeat(indent)
+  const lines: string[] = []
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) {
+      lines.push(`${prefix}${key}:`)
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      lines.push(`${prefix}${key}:`)
+      lines.push(objectToYaml(value as Record<string, unknown>, indent + 1).trimEnd())
+    } else if (Array.isArray(value)) {
+      lines.push(`${prefix}${key}:`)
+      for (const item of value as unknown[]) {
+        lines.push(`${prefix}- ${typeof item === 'object' ? JSON.stringify(item) : item}`)
+      }
+    } else {
+      lines.push(`${prefix}${key}: ${value}`)
+    }
+  }
+  return lines.join('\n') + '\n'
+}
+
+// ── YAML parser (for merge visualizer) ─────────────────
 
 function parseSimpleYaml(yaml: string) {
   const values: Record<string, string> = {}

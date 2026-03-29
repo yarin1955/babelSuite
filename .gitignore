@@ -27,3 +27,4 @@ backend/coverage.out
 backend/*.test
 
 data/
+scripts/

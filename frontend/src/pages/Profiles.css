@@ -44,10 +44,18 @@
   color: #223244;
   font: inherit;
   font-size: 0.9rem;
+  transition: border-color 200ms ease, box-shadow 200ms ease, flex-basis 200ms ease;
 }
 
 .profiles-toolbar__search::placeholder {
   color: #8da4b4;
+}
+
+.profiles-toolbar__search:focus {
+  outline: none;
+  border-color: rgba(13, 173, 234, 0.5);
+  box-shadow: 0 0 0 3px rgba(13, 173, 234, 0.1);
+  flex-basis: 340px;
 }
 
 .profiles-new-btn {
@@ -128,6 +136,11 @@
   100% { background-position: -100% 0; }
 }
 
+@keyframes shadow-pulse {
+  0%   { box-shadow: 0 0 0 0px rgba(13, 173, 234, 0.35); }
+  100% { box-shadow: 0 0 0 12px rgba(13, 173, 234, 0); }
+}
+
 /* ── Empty state ────────────────────────────────────────── */
 .profiles-empty {
   padding: 40px 24px;
@@ -154,7 +167,7 @@
 .profiles-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(370px, 1fr));
-  gap: 20px;
+  gap: 24px;
 }
 
 /* ── Profile card ───────────────────────────────────────── */
@@ -174,7 +187,6 @@
 
 .profile-card:hover {
   box-shadow: 0 3px 12px rgba(15, 33, 47, 0.14);
-  transform: translateY(-1px);
 }
 
 .profile-card--default {
@@ -183,6 +195,10 @@
 
 .profile-card--base {
   border-left-color: #1f7ea8;
+}
+
+.profile-card--selected {
+  box-shadow: 0 0 0 1px #0DADEA;
 }
 
 .profile-card__body {
@@ -401,11 +417,11 @@
   opacity: 0;
   overflow: hidden;
   padding: 0 18px;
-  transition: max-height 280ms ease, opacity 200ms ease, padding-bottom 200ms ease;
+  transition: max-height 0.5s ease-out, opacity 0.3s ease, padding-bottom 0.3s ease;
 }
 
 .profiles-section--open .profiles-section__body {
-  max-height: 1400px;
+  max-height: 2000px;
   opacity: 1;
   padding-bottom: 18px;
 }
@@ -471,6 +487,60 @@
   font-family: "Cascadia Code", "Consolas", monospace;
 }
 
+/* ── Editor format toggle (Argo overlay pattern) ────────── */
+.profiles-editor-wrap {
+  position: relative;
+  margin-top: 6px;
+}
+
+.profiles-editor-wrap textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(20, 58, 86, 0.14);
+  background: #fbfdfe;
+  color: #223244;
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  font-family: "Cascadia Code", "Consolas", monospace;
+}
+
+.profiles-format-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(20, 58, 86, 0.18);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.profiles-format-toggle__btn {
+  padding: 3px 10px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: #678094;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  backdrop-filter: blur(4px);
+}
+
+.profiles-format-toggle__btn + .profiles-format-toggle__btn {
+  border-left: 1px solid rgba(20, 58, 86, 0.14);
+}
+
+.profiles-format-toggle__btn--active {
+  background: #1f7ea8;
+  color: #ffffff;
+}
+
 .profiles-inline-button {
   min-height: 34px;
   padding: 0 12px;
@@ -503,61 +573,122 @@
   gap: 10px;
 }
 
-.profiles-merge__header div {
+.profiles-merge__header-pill {
   min-height: 34px;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #eef4f7;
-  color: #355971;
   font-weight: 700;
+  font-size: 0.85rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.profiles-merge__header-pill--base {
+  background: rgba(31, 126, 168, 0.08);
+  color: #1f7ea8;
+  border: 1px solid rgba(31, 126, 168, 0.18);
+}
+
+.profiles-merge__header-pill--override {
+  background: rgba(24, 190, 148, 0.07);
+  color: #14906b;
+  border: 1px solid rgba(24, 190, 148, 0.2);
+}
+
+.profiles-merge__empty {
+  padding: 20px 16px;
+  border-radius: 4px;
+  background: #f5f8fa;
+  border: 1px dashed rgba(20, 58, 86, 0.14);
+  color: #6d8092;
   font-size: 0.88rem;
+  text-align: center;
+  line-height: 1.5;
 }
 
 .profiles-merge__table {
   border-radius: 4px;
-  background: #f5f8fa;
-  padding: 10px 12px;
+  border: 1px solid rgba(34, 50, 68, 0.08);
+  overflow: hidden;
+  background: #ffffff;
 }
 
 .profiles-merge__head,
 .profiles-merge__row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  align-items: start;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 0;
+  align-items: stretch;
 }
 
 .profiles-merge__head {
+  background: #f4f7f9;
+  border-bottom: 1px solid rgba(34, 50, 68, 0.08);
   color: #6d8092;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding-bottom: 10px;
+}
+
+.profiles-merge__head span,
+.profiles-merge__row > * {
+  padding: 9px 12px;
+  border-right: 1px solid rgba(34, 50, 68, 0.06);
+}
+
+.profiles-merge__head span:last-child,
+.profiles-merge__row > *:last-child {
+  border-right: 0;
 }
 
 .profiles-merge__row {
-  padding: 10px 0;
-  border-top: 1px solid rgba(34, 50, 68, 0.08);
-  font-size: 0.88rem;
+  border-top: 1px solid rgba(34, 50, 68, 0.07);
+  font-size: 0.87rem;
+  color: #223244;
+  transition: background 120ms ease;
+}
+
+.profiles-merge__row:hover {
+  background: rgba(13, 173, 234, 0.02);
 }
 
 .profiles-merge__row--conflicted {
-  background: linear-gradient(90deg, rgba(241, 118, 67, 0.08), transparent);
+  background: rgba(241, 118, 67, 0.05);
+  border-left: 3px solid rgba(241, 118, 67, 0.6);
 }
 
-.profiles-merge__result {
-  display: grid;
-  gap: 3px;
+.profiles-merge__row--conflicted:hover {
+  background: rgba(241, 118, 67, 0.08);
 }
 
-.profiles-merge__result small {
-  color: #5d7082;
-  font-weight: 700;
-  font-size: 0.75rem;
+.profiles-merge__key {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 0.82rem;
+  color: #1f7ea8;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.profiles-merge__cell {
+  color: #4a6278;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 0.82rem;
+}
+
+.profiles-merge__cell em {
+  color: #b0c0cc;
+  font-style: normal;
+}
+
+.profiles-merge__cell--override {
+  font-weight: 600;
+  color: #1a3348;
 }
 
 /* ── Responsive ─────────────────────────────────────────── */
@@ -592,10 +723,13 @@
 @media (max-width: 640px) {
   .profiles-form-grid,
   .profiles-secret-row,
-  .profiles-merge__header,
+  .profiles-merge__header {
+    grid-template-columns: 1fr;
+  }
+
   .profiles-merge__head,
   .profiles-merge__row {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1.5fr 1fr 1fr;  /* still 3 cols, tighter */
   }
 
   .profiles-panel-header {

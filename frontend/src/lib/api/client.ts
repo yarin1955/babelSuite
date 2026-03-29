@@ -12,6 +12,10 @@ export class ApiError extends Error {
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8090').replace(/\/$/, '')
 const SESSION_KEY = 'babelsuite.session'
+const GET_CACHE_TTL_MS = 5000
+
+const inflightGetRequests = new Map<string, Promise<unknown>>()
+const cachedGetResponses = new Map<string, { expiresAt: number; value: unknown }>()
 
 export function getSession(): AuthResponse | null {
   const raw = window.localStorage.getItem(SESSION_KEY)
@@ -28,10 +32,12 @@ export function getSession(): AuthResponse | null {
 }
 
 export function saveSession(session: AuthResponse) {
+  clearRequestCache()
   window.localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
 export function clearSession() {
+  clearRequestCache()
   window.localStorage.removeItem(SESSION_KEY)
 }
 
@@ -58,28 +64,87 @@ export function buildAuthenticatedStreamUrl(
 
 export async function request<T>(path: string, init: RequestInit = {}) {
   const session = getSession()
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
-      ...(init.headers ?? {}),
-    },
-  })
+  const method = (init.method ?? 'GET').toUpperCase()
+  const cacheKey = method === httpMethodGet ? buildGetCacheKey(path, session?.token ?? '') : ''
 
-  const text = await response.text()
-  const payload = parseResponsePayload(response, text)
+  if (method === httpMethodGet) {
+    const cached = cachedGetResponses.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      return clonePayload(cached.value as T)
+    }
 
-  if (!response.ok) {
-    const message = extractErrorMessage(path, response, payload)
-    throw new ApiError(message, response.status)
+    const inflight = inflightGetRequests.get(cacheKey)
+    if (inflight) {
+      return clonePayload((await inflight) as T)
+    }
   }
 
-  if (typeof payload === 'string') {
-    throw new ApiError(extractUnexpectedSuccessMessage(path, response, payload), response.status)
+  const runRequest = async () => {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+        ...(init.headers ?? {}),
+      },
+    })
+
+    const text = await response.text()
+    const payload = parseResponsePayload(response, text)
+
+    if (!response.ok) {
+      const message = extractErrorMessage(path, response, payload)
+      throw new ApiError(message, response.status)
+    }
+
+    if (typeof payload === 'string') {
+      throw new ApiError(extractUnexpectedSuccessMessage(path, response, payload), response.status)
+    }
+
+    return payload
   }
 
+  if (method === httpMethodGet) {
+    const inflight = runRequest()
+    inflightGetRequests.set(cacheKey, inflight)
+    try {
+      const payload = await inflight
+      cachedGetResponses.set(cacheKey, {
+        expiresAt: Date.now() + GET_CACHE_TTL_MS,
+        value: clonePayload(payload),
+      })
+      return clonePayload(payload as T)
+    } finally {
+      inflightGetRequests.delete(cacheKey)
+    }
+  }
+
+  const payload = await runRequest()
+  clearRequestCache()
   return payload as T
+}
+
+const httpMethodGet = 'GET'
+
+function buildGetCacheKey(path: string, token: string) {
+  return `${token}::${path}`
+}
+
+function clearRequestCache() {
+  inflightGetRequests.clear()
+  cachedGetResponses.clear()
+}
+
+function clonePayload<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value
+  }
+
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value)
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 function parseResponsePayload(response: Response, text: string): unknown {
