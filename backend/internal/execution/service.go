@@ -463,6 +463,7 @@ func (s *Service) failExecution(executionID, source, message string) {
 	subscribers := collectSubscribers(s.subs[executionID])
 	s.mu.Unlock()
 
+	s.queue.CancelGroup(executionID)
 	s.publish(streamEvent, subscribers)
 	s.appendLog(executionID, event)
 	s.syncObservers(executionID)
