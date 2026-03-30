@@ -226,7 +226,18 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, user)
+	workspace, err := h.store.GetWorkspaceByID(r.Context(), claims.WorkspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load your workspace.")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, authResponse{
+		Token:     token,
+		User:      user,
+		Workspace: workspace,
+		ExpiresAt: claims.ExpiresAt.Time,
+	})
 }
 
 func (h *Handler) createWorkspace(r *http.Request, fullName, email string) (*domain.Workspace, error) {
