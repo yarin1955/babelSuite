@@ -63,6 +63,7 @@ func (s *Store) Subscribe(ctx context.Context) <-chan Overview {
 		defer s.mu.Unlock()
 
 		delete(s.subs, ch)
+		close(ch)
 	}()
 
 	return ch
