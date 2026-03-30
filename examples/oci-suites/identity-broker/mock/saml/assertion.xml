@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mockResponse>
+  <suite>identity-broker</suite>
+  <artifact>mock/saml/assertion.xml</artifact>
+  <status>ok</status>
+</mockResponse>

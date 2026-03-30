@@ -1,0 +1,16 @@
+name: Local Debug
+description: Verbose logs, seeded return ids, and open worker traces.
+default: true
+runtime:
+  suite: returns-control-plane
+  repository: localhost:5000/qa/returns-control-plane
+  profileFile: local.yaml
+modules:
+    - postgres
+    - kafka
+    - grpc
+    - mock-api
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

@@ -1,0 +1,15 @@
+name: Local Debug
+description: Verbose logs, local secrets, and relaxed timeouts.
+default: true
+runtime:
+  suite: payment-suite
+  repository: localhost:5000/core-platform/payment-suite
+  profileFile: local.yaml
+modules:
+    - postgres
+    - kafka
+    - wiremock
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

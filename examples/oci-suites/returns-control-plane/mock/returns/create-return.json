@@ -1,0 +1,14 @@
+{
+  "approved-standard": {
+    "queue": "auto",
+    "refundMode": "instant_credit",
+    "returnId": "ret_1001",
+    "status": "approved"
+  },
+  "manual-review": {
+    "queue": "manual",
+    "refundMode": "agent_review",
+    "returnId": "ret_2002",
+    "status": "manual_review"
+  }
+}

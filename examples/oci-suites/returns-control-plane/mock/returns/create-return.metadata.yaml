@@ -1,0 +1,65 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/returns/create-return.metadata.yaml
+    operationId: create-return
+    sourceArtifact: mock/returns/create-return.json
+    suite: returns-control-plane
+spec:
+    adapter: rest
+    delayMillis: 120
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "422"
+        mediatype: application/json
+        body: |-
+            {
+              "code": "UNKNOWN_RETURN_SCENARIO",
+              "message": "No return mock matched the incoming scenario."
+            }
+        headers: []
+    parameterConstraints:
+        - name: scenario
+          source: query
+          required: true
+          forward: false
+          pattern: ^(approved|manual-review)$
+        - name: content-type
+          source: header
+          required: true
+          forward: false
+          pattern: (?i)^application/json
+        - name: x-suite-profile
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    runtimeUrl: /mocks/rest/returns-control-plane/returns-api/returns?scenario=approved
+    state:
+        lookupkeytemplate: ""
+        mutationkeytemplate: return:{{ response.body.returnId }}
+        defaults:
+            refundMode: pending
+            reviewQueue: triage
+            status: created
+        transitions:
+            - onexample: approved-standard
+              mutationkeytemplate: ""
+              set:
+                profile: '{{ request.headers.x-suite-profile }}'
+                refundMode: instant_credit
+                reviewQueue: auto
+                status: approved
+              delete: []
+              increment: {}
+            - onexample: manual-review
+              mutationkeytemplate: ""
+              set:
+                profile: '{{ request.headers.x-suite-profile }}'
+                refundMode: agent_review
+                reviewQueue: manual
+                status: manual_review
+              delete: []
+              increment: {}

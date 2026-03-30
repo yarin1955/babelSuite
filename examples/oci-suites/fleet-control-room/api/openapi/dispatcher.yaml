@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info:
+  title: Fleet Control Room
+  version: v1.8.0
+servers:
+  - url: https://fleet-control-room.mock.internal
+paths:
+  /telemetry/events:
+    post:
+      operationId: stream_telemetry
+      summary: Inject mock telemetry frames into the control room pipeline.
+      responses:
+        "200":
+          description: Successful mock response

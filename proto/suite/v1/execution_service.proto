@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package babelsuite.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/babelsuite/babelsuite/backend/gen/babelsuite/v1;bsv1";
+
+service ExecutionService {
+  rpc ListLaunchSuites(google.protobuf.Empty) returns (ListLaunchSuitesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/executions/launch-suites"
+    };
+  }
+
+  rpc ListExecutions(google.protobuf.Empty) returns (ListExecutionsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/executions"
+    };
+  }
+
+  rpc GetExecutionOverview(google.protobuf.Empty) returns (ExecutionOverview) {
+    option (google.api.http) = {
+      get: "/api/v1/executions/overview"
+    };
+  }
+
+  rpc CreateExecution(CreateExecutionRequest) returns (ExecutionSummary) {
+    option (google.api.http) = {
+      post: "/api/v1/executions"
+      body: "*"
+    };
+  }
+
+  rpc GetExecution(GetExecutionRequest) returns (ExecutionRecord) {
+    option (google.api.http) = {
+      get: "/api/v1/executions/{execution_id}"
+    };
+  }
+}
+
+message ProfileOption {
+  string file_name = 1;
+  string label = 2;
+  string description = 3;
+  bool default = 4;
+}
+
+message LaunchSuite {
+  string id = 1;
+  string title = 2;
+  string repository = 3;
+  string description = 4;
+  string provider = 5;
+  string status = 6;
+  repeated ProfileOption profiles = 7;
+}
+
+message ListLaunchSuitesResponse {
+  repeated LaunchSuite suites = 1;
+}
+
+message CreateExecutionRequest {
+  string suite_id = 1;
+  string profile = 2;
+}
+
+message GetExecutionRequest {
+  string execution_id = 1;
+}
+
+message ExecutionSummary {
+  string id = 1;
+  string suite_id = 2;
+  string suite_title = 3;
+  string profile = 4;
+  string trigger = 5;
+  string status = 6;
+  string duration = 7;
+  google.protobuf.Timestamp started_at = 8;
+}
+
+message ListExecutionsResponse {
+  repeated ExecutionSummary executions = 1;
+}
+
+message ExecutionStepState {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+  string status = 4;
+  repeated string depends_on = 5;
+}
+
+message ExecutionOverviewItem {
+  string id = 1;
+  string suite_id = 2;
+  string suite_title = 3;
+  string profile = 4;
+  string trigger = 5;
+  string status = 6;
+  string duration = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  int32 total_steps = 10;
+  int32 running_steps = 11;
+  int32 healthy_steps = 12;
+  int32 failed_steps = 13;
+  int32 pending_steps = 14;
+  double progress_ratio = 15;
+  repeated ExecutionStepState steps = 16;
+}
+
+message ExecutionOverviewSummary {
+  int32 total_executions = 1;
+  int32 booting_executions = 2;
+  int32 healthy_executions = 3;
+  int32 failed_executions = 4;
+  int32 total_steps = 5;
+  int32 running_steps = 6;
+  int32 healthy_steps = 7;
+  int32 failed_steps = 8;
+  int32 pending_steps = 9;
+}
+
+message ExecutionOverview {
+  google.protobuf.Timestamp updated_at = 1;
+  ExecutionOverviewSummary summary = 2;
+  repeated ExecutionOverviewItem executions = 3;
+}
+
+message ExecutionSuite {
+  string id = 1;
+  string title = 2;
+  string repository = 3;
+  string suite_star = 4;
+  repeated ProfileOption profiles = 5;
+}
+
+message ExecutionEvent {
+  string id = 1;
+  string source = 2;
+  string timestamp = 3;
+  string text = 4;
+  string status = 5;
+  string level = 6;
+}
+
+message ExecutionRecord {
+  string id = 1;
+  ExecutionSuite suite = 2;
+  string profile = 3;
+  string trigger = 4;
+  string status = 5;
+  string duration = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  string author = 9;
+  string commit = 10;
+  string branch = 11;
+  string message = 12;
+  repeated ExecutionEvent events = 13;
+}

@@ -1,0 +1,43 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/returns/get-return.metadata.yaml
+    operationId: get-return
+    sourceArtifact: mock/returns/get-return.json
+    suite: returns-control-plane
+spec:
+    adapter: rest
+    delayMillis: 0
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "404"
+        mediatype: application/json
+        body: |-
+            {
+              "code": "RETURN_NOT_FOUND",
+              "message": "No persisted state exists for {{ request.path.returnId }}."
+            }
+        headers: []
+    parameterConstraints:
+        - name: returnId
+          source: path
+          required: true
+          forward: false
+          pattern: ^ret_[0-9]+$
+        - name: x-request-id
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    runtimeUrl: /mocks/rest/returns-control-plane/returns-api/returns/ret_1001
+    state:
+        lookupkeytemplate: return:{{ request.path.returnId }}
+        mutationkeytemplate: ""
+        defaults:
+            profile: local.yaml
+            refundMode: instant_credit
+            reviewQueue: auto
+            status: approved
+        transitions: []

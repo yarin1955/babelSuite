@@ -1,0 +1,10 @@
+load("@babelsuite/redis", "redis")
+load("@babelsuite/runtime", "container", "mock", "script", "scenario")
+
+redis_cache = container(name="redis-cache")
+telemetry_mock = mock(name="telemetry-mock", after=["redis-cache"])
+seed_routes = script(name="seed-routes", after=["redis-cache"])
+dispatcher_api = container(name="dispatcher-api", after=["redis-cache", "seed-routes"])
+planner = container(name="route-planner", after=["dispatcher-api"])
+control_room = container(name="control-room-ui", after=["dispatcher-api", "route-planner"])
+fleet_smoke = scenario(name="fleet-smoke", after=["control-room-ui", "telemetry-mock"])

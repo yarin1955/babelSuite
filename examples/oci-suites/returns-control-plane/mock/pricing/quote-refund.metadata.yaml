@@ -1,0 +1,30 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/pricing/quote-refund.metadata.yaml
+    operationId: quote-refund
+    sourceArtifact: mock/pricing/quote-refund.json
+    suite: returns-control-plane
+spec:
+    adapter: grpc
+    delayMillis: 0
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "5"
+        mediatype: application/json
+        body: |-
+            {
+              "code": "QUOTE_NOT_AVAILABLE",
+              "message": "No refund quote mock matched the request."
+            }
+        headers: []
+    parameterConstraints:
+        - name: x-risk-tier
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    runtimeUrl: /mocks/grpc/returns-control-plane/pricing-service/quote-refund
+    state: null

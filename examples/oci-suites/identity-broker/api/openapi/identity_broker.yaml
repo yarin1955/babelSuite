@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info:
+  title: Identity Broker
+  version: v3.0.2
+servers:
+  - url: https://identity-broker.mock.internal
+paths:
+  /sessions/login:
+    post:
+      operationId: begin_login
+      summary: Start an identity-broker login transaction.
+      responses:
+        "200":
+          description: Successful mock response

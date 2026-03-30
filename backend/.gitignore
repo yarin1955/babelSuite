@@ -1,0 +1,8 @@
+# Build output
+bin/
+.cache/
+*.test
+
+# Coverage and profiling
+coverage.out
+*.prof

@@ -1,0 +1,5 @@
+{
+  "artifact": "mock/wiremock/stripe/refund.json",
+  "message": "No seeded exchanges matched this mock file, so BabelSuite generated a placeholder preview.",
+  "suite": "payment-suite"
+}

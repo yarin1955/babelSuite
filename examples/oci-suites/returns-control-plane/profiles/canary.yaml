@@ -1,0 +1,16 @@
+name: Canary Routing
+description: Canary refund rules with manual-review escalation and delayed callbacks.
+default: false
+runtime:
+  suite: returns-control-plane
+  repository: localhost:5000/qa/returns-control-plane
+  profileFile: canary.yaml
+modules:
+    - postgres
+    - kafka
+    - grpc
+    - mock-api
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

@@ -1,0 +1,37 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/catalog/list-products.metadata.yaml
+    operationId: list-products
+    sourceArtifact: mock/catalog/list-products.json
+    suite: storefront-browser-lab
+spec:
+    adapter: rest
+    delayMillis: 0
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "200"
+        mediatype: application/json
+        body: |-
+            {
+              "products": [],
+              "campaign": "default"
+            }
+        headers:
+            - name: x-mock-fallback
+              value: catalog-empty
+    parameterConstraints:
+        - name: scenario
+          source: query
+          required: true
+          forward: false
+          pattern: ^(promo)$
+        - name: accept
+          source: header
+          required: true
+          forward: false
+          pattern: (?i)application/json
+    runtimeUrl: /mocks/rest/storefront-browser-lab/storefront-api/catalog/products?scenario=promo
+    state: null

@@ -1,0 +1,15 @@
+name: Local Debug
+description: Opens browser traces, seeded demo users, and single-worker Kafka consumption.
+default: true
+runtime:
+  suite: storefront-browser-lab
+  repository: localhost:5000/qa/storefront-browser-lab
+  profileFile: local.yaml
+modules:
+    - kafka
+    - playwright
+    - mock-api
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

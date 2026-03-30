@@ -1,0 +1,12 @@
+{
+  "fraud-screen": {
+    "decision": "manual_review",
+    "quoteId": "quote_911",
+    "refundCents": 0
+  },
+  "low-risk": {
+    "decision": "instant",
+    "quoteId": "quote_301",
+    "refundCents": 4200
+  }
+}

@@ -1,0 +1,10 @@
+load("@babelsuite/postgres", "pg")
+load("@babelsuite/runtime", "container", "mock", "script", "scenario")
+
+broker_db = container(name="broker-db")
+oidc_mock = mock(name="oidc-mock", after=["broker-db"])
+saml_mock = mock(name="saml-mock", after=["broker-db"])
+seed_realms = script(name="seed-realms", after=["broker-db"])
+broker_api = container(name="broker-api", after=["broker-db", "oidc-mock", "saml-mock", "seed-realms"])
+session_worker = container(name="session-worker", after=["broker-api"])
+login_smoke = scenario(name="login-smoke", after=["broker-api", "session-worker"])

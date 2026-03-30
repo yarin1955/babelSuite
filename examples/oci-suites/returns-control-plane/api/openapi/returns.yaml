@@ -1,0 +1,21 @@
+openapi: 3.1.0
+info:
+  title: Returns Control Plane
+  version: v1.0.0
+servers:
+  - url: https://returns-control-plane.mock.internal
+paths:
+  /returns:
+    post:
+      operationId: create_return
+      summary: Create a return request and decide whether it is auto-approved or escalated to manual review.
+      responses:
+        "200":
+          description: Successful mock response
+  /returns/{returnId}:
+    get:
+      operationId: get_return
+      summary: Fetch the current return state after creation has mutated mock runtime state.
+      responses:
+        "200":
+          description: Successful mock response

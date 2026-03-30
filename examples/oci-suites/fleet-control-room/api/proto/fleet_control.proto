@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package fleet_control_room.v1;
+
+service fleet_controlService {
+  rpc AssignRoute (AssignRouteRequest) returns (AssignRouteResponse);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string status = 1;
+}

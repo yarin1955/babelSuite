@@ -1,0 +1,65 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/wiremock/stripe/create-charge.metadata.yaml
+    operationId: create-payment
+    sourceArtifact: mock/wiremock/stripe/create-charge.json
+    suite: payment-suite
+spec:
+    adapter: rest
+    delayMillis: 80
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "422"
+        mediatype: application/json
+        body: |-
+            {
+              "code": "UNKNOWN_PAYMENT_SCENARIO",
+              "message": "No payment mock matched the incoming scenario."
+            }
+        headers:
+            - name: x-mock-fallback
+              value: payment-create
+    parameterConstraints:
+        - name: status
+          source: query
+          required: true
+          forward: false
+          pattern: ^(approved|review)$
+        - name: content-type
+          source: header
+          required: true
+          forward: false
+          pattern: (?i)^application/json
+        - name: x-suite-profile
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments?status=approved
+    state:
+        lookupkeytemplate: ""
+        mutationkeytemplate: payment:{{ response.body.paymentId }}
+        defaults:
+            ledgerState: pending
+            status: created
+        transitions:
+            - onexample: approved-card
+              mutationkeytemplate: ""
+              set:
+                ledgerState: posted
+                profile: '{{ request.headers.x-suite-profile }}'
+                status: authorized
+              delete: []
+              increment: {}
+            - onexample: fraud-review
+              mutationkeytemplate: ""
+              set:
+                fraudScore: '{{ request.headers.x-fraud-score }}'
+                ledgerState: held
+                profile: '{{ request.headers.x-suite-profile }}'
+                status: pending_review
+              delete: []
+              increment: {}

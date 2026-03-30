@@ -1,0 +1,14 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/telemetry/idle.metadata.yaml
+    operationId: stream-telemetry
+    sourceArtifact: mock/telemetry/idle.json
+    suite: fleet-control-room
+spec:
+    adapter: grpc
+    delayMillis: 0
+    fallback: null
+    parameterConstraints: []
+    runtimeUrl: /mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry
+    state: null

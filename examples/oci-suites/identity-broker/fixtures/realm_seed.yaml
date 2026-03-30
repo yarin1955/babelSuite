@@ -1,0 +1,4 @@
+realm: example
+issuer: https://issuer.demo.test
+seedUsers:
+  - admin@babelsuite.test

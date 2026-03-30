@@ -1,0 +1,21 @@
+openapi: 3.1.0
+info:
+  title: Payment Suite
+  version: v2.4.1
+servers:
+  - url: https://payment-suite.mock.internal
+paths:
+  /payments:
+    post:
+      operationId: create_payment
+      summary: Create a payment authorization and fan out to Stripe.
+      responses:
+        "200":
+          description: Successful mock response
+  /payments/{paymentId}:
+    get:
+      operationId: get_payment
+      summary: Retrieve a previously authorized payment and ledger status.
+      responses:
+        "200":
+          description: Successful mock response

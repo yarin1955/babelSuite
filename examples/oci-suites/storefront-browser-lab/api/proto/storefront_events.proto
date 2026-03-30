@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package storefront_browser_lab.v1;
+
+service storefront_eventsService {
+  rpc Ping (PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string status = 1;
+}

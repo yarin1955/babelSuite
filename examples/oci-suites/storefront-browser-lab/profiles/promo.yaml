@@ -1,0 +1,15 @@
+name: Promo Burst
+description: High-throughput cart and checkout traffic with promotional catalog fixtures.
+default: false
+runtime:
+  suite: storefront-browser-lab
+  repository: localhost:5000/qa/storefront-browser-lab
+  profileFile: promo.yaml
+modules:
+    - kafka
+    - playwright
+    - mock-api
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

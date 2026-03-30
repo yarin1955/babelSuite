@@ -1,0 +1,15 @@
+name: Year-End
+description: Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.
+default: false
+runtime:
+  suite: payment-suite
+  repository: localhost:5000/core-platform/payment-suite
+  profileFile: year.yaml
+modules:
+    - postgres
+    - kafka
+    - wiremock
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

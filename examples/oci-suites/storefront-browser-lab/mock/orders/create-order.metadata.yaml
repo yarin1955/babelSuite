@@ -1,0 +1,61 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/orders/create-order.metadata.yaml
+    operationId: create-order
+    sourceArtifact: mock/orders/create-order.json
+    suite: storefront-browser-lab
+spec:
+    adapter: rest
+    delayMillis: 0
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "422"
+        mediatype: application/json
+        body: |-
+            {
+              "code": "UNKNOWN_ORDER_SCENARIO",
+              "message": "No order mock matched the incoming scenario."
+            }
+        headers: []
+    parameterConstraints:
+        - name: scenario
+          source: query
+          required: true
+          forward: false
+          pattern: ^(happy-path|out-of-stock)$
+        - name: content-type
+          source: header
+          required: true
+          forward: false
+          pattern: (?i)^application/json
+        - name: x-browser-suite
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    runtimeUrl: /mocks/rest/storefront-browser-lab/storefront-api/orders?scenario=happy-path
+    state:
+        lookupkeytemplate: checkout-attempt:{{ request.body.email }}
+        mutationkeytemplate: checkout-attempt:{{ request.body.email }}
+        defaults:
+            count: "0"
+        transitions:
+            - onexample: happy-path
+              mutationkeytemplate: ""
+              set:
+                lastOrderId: '{{ response.body.orderId }}'
+                lastStatus: accepted
+              delete: []
+              increment:
+                count: 1
+            - onexample: out-of-stock
+              mutationkeytemplate: ""
+              set:
+                lastStatus: rejected
+                reason: inventory
+              delete: []
+              increment:
+                count: 1

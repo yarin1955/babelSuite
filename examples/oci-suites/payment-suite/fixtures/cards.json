@@ -1,0 +1,12 @@
+[
+  {
+    "brand": "visa",
+    "country": "US",
+    "token": "tok_visa"
+  },
+  {
+    "brand": "mastercard",
+    "country": "GB",
+    "token": "tok_risky"
+  }
+]

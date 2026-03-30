@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package identity_broker.v1;
+
+service sessionService {
+  rpc Ping (PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string status = 1;
+}

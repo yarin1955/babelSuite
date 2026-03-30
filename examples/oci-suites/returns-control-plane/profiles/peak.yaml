@@ -1,0 +1,16 @@
+name: Peak Season
+description: High-volume return traffic with fraud screening and worker backpressure.
+default: false
+runtime:
+  suite: returns-control-plane
+  repository: localhost:5000/qa/returns-control-plane
+  profileFile: peak.yaml
+modules:
+    - postgres
+    - kafka
+    - grpc
+    - mock-api
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

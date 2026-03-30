@@ -1,0 +1,15 @@
+kind: OCIExampleModule
+metadata:
+  id: stdlib-kafka
+  title: @babelsuite/kafka
+spec:
+  repository: localhost:5000/babelsuite/kafka
+  provider: Stdlib
+  version: 1.2.3
+  tags:
+    - 1.2.3
+    - 1.2.2
+    - latest
+  description: Typed Kafka module that creates brokers, topics, and address outputs without leaking Docker wiring into suite authorship.
+  pullCommand: babelctl run localhost:5000/babelsuite/kafka:1.2.3
+  forkCommand: babelctl fork localhost:5000/babelsuite/kafka:1.2.3 ./stdlib-kafka

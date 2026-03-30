@@ -1,0 +1,15 @@
+name: Staging
+description: Production-like service topology with Vault-backed references.
+default: false
+runtime:
+  suite: payment-suite
+  repository: localhost:5000/core-platform/payment-suite
+  profileFile: staging.yaml
+modules:
+    - postgres
+    - kafka
+    - wiremock
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

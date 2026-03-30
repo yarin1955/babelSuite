@@ -1,0 +1,15 @@
+name: Performance
+description: Synthetic bursts for planner saturation tests.
+default: false
+runtime:
+  suite: fleet-control-room
+  repository: localhost:5000/platform/fleet-control-room
+  profileFile: perf.yaml
+modules:
+    - redis
+    - grpc
+    - prometheus
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

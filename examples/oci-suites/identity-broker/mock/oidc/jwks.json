@@ -1,0 +1,12 @@
+{
+  "oidc-admin": {
+    "provider": "oidc",
+    "redirect": "https://oidc-mock.internal/authorize",
+    "sessionId": "sess_9001"
+  },
+  "saml-fallback": {
+    "provider": "saml",
+    "redirect": "https://saml-mock.internal/login",
+    "sessionId": "sess_9021"
+  }
+}

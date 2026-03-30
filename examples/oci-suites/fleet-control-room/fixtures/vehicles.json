@@ -1,0 +1,10 @@
+[
+  {
+    "state": "idle",
+    "vehicleId": "vh-11"
+  },
+  {
+    "state": "charging",
+    "vehicleId": "vh-12"
+  }
+]

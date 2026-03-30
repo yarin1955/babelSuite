@@ -1,0 +1,15 @@
+name: CI Smoke
+description: Fast login assertions with deterministic realms.
+default: false
+runtime:
+  suite: identity-broker
+  repository: localhost:5000/security/identity-broker
+  profileFile: ci.yaml
+modules:
+    - vault
+    - wiremock
+    - postgres
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

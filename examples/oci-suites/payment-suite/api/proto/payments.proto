@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package payment_suite.v1;
+
+service paymentsService {
+  rpc Ping (PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string status = 1;
+}

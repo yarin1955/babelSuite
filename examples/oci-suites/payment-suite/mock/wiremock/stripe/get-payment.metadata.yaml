@@ -1,0 +1,42 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/wiremock/stripe/get-payment.metadata.yaml
+    operationId: get-payment
+    sourceArtifact: mock/wiremock/stripe/get-payment.json
+    suite: payment-suite
+spec:
+    adapter: rest
+    delayMillis: 0
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "404"
+        mediatype: application/json
+        body: |-
+            {
+              "code": "PAYMENT_NOT_FOUND",
+              "message": "No payment state exists for {{ request.path.paymentId }}."
+            }
+        headers: []
+    parameterConstraints:
+        - name: paymentId
+          source: path
+          required: true
+          forward: false
+          pattern: ^pay_[A-Za-z0-9]+$
+        - name: x-request-id
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments/pay_1043
+    state:
+        lookupkeytemplate: payment:{{ request.path.paymentId }}
+        mutationkeytemplate: ""
+        defaults:
+            ledgerState: posted
+            profile: local.yaml
+            status: authorized
+        transitions: []

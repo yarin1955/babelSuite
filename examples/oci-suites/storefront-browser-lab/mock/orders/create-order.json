@@ -1,0 +1,13 @@
+{
+  "happy-path": {
+    "eventPublished": true,
+    "orderId": "ord_7001",
+    "previousAttempts": "{{ state.count }}",
+    "status": "accepted"
+  },
+  "out-of-stock": {
+    "code": "OUT_OF_STOCK",
+    "message": "Requested item is not available.",
+    "previousAttempts": "{{ state.count }}"
+  }
+}
