@@ -98,7 +98,7 @@ func main() {
 	sandboxHandler.Register(mux)
 
 	addr := envOr("PORT", "8090")
-	if !strings.HasPrefix(addr, ":") {
+	if !strings.Contains(addr, ":") {
 		addr = ":" + addr
 	}
 
