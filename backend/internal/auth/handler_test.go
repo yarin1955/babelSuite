@@ -122,6 +122,16 @@ func (s *stubStore) CreateWorkspace(_ context.Context, workspace *domain.Workspa
 	return nil
 }
 
+func (s *stubStore) DeleteWorkspace(_ context.Context, id string) error {
+	workspace, ok := s.workspacesByID[id]
+	if !ok {
+		return store.ErrNotFound
+	}
+	delete(s.workspacesByID, id)
+	delete(s.workspacesBySlug, workspace.Slug)
+	return nil
+}
+
 func (s *stubStore) GetWorkspaceByID(_ context.Context, id string) (*domain.Workspace, error) {
 	workspace, ok := s.workspacesByID[id]
 	if !ok {

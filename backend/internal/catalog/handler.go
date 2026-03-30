@@ -13,14 +13,9 @@ import (
 )
 
 type Handler struct {
-	service   packageReader
+	service   Reader
 	favorites favoriteStore
 	jwt       *auth.JWTService
-}
-
-type packageReader interface {
-	ListPackages() ([]Package, error)
-	GetPackage(id string) (*Package, error)
 }
 
 type favoriteStore interface {
@@ -29,7 +24,7 @@ type favoriteStore interface {
 	RemoveFavoritePackage(ctx context.Context, userID, packageID string) error
 }
 
-func NewHandler(service packageReader, favorites favoriteStore, jwt *auth.JWTService) *Handler {
+func NewHandler(service Reader, favorites favoriteStore, jwt *auth.JWTService) *Handler {
 	return &Handler{service: service, favorites: favorites, jwt: jwt}
 }
 
