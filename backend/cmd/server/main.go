@@ -25,6 +25,7 @@ import (
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
 	"github.com/babelsuite/babelsuite/internal/suites"
+	"github.com/babelsuite/babelsuite/internal/telemetry"
 )
 
 func main() {
@@ -56,6 +57,18 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 	defer st.Close(context.Background())
+
+	telemetryPipeline, err := telemetry.Start(context.Background())
+	if err != nil {
+		log.Fatalf("otel: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if shutdownErr := telemetryPipeline.Shutdown(shutdownCtx); shutdownErr != nil {
+			log.Printf("otel shutdown: %v", shutdownErr)
+		}
+	}()
 
 	cacheLayer, err := buildCacheHub()
 	if err != nil {
@@ -124,7 +137,7 @@ func main() {
 	}
 
 	log.Printf("babelsuite server listening on %s using %s", addr, dbDriver)
-	if err := http.ListenAndServe(addr, cors(frontendURL, mux)); err != nil {
+	if err := http.ListenAndServe(addr, telemetry.WrapHTTP(cors(frontendURL, mux))); err != nil {
 		log.Fatal(err)
 	}
 }

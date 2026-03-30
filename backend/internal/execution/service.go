@@ -132,6 +132,7 @@ type Service struct {
 	observers   []Observer
 	logs        *logstream.Hub
 	runner      runner.Executor
+	signals     *telemetrySet
 
 	mu         sync.Mutex
 	suiteMeta  map[string]suiteRuntimeMeta
@@ -165,6 +166,7 @@ type executionState struct {
 	record    ExecutionRecord
 	total     int
 	completed int
+	monitor   *liveSpan
 }
 
 func NewService(source suiteSource, observers ...Observer) *Service {
@@ -185,11 +187,15 @@ func NewService(source suiteSource, observers ...Observer) *Service {
 		executions:  make(map[string]*executionState),
 		subs:        make(map[string]map[chan StreamEvent]struct{}),
 	}
+	s.signals = newTelemetrySet(s)
 	s.seedHistory()
 	return s
 }
 
 func (s *Service) Close() {
+	if s.signals != nil {
+		s.signals.shutdown()
+	}
 	s.cancel()
 	s.queue.Close()
 }
@@ -244,9 +250,13 @@ func (s *Service) GetExecution(executionID string) (*ExecutionRecord, error) {
 	return &record, nil
 }
 
-func (s *Service) CreateExecution(_ context.Context, request CreateRequest) (*ExecutionSummary, error) {
-	suite, err := s.suiteSource.Get(strings.TrimSpace(request.SuiteID))
+func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*ExecutionSummary, error) {
+	suiteID := strings.TrimSpace(request.SuiteID)
+	s.noteLaunch(ctx, suiteID)
+
+	suite, err := s.suiteSource.Get(suiteID)
 	if err != nil {
+		s.noteRejectedLaunch(ctx, suiteID, "suite_not_found")
 		return nil, ErrSuiteNotFound
 	}
 	meta := s.suiteMeta[suite.ID]
@@ -256,6 +266,7 @@ func (s *Service) CreateExecution(_ context.Context, request CreateRequest) (*Ex
 		profile = defaultProfile(suite.Profiles)
 	}
 	if !suiteHasProfile(suite.Profiles, profile) {
+		s.noteRejectedLaunch(ctx, suite.ID, "profile_not_found")
 		return nil, ErrProfileNotFound
 	}
 
@@ -286,6 +297,7 @@ func (s *Service) CreateExecution(_ context.Context, request CreateRequest) (*Ex
 	s.order = append(s.order, executionID)
 	s.mu.Unlock()
 	s.logs.Open(executionID)
+	s.beginRunObservation(ctx, state)
 
 	tasks := make([]queue.Task, 0, len(topology))
 	taskIDs := make(map[string]string, len(topology))
@@ -314,6 +326,15 @@ func (s *Service) CreateExecution(_ context.Context, request CreateRequest) (*Ex
 	}
 
 	if err := s.queue.Enqueue(tasks); err != nil {
+		s.noteRejectedLaunch(ctx, suite.ID, "enqueue_failed")
+		s.mu.Lock()
+		if item := s.executions[executionID]; item != nil {
+			item.record.Status = "Failed"
+			item.record.UpdatedAt = time.Now().UTC()
+		}
+		s.mu.Unlock()
+		s.finishExecutionObservation(executionID, err)
+
 		s.mu.Lock()
 		delete(s.executions, executionID)
 		s.order = filterOut(s.order, executionID)
@@ -329,6 +350,8 @@ func (s *Service) CreateExecution(_ context.Context, request CreateRequest) (*Ex
 }
 
 func (s *Service) runNode(ctx context.Context, executionID string, suite *suites.Definition, profile string, node topologyNode) error {
+	stepCtx, stepSpan, stepStartedAt := s.beginStepObservation(s.stepContext(executionID), executionID, suite, profile, node)
+
 	s.appendEvent(executionID, ExecutionEvent{
 		ID:        node.ID + "-start",
 		Source:    node.ID,
@@ -338,7 +361,7 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		Level:     "info",
 	})
 
-	err := s.runner.Run(ctx, runner.StepSpec{
+	err := s.runner.Run(stepCtx, runner.StepSpec{
 		ExecutionID: executionID,
 		SuiteID:     suite.ID,
 		SuiteTitle:  suite.Title,
@@ -355,13 +378,17 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			s.failExecution(executionID, node.ID, fmt.Sprintf("[%s] Execution canceled before the node became healthy.", node.Name))
+			s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, context.Canceled)
+			s.finishExecutionObservation(executionID, context.Canceled)
 			return context.Canceled
 		}
 		s.failExecution(executionID, node.ID, fmt.Sprintf("[%s] Runner failed: %v", node.Name, err))
+		s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, err)
+		s.finishExecutionObservation(executionID, err)
 		return err
 	}
 
-	s.markNodeComplete(executionID)
+	finished := s.markNodeComplete(executionID)
 	s.appendEvent(executionID, ExecutionEvent{
 		ID:        node.ID + "-healthy",
 		Source:    node.ID,
@@ -370,6 +397,10 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		Status:    "healthy",
 		Level:     "info",
 	})
+	s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, nil)
+	if finished {
+		s.finishExecutionObservation(executionID, nil)
+	}
 
 	return nil
 }
@@ -413,20 +444,22 @@ func (s *Service) nextTimestamp(executionID string) string {
 	return fmt.Sprintf("%02d:%02d", second/60, second%60)
 }
 
-func (s *Service) markNodeComplete(executionID string) {
+func (s *Service) markNodeComplete(executionID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	item := s.executions[executionID]
 	if item == nil {
-		return
+		return false
 	}
 
 	item.completed++
 	item.record.UpdatedAt = time.Now().UTC()
 	if item.completed >= item.total {
 		item.record.Status = "Healthy"
+		return true
 	}
+	return false
 }
 
 func (s *Service) failExecution(executionID, source, message string) {
