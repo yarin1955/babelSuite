@@ -78,6 +78,11 @@ func (s *Store) CreateWorkspace(ctx context.Context, workspace *domain.Workspace
 	return wrap(err)
 }
 
+func (s *Store) DeleteWorkspace(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM workspaces WHERE workspace_id = $1`, id)
+	return wrap(err)
+}
+
 func (s *Store) GetWorkspaceByID(ctx context.Context, id string) (*domain.Workspace, error) {
 	var workspace domain.Workspace
 	err := s.pool.QueryRow(ctx,

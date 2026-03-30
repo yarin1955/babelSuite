@@ -14,6 +14,7 @@ var (
 
 type Store interface {
 	CreateWorkspace(ctx context.Context, workspace *domain.Workspace) error
+	DeleteWorkspace(ctx context.Context, id string) error
 	GetWorkspaceByID(ctx context.Context, id string) (*domain.Workspace, error)
 	GetWorkspaceBySlug(ctx context.Context, slug string) (*domain.Workspace, error)
 

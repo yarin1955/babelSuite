@@ -62,6 +62,11 @@ func (s *Store) CreateWorkspace(ctx context.Context, workspace *domain.Workspace
 	return wrap(err)
 }
 
+func (s *Store) DeleteWorkspace(ctx context.Context, id string) error {
+	_, err := s.workspaces.DeleteOne(ctx, bson.M{"workspace_id": id})
+	return wrap(err)
+}
+
 func (s *Store) GetWorkspaceByID(ctx context.Context, id string) (*domain.Workspace, error) {
 	var workspace domain.Workspace
 	err := s.workspaces.FindOne(ctx, bson.M{"workspace_id": id}).Decode(&workspace)
