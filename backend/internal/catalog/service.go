@@ -35,6 +35,11 @@ type Package struct {
 	Starred     bool     `json:"starred"`
 }
 
+type Reader interface {
+	ListPackages() ([]Package, error)
+	GetPackage(id string) (*Package, error)
+}
+
 type suiteReader interface {
 	List() []suites.Definition
 	Get(id string) (*suites.Definition, error)

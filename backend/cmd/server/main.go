@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/babelsuite/babelsuite/internal/auth"
+	"github.com/babelsuite/babelsuite/internal/cachehub"
 	"github.com/babelsuite/babelsuite/internal/catalog"
 	"github.com/babelsuite/babelsuite/internal/engine"
 	enginewatchers "github.com/babelsuite/babelsuite/internal/engine/watchers"
@@ -54,6 +57,17 @@ func main() {
 	}
 	defer st.Close(context.Background())
 
+	cacheLayer, err := buildCacheHub()
+	if err != nil {
+		log.Fatalf("redis cache: %v", err)
+	}
+	defer cacheLayer.Close()
+
+	st = store.WithRedis(st, cacheLayer, store.CacheConfig{
+		WorkspaceTTL: durationOr("CACHE_TTL_WORKSPACE", 5*time.Minute),
+		FavoritesTTL: durationOr("CACHE_TTL_FAVORITES", 2*time.Minute),
+	})
+
 	auth.Seed(context.Background(), st, os.Getenv("ADMIN_EMAIL"), os.Getenv("ADMIN_PASSWORD"))
 
 	frontendURL := envOr("FRONTEND_URL", "http://localhost:5173")
@@ -63,13 +77,20 @@ func main() {
 		os.Getenv("GITLAB_OAUTH_URL"),
 	))
 	suiteService := suites.NewService()
-	profileStore := profiles.NewFileStore(resolveWorkspacePath(envOr("PROFILES_FILE", "babelsuite-profiles.yaml")))
+	var profileStore profiles.Store = profiles.NewFileStore(resolveWorkspacePath(envOr("PROFILES_FILE", "babelsuite-profiles.yaml")))
+	profileStore = profiles.WithRedis(profileStore, cacheLayer, durationOr("CACHE_TTL_PROFILES", 2*time.Minute))
 	profileService := profiles.NewService(suiteService, profileStore)
-	platformStore := platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
+	var platformStore platform.Store = platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
+	platformStore = platform.WithRedis(platformStore, cacheLayer, durationOr("CACHE_TTL_PLATFORM", 2*time.Minute))
 	suiteHandler := suites.NewHandler(profileService, jwtSvc)
 	mockingHandler := mocking.NewHandler(mocking.NewService(suiteService))
 	profileHandler := profiles.NewHandler(profileService, jwtSvc)
-	catalogHandler := catalog.NewHandler(catalog.NewService(suiteService, platformStore), st, jwtSvc)
+	catalogReader := catalog.WithRedis(
+		catalog.NewService(suiteService, platformStore),
+		cacheLayer,
+		durationOr("CACHE_TTL_CATALOG", 45*time.Second),
+	)
+	catalogHandler := catalog.NewHandler(catalogReader, st, jwtSvc)
 	engineStore := engine.NewStore()
 	engineHandler := engine.NewHandler(engineStore, jwtSvc)
 	executionWatcher := enginewatchers.NewExecutionWatcher(engineStore)
@@ -114,6 +135,38 @@ func envOr(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func durationOr(key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func buildCacheHub() (*cachehub.Hub, error) {
+	address := strings.TrimSpace(os.Getenv("REDIS_ADDR"))
+	if address == "" {
+		return &cachehub.Hub{}, nil
+	}
+
+	index, err := strconv.Atoi(envOr("REDIS_DB", "0"))
+	if err != nil {
+		return nil, err
+	}
+
+	return cachehub.New(cachehub.Options{
+		Address:  address,
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       index,
+		Prefix:   envOr("REDIS_PREFIX", "babelsuite"),
+	})
 }
 
 func resolveWorkspacePath(path string) string {
