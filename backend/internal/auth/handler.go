@@ -138,6 +138,7 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.createUser(r, req.FullName, req.Email, string(passHash), workspace.WorkspaceID)
 	if err != nil {
+		_ = h.store.DeleteWorkspace(r.Context(), workspace.WorkspaceID)
 		if errors.Is(err, store.ErrDuplicate) {
 			writeError(w, http.StatusConflict, "An account already exists for that email address.")
 			return
