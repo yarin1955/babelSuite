@@ -24,7 +24,7 @@ var (
 	ErrExecutionNotFound = errors.New("execution not found")
 )
 
-var topologyPattern = regexp.MustCompile(`^([a-zA-Z_][\w]*)\s*=\s*(container|mock|script|load|scenario)\(\s*name="([^"]+)"(?:,\s*after=\[([^\]]*)\])?.*\)$`)
+var topologyPattern = regexp.MustCompile(`^([a-zA-Z_][\w]*)\s*=\s*(container|mock|script|load|scenario)\(\s*name\s*=\s*"([^"]+)"(?:,\s*after=\[([^\]]*)\])?.*\)$`)
 
 type ProfileOption struct {
 	FileName    string `json:"fileName"`
