@@ -259,7 +259,7 @@ func (s *Service) CreateExecution(_ context.Context, request CreateRequest) (*Ex
 		return nil, ErrProfileNotFound
 	}
 
-	executionID := "run-" + strings.ReplaceAll(uuid.NewString()[:8], "-", "")
+	executionID := "run-" + uuid.NewString()[:8]
 	startedAt := time.Now().UTC()
 	state := &executionState{
 		record: ExecutionRecord{
