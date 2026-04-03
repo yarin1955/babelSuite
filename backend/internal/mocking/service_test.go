@@ -102,16 +102,20 @@ func TestGRPCAdapterUsesBodyDispatch(t *testing.T) {
 	}
 }
 
-func TestRenderTemplateSupportsDynamicHelpers(t *testing.T) {
+func TestRenderTemplateResolvesContextPathsAndFallbacks(t *testing.T) {
 	rendered := renderTemplate(`{
   "servedBy": "{{ request.headers.x-mock-node || 'apisix-sidecar' }}",
-  "traceId": "{{ randomUUID() }}",
-  "servedAt": "{{ now() }}",
-  "bucket": "{{ randomValue('low', 'high') }}",
-  "token": "{{ randomString(8) }}"
+  "returnId": "{{ request.path.returnId }}",
+  "status": "{{ state.status }}"
 }`, map[string]any{
 		"request": map[string]any{
 			"headers": map[string]string{},
+			"path": map[string]string{
+				"returnId": "ret_9001",
+			},
+		},
+		"state": map[string]string{
+			"status": "approved",
 		},
 	})
 
@@ -122,17 +126,11 @@ func TestRenderTemplateSupportsDynamicHelpers(t *testing.T) {
 	if payload["servedBy"] != "apisix-sidecar" {
 		t.Fatalf("expected fallback value, got %q", payload["servedBy"])
 	}
-	if _, err := uuid.Parse(payload["traceId"]); err != nil {
-		t.Fatalf("expected UUID trace id, got %q", payload["traceId"])
+	if payload["returnId"] != "ret_9001" {
+		t.Fatalf("expected request path value, got %q", payload["returnId"])
 	}
-	if _, err := time.Parse(time.RFC3339Nano, payload["servedAt"]); err != nil {
-		t.Fatalf("expected RFC3339 timestamp, got %q", payload["servedAt"])
-	}
-	if payload["bucket"] != "low" && payload["bucket"] != "high" {
-		t.Fatalf("expected randomValue output, got %q", payload["bucket"])
-	}
-	if len(payload["token"]) != 8 {
-		t.Fatalf("expected random string length 8, got %q", payload["token"])
+	if payload["status"] != "approved" {
+		t.Fatalf("expected state value, got %q", payload["status"])
 	}
 }
 
@@ -373,7 +371,7 @@ func TestSchemaDocumentDrivesMockResponseGeneration(t *testing.T) {
 		t.Fatalf("get suite: %v", err)
 	}
 
-	replaceSuiteSourceFile(t, suite, "mock/events/refund-authorized.json", `{
+	replaceSuiteSourceFile(t, suite, "mock/events/refund-authorized.cue", `{
   "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
   "examples": {
     "authorized-event": {
@@ -453,7 +451,7 @@ func TestSchemaDocumentValidatesRequestBody(t *testing.T) {
 		t.Fatalf("get suite: %v", err)
 	}
 
-	replaceSuiteSourceFile(t, suite, "mock/events/refund-authorized.json", `{
+	replaceSuiteSourceFile(t, suite, "mock/events/refund-authorized.cue", `{
   "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
   "examples": {
     "authorized-event": {

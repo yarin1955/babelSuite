@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/claims/claim-service.metadata.yaml
     operationId: claim-service
-    sourceArtifact: mock/claims/claim-service.json
+    sourceArtifact: mock/claims/claim-service.cue
     suite: soap-claims-hub
 spec:
     adapter: rest

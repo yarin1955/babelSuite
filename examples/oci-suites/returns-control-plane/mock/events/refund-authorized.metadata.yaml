@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/events/refund-authorized.metadata.yaml
     operationId: publish-refund-authorized
-    sourceArtifact: mock/events/refund-authorized.json
+    sourceArtifact: mock/events/refund-authorized.cue
     suite: returns-control-plane
 spec:
     adapter: async

@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/wiremock/stripe/create-charge.metadata.yaml
     operationId: create-payment
-    sourceArtifact: mock/wiremock/stripe/create-charge.json
+    sourceArtifact: mock/wiremock/stripe/create-charge.cue
     suite: payment-suite
 spec:
     adapter: rest

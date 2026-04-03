@@ -110,6 +110,29 @@ func cleanupGeneratedSuiteArtifacts(examplesRoot string) error {
 			return err
 		}
 	}
+
+	suitesRoot := filepath.Join(examplesRoot, "oci-suites")
+	if err := filepath.WalkDir(suitesRoot, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".json" {
+			return nil
+		}
+		segments := strings.Split(filepath.ToSlash(path), "/")
+		for _, segment := range segments {
+			if segment != "mock" {
+				continue
+			}
+			return os.Remove(path)
+		}
+		return nil
+	}); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
 }
 

@@ -27,7 +27,6 @@ var (
 	ErrOperationNotFound = errors.New("mock operation not found")
 
 	templateTokenPattern = regexp.MustCompile(`(?s)\{\{\s*(.*?)\s*\}\}`)
-	functionCallPattern  = regexp.MustCompile(`^([a-zA-Z_$][a-zA-Z0-9_$-]*)\((.*)\)$`)
 )
 
 type suiteReader interface {
@@ -420,29 +419,28 @@ func loadSchemaExamples(suite suites.Definition, operation suites.APIOperation) 
 	if !ok {
 		return nil
 	}
-
-	var document schemaExampleDocument
-	if err := json.Unmarshal([]byte(content), &document); err != nil || len(document.Examples) == 0 {
+	examples, err := parseSchemaExamplesDocument(content)
+	if err != nil {
 		return nil
 	}
+	return examples
+}
 
-	names := make([]string, 0, len(document.Examples))
-	for name := range document.Examples {
-		names = append(names, name)
+func normalizeSchemaDocumentContent(content string) string {
+	if !strings.Contains(content, "//") {
+		return content
 	}
-	sort.Strings(names)
 
-	output := make([]schemaBackedExample, 0, len(names))
-	for _, name := range names {
-		example := document.Examples[name]
-		output = append(output, schemaBackedExample{
-			Name:     name,
-			Dispatch: example.Dispatch,
-			Request:  example.RequestSchema,
-			Response: example.ResponseSchema,
-		})
+	lines := strings.Split(content, "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		filtered = append(filtered, line)
 	}
-	return output
+	return strings.Join(filtered, "\n")
 }
 
 func sourceFileContent(files []suites.SourceFile, path string) (string, bool) {
@@ -773,10 +771,6 @@ func evaluateTemplateExpression(expression string, contextMap map[string]any) (s
 		return literal, true
 	}
 
-	if match := functionCallPattern.FindStringSubmatch(trimmed); len(match) == 3 {
-		return evaluateTemplateFunction(match[1], splitTemplateArguments(match[2]), contextMap)
-	}
-
 	value, ok := lookupContextValue(contextMap, templatePathSegments(trimmed))
 	if !ok {
 		return "", false
@@ -821,37 +815,6 @@ func unquoteTemplateLiteral(value string) (string, bool) {
 	return "", false
 }
 
-func evaluateTemplateFunction(name string, args []string, contextMap map[string]any) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "now", "timestamp":
-		layout := time.RFC3339Nano
-		if len(args) > 0 {
-			layout = timeLayoutForTemplateArg(argumentValue(args[0], contextMap))
-		}
-		return time.Now().UTC().Format(layout), true
-	case "uuid", "guid", "randomuuid":
-		return uuid.NewString(), true
-	case "randomint":
-		return strconv.Itoa(randomInt(args, contextMap)), true
-	case "randomstring":
-		length := max(argumentInt(args, 0, contextMap, 12), 1)
-		return randomString(length), true
-	case "randomboolean":
-		if randomInt(nil, nil)%2 == 0 {
-			return "false", true
-		}
-		return "true", true
-	case "randomvalue":
-		if len(args) == 0 {
-			return "", false
-		}
-		index := randomInt([]string{"0", strconv.Itoa(len(args) - 1)}, nil)
-		return argumentValue(args[index], contextMap), true
-	default:
-		return "", false
-	}
-}
-
 func timeLayoutForTemplateArg(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -877,18 +840,7 @@ func timeLayoutForTemplateArg(value string) string {
 	return layout
 }
 
-func randomInt(args []string, contextMap map[string]any) int {
-	minimum := 0
-	maximum := 2147483647
-
-	switch len(args) {
-	case 1:
-		maximum = argumentInt(args, 0, contextMap, maximum)
-	case 2:
-		minimum = argumentInt(args, 0, contextMap, minimum)
-		maximum = argumentInt(args, 1, contextMap, maximum)
-	}
-
+func generateIntInRange(minimum, maximum int) int {
 	if maximum < minimum {
 		minimum, maximum = maximum, minimum
 	}
@@ -904,7 +856,7 @@ func randomInt(args []string, contextMap map[string]any) int {
 	return minimum + int(value.Int64())
 }
 
-func randomString(length int) string {
+func generateRandomString(length int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 	builder := strings.Builder{}
@@ -918,31 +870,6 @@ func randomString(length int) string {
 		builder.WriteByte(alphabet[position.Int64()])
 	}
 	return builder.String()
-}
-
-func argumentInt(args []string, index int, contextMap map[string]any, fallback int) int {
-	if index >= len(args) {
-		return fallback
-	}
-	value := argumentValue(args[index], contextMap)
-	if parsed, err := strconv.Atoi(value); err == nil {
-		return parsed
-	}
-	return fallback
-}
-
-func argumentValue(argument string, contextMap map[string]any) string {
-	if literal, ok := unquoteTemplateLiteral(strings.TrimSpace(argument)); ok {
-		return literal
-	}
-	if value, ok := evaluateTemplateExpression(argument, contextMap); ok {
-		return value
-	}
-	return strings.TrimSpace(argument)
-}
-
-func splitTemplateArguments(input string) []string {
-	return splitTemplateExpression(input, ",")
 }
 
 func splitTemplateExpression(input, delimiter string) []string {
@@ -1107,6 +1034,21 @@ func renderSchemaValue(schema any, contextMap map[string]any) any {
 		return schema
 	}
 
+	if compose, ok := node["x-babel-compose"]; ok {
+		if value, ok := renderSchemaComposedValue(compose, contextMap); ok {
+			return coerceSchemaAny(strings.TrimSpace(fmt.Sprint(node["type"])), value)
+		}
+	}
+	if generate, ok := node["x-babel-generate"]; ok {
+		if value, ok := renderSchemaGeneratedValue(strings.TrimSpace(fmt.Sprint(node["type"])), generate); ok {
+			return value
+		}
+	}
+	if resolve, ok := node["x-babel-resolve"]; ok {
+		if value, ok := renderSchemaResolvedValue(strings.TrimSpace(fmt.Sprint(node["type"])), resolve, contextMap); ok {
+			return value
+		}
+	}
 	if template, ok := node["x-babel-template"].(string); ok {
 		return coerceSchemaPrimitive(strings.TrimSpace(fmt.Sprint(node["type"])), renderTemplate(template, contextMap))
 	}
@@ -1148,6 +1090,137 @@ func renderSchemaValue(schema any, contextMap map[string]any) any {
 	}
 }
 
+func renderSchemaComposedValue(spec any, contextMap map[string]any) (string, bool) {
+	parts, ok := spec.([]any)
+	if !ok || len(parts) == 0 {
+		return "", false
+	}
+
+	builder := strings.Builder{}
+	for _, part := range parts {
+		switch typed := part.(type) {
+		case string:
+			builder.WriteString(typed)
+		case map[string]any:
+			if generate, exists := typed["generate"]; exists {
+				value, ok := renderSchemaGeneratedValue("string", generate)
+				if !ok {
+					return "", false
+				}
+				builder.WriteString(fmt.Sprint(value))
+				continue
+			}
+			if resolve, exists := typed["resolve"]; exists {
+				value, ok := renderSchemaResolvedValue("string", resolve, contextMap)
+				if !ok {
+					return "", false
+				}
+				builder.WriteString(fmt.Sprint(value))
+				continue
+			}
+			return "", false
+		default:
+			return "", false
+		}
+	}
+
+	return builder.String(), true
+}
+
+func renderSchemaGeneratedValue(schemaType string, spec any) (any, bool) {
+	node, ok := spec.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+
+	kind := strings.ToLower(strings.TrimSpace(stringValue(node["kind"])))
+	prefix := stringValue(node["prefix"])
+	suffix := stringValue(node["suffix"])
+	layout := stringValue(node["layout"])
+
+	var value any
+	switch kind {
+	case "uuid":
+		value = uuid.NewString()
+	case "timestamp":
+		if strings.TrimSpace(layout) == "" {
+			layout = time.RFC3339Nano
+		} else {
+			layout = timeLayoutForTemplateArg(layout)
+		}
+		value = time.Now().UTC().Format(layout)
+	case "int":
+		minimum := 0
+		maximum := 2147483647
+		if value, ok := intValue(node["min"]); ok {
+			minimum = value
+		}
+		if value, ok := intValue(node["max"]); ok {
+			maximum = value
+		}
+		generated := generateIntInRange(minimum, maximum)
+		if prefix != "" || suffix != "" || schemaType == "string" {
+			value = prefix + strconv.Itoa(generated) + suffix
+		} else {
+			value = generated
+		}
+	case "string":
+		length, _ := intValue(node["length"])
+		if length <= 0 {
+			length = 12
+		}
+		value = prefix + generateRandomString(length) + suffix
+	case "pick":
+		options := anySlice(node["options"])
+		if len(options) == 0 {
+			return nil, false
+		}
+		index := generateIntInRange(0, len(options)-1)
+		value = prefix + fmt.Sprint(options[index]) + suffix
+	case "boolean":
+		generated := generateIntInRange(0, 1) == 1
+		if prefix != "" || suffix != "" || schemaType == "string" {
+			value = prefix + strconv.FormatBool(generated) + suffix
+		} else {
+			value = generated
+		}
+	default:
+		return nil, false
+	}
+
+	return coerceSchemaAny(schemaType, value), true
+}
+
+func renderSchemaResolvedValue(schemaType string, spec any, contextMap map[string]any) (any, bool) {
+	node, ok := spec.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+
+	path := strings.TrimSpace(stringValue(node["path"]))
+	if path == "" {
+		return nil, false
+	}
+
+	value, ok := lookupContextValue(contextMap, templatePathSegments(path))
+	if !ok || value == nil || strings.TrimSpace(fmt.Sprint(value)) == "" {
+		if fallback, exists := node["fallback"]; exists {
+			value = fallback
+			ok = true
+		}
+	}
+	if !ok {
+		return nil, false
+	}
+
+	prefix := stringValue(node["prefix"])
+	suffix := stringValue(node["suffix"])
+	if prefix != "" || suffix != "" {
+		return coerceSchemaAny(schemaType, prefix+fmt.Sprint(value)+suffix), true
+	}
+	return coerceSchemaAny(schemaType, value), true
+}
+
 func coerceSchemaPrimitive(schemaType, value string) any {
 	switch schemaType {
 	case "integer":
@@ -1166,6 +1239,83 @@ func coerceSchemaPrimitive(schemaType, value string) any {
 		return nil
 	}
 	return value
+}
+
+func coerceSchemaAny(schemaType string, value any) any {
+	if value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case string:
+		return coerceSchemaPrimitive(schemaType, typed)
+	default:
+		switch schemaType {
+		case "string":
+			return fmt.Sprint(value)
+		case "integer":
+			if isIntegerValue(value) {
+				return value
+			}
+		case "number":
+			if isNumericValue(value) {
+				return value
+			}
+		case "boolean":
+			if _, ok := value.(bool); ok {
+				return value
+			}
+		}
+		return value
+	}
+}
+
+func stringValue(value any) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func intValue(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int8:
+		return int(typed), true
+	case int16:
+		return int(typed), true
+	case int32:
+		return int(typed), true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	case float32:
+		return int(typed), true
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
+func anySlice(value any) []any {
+	switch typed := value.(type) {
+	case []any:
+		return typed
+	case []string:
+		output := make([]any, 0, len(typed))
+		for _, item := range typed {
+			output = append(output, item)
+		}
+		return output
+	default:
+		return nil
+	}
 }
 
 func toMapAny(value any) (map[string]any, bool) {

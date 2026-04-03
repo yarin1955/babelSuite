@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/returns/create-return.metadata.yaml
     operationId: create-return
-    sourceArtifact: mock/returns/create-return.json
+    sourceArtifact: mock/returns/create-return.cue
     suite: returns-control-plane
 spec:
     adapter: rest

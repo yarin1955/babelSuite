@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/catalog/list-products.metadata.yaml
     operationId: list-products
-    sourceArtifact: mock/catalog/list-products.json
+    sourceArtifact: mock/catalog/list-products.cue
     suite: storefront-browser-lab
 spec:
     adapter: rest

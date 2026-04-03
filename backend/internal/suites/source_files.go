@@ -24,6 +24,7 @@ func hydrateSuites(input map[string]Definition) map[string]Definition {
 }
 
 func normalizeDefinition(suite Definition) Definition {
+	suite = normalizeMockSchemaArtifacts(suite)
 	for surfaceIndex, surface := range suite.APISurfaces {
 		for operationIndex, operation := range surface.Operations {
 			metadata := operation.MockMetadata
@@ -57,13 +58,56 @@ func normalizeDefinition(suite Definition) Definition {
 	return suite
 }
 
+func normalizeMockSchemaArtifacts(suite Definition) Definition {
+	for folderIndex := range suite.Folders {
+		if suite.Folders[folderIndex].Name != "mock" {
+			continue
+		}
+		for fileIndex, file := range suite.Folders[folderIndex].Files {
+			suite.Folders[folderIndex].Files[fileIndex] = strings.TrimPrefix(normalizeMockSchemaPath("mock/"+strings.Trim(file, "/")), "mock/")
+		}
+		sort.Strings(suite.Folders[folderIndex].Files)
+	}
+
+	for surfaceIndex, surface := range suite.APISurfaces {
+		for operationIndex, operation := range surface.Operations {
+			operation.MockPath = normalizeMockSchemaPath(operation.MockPath)
+			for exchangeIndex, exchange := range operation.Exchanges {
+				operation.Exchanges[exchangeIndex].SourceArtifact = normalizeMockSchemaReference(exchange.SourceArtifact)
+			}
+			suite.APISurfaces[surfaceIndex].Operations[operationIndex] = operation
+		}
+	}
+
+	return suite
+}
+
+func normalizeMockSchemaPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if !strings.HasPrefix(trimmed, "mock/") {
+		return trimmed
+	}
+	if !strings.EqualFold(filepath.Ext(trimmed), ".json") {
+		return trimmed
+	}
+	return strings.TrimSuffix(trimmed, filepath.Ext(trimmed)) + ".cue"
+}
+
+func normalizeMockSchemaReference(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if !strings.EqualFold(filepath.Ext(trimmed), ".json") {
+		return trimmed
+	}
+	return strings.TrimSuffix(trimmed, filepath.Ext(trimmed)) + ".cue"
+}
+
 func defaultMockAdapter(protocol string) string {
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	switch normalizeTransportName(protocol) {
 	case "grpc":
 		return "grpc"
-	case "async":
+	case "async", "kafka", "mqtt", "amqp", "nats", "tcp", "udp":
 		return "async"
-	case "soap":
+	case "soap", "graphql", "websocket", "sse", "webhook":
 		return "rest"
 	default:
 		return "rest"
@@ -160,7 +204,10 @@ func buildSourceFiles(suite Definition, loader sourceFileLoader) []SourceFile {
 			}
 			seen[path] = struct{}{}
 
-			content, generated := GeneratedSourceContent(suite, path)
+			content, generated := explicitSuiteSourceContent(suite.SeedSources, path)
+			if !generated {
+				content, generated = GeneratedSourceContent(suite, path)
+			}
 			if !generated {
 				content = missingSourceContent(suite, path)
 			}
@@ -182,6 +229,15 @@ func buildSourceFiles(suite Definition, loader sourceFileLoader) []SourceFile {
 		return files[i].Path < files[j].Path
 	})
 	return files
+}
+
+func explicitSuiteSourceContent(files []SourceFile, path string) (string, bool) {
+	for _, file := range files {
+		if strings.TrimSpace(file.Path) == strings.TrimSpace(path) {
+			return file.Content, true
+		}
+	}
+	return "", false
 }
 
 func normalizeSourcePath(folderName, file string) string {
@@ -220,6 +276,8 @@ func detectSourceLanguage(path string) string {
 		return "yaml"
 	case ".json":
 		return "json"
+	case ".cue":
+		return "cue"
 	case ".xml", ".wsdl", ".xsd":
 		return "xml"
 	case ".proto":

@@ -138,6 +138,7 @@ type Definition struct {
 	SuiteStar   string          `json:"suiteStar"`
 	Profiles    []ProfileOption `json:"profiles"`
 	Folders     []FolderEntry   `json:"folders"`
+	SeedSources []SourceFile    `json:"-"`
 	SourceFiles []SourceFile    `json:"sourceFiles"`
 	Contracts   []string        `json:"contracts"`
 	APISurfaces []APISurface    `json:"apiSurfaces"`
@@ -189,6 +190,7 @@ func cloneDefinition(input Definition) Definition {
 	output.Contracts = append([]string{}, input.Contracts...)
 	output.Profiles = cloneProfiles(input.Profiles)
 	output.Folders = cloneFolders(input.Folders)
+	output.SeedSources = cloneSourceFiles(input.SeedSources)
 	output.SourceFiles = cloneSourceFiles(input.SourceFiles)
 	output.APISurfaces = cloneSurfaces(input.APISurfaces)
 	return output

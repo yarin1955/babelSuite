@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/orders/create-order.metadata.yaml
     operationId: create-order
-    sourceArtifact: mock/orders/create-order.json
+    sourceArtifact: mock/orders/create-order.cue
     suite: storefront-browser-lab
 spec:
     adapter: rest

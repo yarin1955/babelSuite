@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/pricing/quote-refund.metadata.yaml
     operationId: quote-refund
-    sourceArtifact: mock/pricing/quote-refund.json
+    sourceArtifact: mock/pricing/quote-refund.cue
     suite: returns-control-plane
 spec:
     adapter: grpc

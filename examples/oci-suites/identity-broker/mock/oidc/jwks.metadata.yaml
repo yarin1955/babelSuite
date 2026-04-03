@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/oidc/jwks.metadata.yaml
     operationId: begin-login
-    sourceArtifact: mock/oidc/jwks.json
+    sourceArtifact: mock/oidc/jwks.cue
     suite: identity-broker
 spec:
     adapter: rest

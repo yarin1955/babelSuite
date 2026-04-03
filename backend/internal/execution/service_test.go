@@ -257,12 +257,12 @@ func TestGetExecutionIncludesSuiteSourceFiles(t *testing.T) {
 
 	foundMockFile := false
 	for _, file := range record.Suite.SourceFiles {
-		if file.Path != "mock/returns/create-return.json" {
+		if file.Path != "mock/returns/create-return.cue" {
 			continue
 		}
 		foundMockFile = true
-		if !strings.Contains(file.Content, "randomUUID") {
-			t.Fatalf("expected dynamic mock template content, got %q", file.Content)
+		if !strings.Contains(file.Content, `@gen(`) {
+			t.Fatalf("expected declarative mock generation content, got %q", file.Content)
 		}
 	}
 

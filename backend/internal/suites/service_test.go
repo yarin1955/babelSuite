@@ -121,23 +121,23 @@ func TestReturnsSuiteHydratesSchemaBasedMockSourceFiles(t *testing.T) {
 
 	var found bool
 	for _, file := range suite.SourceFiles {
-		if file.Path != "mock/events/refund-authorized.json" {
+		if file.Path != "mock/events/refund-authorized.cue" {
 			continue
 		}
 		found = true
-		if file.Language != "json" {
-			t.Fatalf("expected json language, got %q", file.Language)
+		if file.Language != "cue" {
+			t.Fatalf("expected cue language, got %q", file.Language)
 		}
-		if !strings.Contains(file.Content, `"requestSchema"`) {
+		if !strings.Contains(file.Content, `requestSchema:`) {
 			t.Fatalf("expected generated mock source to include requestSchema, got:\n%s", file.Content)
 		}
-		if !strings.Contains(file.Content, `"responseSchema"`) {
+		if !strings.Contains(file.Content, `responseSchema:`) {
 			t.Fatalf("expected generated mock source to include responseSchema, got:\n%s", file.Content)
 		}
 	}
 
 	if !found {
-		t.Fatal("expected returns suite source files to include refund-authorized.json")
+		t.Fatal("expected returns suite source files to include refund-authorized.cue")
 	}
 }
 
@@ -169,13 +169,16 @@ func TestSoapSuiteHydratesWSDLAndSchemaMockSource(t *testing.T) {
 			if !strings.Contains(file.Content, "SubmitClaim") || !strings.Contains(file.Content, "GetClaimStatus") {
 				t.Fatalf("expected generated wsdl operations, got:\n%s", file.Content)
 			}
-		case "mock/claims/claim-service.json":
+		case "mock/claims/claim-service.cue":
 			mockFound = true
-			if !strings.Contains(file.Content, `"requestSchema"`) || !strings.Contains(file.Content, `"responseSchema"`) {
+			if file.Language != "cue" {
+				t.Fatalf("expected cue mock language, got %q", file.Language)
+			}
+			if !strings.Contains(file.Content, "requestSchema:") || !strings.Contains(file.Content, "responseSchema:") {
 				t.Fatalf("expected schema-backed soap mock source, got:\n%s", file.Content)
 			}
-			if !strings.Contains(file.Content, `"x-babel-template"`) {
-				t.Fatalf("expected soap mock schema to preserve xml templates, got:\n%s", file.Content)
+			if !strings.Contains(file.Content, "@compose(") {
+				t.Fatalf("expected soap mock schema to use cue compose rules, got:\n%s", file.Content)
 			}
 		}
 	}
@@ -184,7 +187,7 @@ func TestSoapSuiteHydratesWSDLAndSchemaMockSource(t *testing.T) {
 		t.Fatal("expected soap suite source files to include api/wsdl/claims.wsdl")
 	}
 	if !mockFound {
-		t.Fatal("expected soap suite source files to include mock/claims/claim-service.json")
+		t.Fatal("expected soap suite source files to include mock/claims/claim-service.cue")
 	}
 }
 
