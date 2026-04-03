@@ -1,7 +1,82 @@
 {
-  "urban-shift": {
-    "assignmentId": "asg-778",
-    "plannerRevision": "route-planner@4",
-    "status": "accepted"
-  }
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "grpc",
+  "artifact": "mock/telemetry/spike.json",
+  "contractPath": "api/proto/fleet_control.proto#AssignRoute",
+  "dispatcher": "apisix",
+  "examples": {
+    "urban-shift": {
+      "dispatch": [
+        {
+          "from": "body",
+          "param": "vehicleId",
+          "value": "vh-11"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "routeId": {
+              "example": "route-778",
+              "type": "string"
+            },
+            "vehicleId": {
+              "example": "vh-11",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-profile": {
+              "example": "perf.yaml",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-profile"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "assignmentId": {
+              "example": "asg-778",
+              "type": "string"
+            },
+            "plannerRevision": {
+              "example": "route-planner@4",
+              "type": "string"
+            },
+            "status": {
+              "example": "accepted",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-topology-wave": {
+              "example": "planner",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-topology-wave"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/grpc",
+        "status": "0"
+      }
+    }
+  },
+  "operationId": "assign-route",
+  "resolverUrl": "/internal/mock-data/fleet-control-room/dispatcher-api/assign-route",
+  "runtimeUrl": "/mocks/grpc/fleet-control-room/dispatcher-api/assign-route",
+  "suite": "fleet-control-room"
 }

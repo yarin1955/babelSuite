@@ -47,7 +47,7 @@ func detectSourceLanguage(path string) string {
 		return "yaml"
 	case ".json":
 		return "json"
-	case ".xml":
+	case ".xml", ".wsdl", ".xsd":
 		return "xml"
 	case ".proto":
 		return "protobuf"
@@ -74,6 +74,8 @@ func generatedSourceContent(suite suites.Definition, path string) string {
 		return renderProfileSource(suite, filepath.Base(path))
 	case strings.HasPrefix(path, "api/openapi/"):
 		return renderOpenAPISource(suite)
+	case strings.HasPrefix(path, "api/wsdl/"):
+		return renderWSDLSource(suite, filepath.Base(path))
 	case strings.HasPrefix(path, "api/proto/"):
 		return renderProtoSource(suite, filepath.Base(path))
 	case strings.HasPrefix(path, "mock/") && strings.HasSuffix(strings.ToLower(path), ".metadata.yaml"):
@@ -84,6 +86,8 @@ func generatedSourceContent(suite suites.Definition, path string) string {
 		return renderScriptSource(suite, path)
 	case strings.HasPrefix(path, "load/"):
 		return renderLoadSource(suite, path)
+	case strings.HasPrefix(path, "gateway/"):
+		return renderGatewaySource(suite, path)
 	case strings.HasPrefix(path, "scenarios/"):
 		return renderScenarioSource(suite, path)
 	case strings.HasPrefix(path, "fixtures/"):
@@ -93,6 +97,13 @@ func generatedSourceContent(suite suites.Definition, path string) string {
 	default:
 		return fmt.Sprintf("# %s\n# Source preview is not available for %s yet.\n", suite.Title, path)
 	}
+}
+
+func renderGatewaySource(suite suites.Definition, path string) string {
+	if content, ok := suites.GeneratedSourceContent(suite, path); ok {
+		return content
+	}
+	return fmt.Sprintf("# %s\n# Gateway preview is not available for %s yet.\n", suite.Title, path)
 }
 
 func renderProfileSource(suite suites.Definition, fileName string) string {
@@ -215,6 +226,128 @@ func renderProtoSource(suite suites.Definition, fileName string) string {
 	}, "\n") + "\n"
 }
 
+func renderWSDLSource(suite suites.Definition, fileName string) string {
+	serviceName := sanitizeIdentifier(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
+	if serviceName == "" {
+		serviceName = sanitizeIdentifier(suite.ID)
+	}
+
+	type soapAction struct {
+		name string
+	}
+
+	actions := make([]soapAction, 0)
+	seen := make(map[string]struct{})
+	location := "https://" + suite.ID + ".mock.internal"
+	for _, surface := range suite.APISurfaces {
+		if !strings.EqualFold(surface.Protocol, "SOAP") {
+			continue
+		}
+		for _, operation := range surface.Operations {
+			if host := strings.TrimRight(strings.TrimSpace(surface.MockHost), "/"); host != "" && strings.HasPrefix(strings.TrimSpace(operation.Name), "/") {
+				location = host + strings.TrimSpace(operation.Name)
+			}
+			if len(operation.Exchanges) == 0 {
+				name := sanitizeIdentifier(operation.ID)
+				if name == "" {
+					name = "Invoke"
+				}
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+				actions = append(actions, soapAction{name: name})
+				continue
+			}
+			for _, exchange := range operation.Exchanges {
+				name := sanitizeIdentifier(exchange.Name)
+				if name == "" {
+					name = sanitizeIdentifier(operation.ID)
+				}
+				if name == "" {
+					name = "Invoke"
+				}
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+				actions = append(actions, soapAction{name: name})
+			}
+		}
+	}
+	if len(actions) == 0 {
+		actions = append(actions, soapAction{name: "Invoke"})
+	}
+
+	targetNamespace := "urn:babelsuite:" + strings.ReplaceAll(strings.ToLower(suite.ID), "_", "-")
+	portTypeName := serviceName + "PortType"
+	bindingName := serviceName + "Binding"
+	serviceBlockName := serviceName + "Service"
+
+	lines := []string{
+		`<?xml version="1.0" encoding="UTF-8"?>`,
+		`<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="` + targetNamespace + `" xmlns:xsd="http://www.w3.org/2001/XMLSchema" name="` + serviceBlockName + `" targetNamespace="` + targetNamespace + `">`,
+		`  <types>`,
+		`    <xsd:schema targetNamespace="` + targetNamespace + `">`,
+	}
+	for _, action := range actions {
+		lines = append(lines,
+			`      <xsd:element name="`+action.name+`Request" type="xsd:string"/>`,
+			`      <xsd:element name="`+action.name+`Response" type="xsd:string"/>`,
+		)
+	}
+	lines = append(lines,
+		`    </xsd:schema>`,
+		`  </types>`,
+		"",
+	)
+	for _, action := range actions {
+		lines = append(lines,
+			`  <message name="`+action.name+`Input">`,
+			`    <part name="parameters" element="tns:`+action.name+`Request"/>`,
+			`  </message>`,
+			`  <message name="`+action.name+`Output">`,
+			`    <part name="parameters" element="tns:`+action.name+`Response"/>`,
+			`  </message>`,
+			"",
+		)
+	}
+	lines = append(lines, `  <portType name="`+portTypeName+`">`)
+	for _, action := range actions {
+		lines = append(lines,
+			`    <operation name="`+action.name+`">`,
+			`      <input message="tns:`+action.name+`Input"/>`,
+			`      <output message="tns:`+action.name+`Output"/>`,
+			`    </operation>`,
+		)
+	}
+	lines = append(lines,
+		`  </portType>`,
+		`  <binding name="`+bindingName+`" type="tns:`+portTypeName+`">`,
+		`    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="document"/>`,
+	)
+	for _, action := range actions {
+		lines = append(lines,
+			`    <operation name="`+action.name+`">`,
+			`      <soap:operation soapAction="urn:`+action.name+`"/>`,
+			`      <input><soap:body use="literal"/></input>`,
+			`      <output><soap:body use="literal"/></output>`,
+			`    </operation>`,
+		)
+	}
+	lines = append(lines,
+		`  </binding>`,
+		`  <service name="`+serviceBlockName+`">`,
+		`    <port name="`+serviceName+`Port" binding="tns:`+bindingName+`">`,
+		`      <soap:address location="`+location+`"/>`,
+		`    </port>`,
+		`  </service>`,
+		`</definitions>`,
+	)
+
+	return strings.Join(lines, "\n") + "\n"
+}
+
 func renderMockSource(suite suites.Definition, path string) string {
 	if strings.HasSuffix(strings.ToLower(path), ".xml") {
 		return strings.Join([]string{
@@ -236,19 +369,54 @@ func renderMockSource(suite suites.Definition, path string) string {
 		})
 	}
 
-	payload := make(map[string]any, len(exchanges))
-	for _, exchange := range exchanges {
-		var body any
-		if err := json.Unmarshal([]byte(strings.TrimSpace(exchange.ResponseBody)), &body); err != nil {
-			body = map[string]any{
-				"when":         exchange.When,
-				"responseBody": exchange.ResponseBody,
+	if !strings.HasSuffix(strings.ToLower(path), ".json") {
+		payload := make(map[string]any, len(exchanges))
+		for _, exchange := range exchanges {
+			var body any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(exchange.ResponseBody)), &body); err != nil {
+				body = map[string]any{
+					"when":         exchange.When,
+					"responseBody": exchange.ResponseBody,
+				}
 			}
+			payload[exchange.Name] = body
 		}
-		payload[exchange.Name] = body
+		return formatJSON(payload)
 	}
 
-	return formatJSON(payload)
+	operation, found := operationForMockPath(suite, path)
+	exampleSchemas := make(map[string]any, len(exchanges))
+	for _, exchange := range exchanges {
+		exampleSchemas[exchange.Name] = map[string]any{
+			"dispatch": exchange.When,
+			"requestSchema": map[string]any{
+				"headers": inferHeaderSchema(exchange.RequestHeaders),
+				"body":    inferBodySchema(exchange.RequestBody),
+			},
+			"responseSchema": map[string]any{
+				"status":    exchange.ResponseStatus,
+				"mediaType": exchange.ResponseMediaType,
+				"headers":   inferHeaderSchema(exchange.ResponseHeaders),
+				"body":      inferBodySchema(exchange.ResponseBody),
+			},
+		}
+	}
+
+	document := map[string]any{
+		"$schema":  "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+		"suite":    suite.ID,
+		"artifact": path,
+		"examples": exampleSchemas,
+	}
+	if found {
+		document["operationId"] = operation.ID
+		document["adapter"] = operation.MockMetadata.Adapter
+		document["dispatcher"] = operation.Dispatcher
+		document["contractPath"] = operation.ContractPath
+		document["resolverUrl"] = operation.MockMetadata.ResolverURL
+		document["runtimeUrl"] = operation.MockMetadata.RuntimeURL
+	}
+	return formatJSON(document)
 }
 
 func renderMockMetadataSource(suite suites.Definition, path string) string {
@@ -277,6 +445,7 @@ func renderMockMetadataSource(suite suites.Definition, path string) string {
 		"spec": map[string]any{
 			"adapter":              operation.MockMetadata.Adapter,
 			"delayMillis":          operation.MockMetadata.DelayMillis,
+			"resolverUrl":          operation.MockMetadata.ResolverURL,
 			"runtimeUrl":           operation.MockMetadata.RuntimeURL,
 			"parameterConstraints": operation.MockMetadata.ParameterConstraints,
 			"fallback":             operation.MockMetadata.Fallback,
@@ -448,6 +617,122 @@ func operationForMetadataPath(suite suites.Definition, path string) (suites.APIO
 		}
 	}
 	return suites.APIOperation{}, false
+}
+
+func operationForMockPath(suite suites.Definition, path string) (suites.APIOperation, bool) {
+	normalized := strings.TrimSpace(path)
+	for _, surface := range suite.APISurfaces {
+		for _, operation := range surface.Operations {
+			if strings.TrimSpace(operation.MockPath) == normalized {
+				return operation, true
+			}
+		}
+	}
+	return suites.APIOperation{}, false
+}
+
+func inferHeaderSchema(headers []suites.Header) map[string]any {
+	if len(headers) == 0 {
+		return map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		}
+	}
+
+	properties := make(map[string]any, len(headers))
+	required := make([]string, 0, len(headers))
+	for _, header := range headers {
+		name := strings.TrimSpace(header.Name)
+		if name == "" {
+			continue
+		}
+		required = append(required, name)
+		properties[name] = inferJSONSchemaValue(header.Value)
+	}
+
+	schema := map[string]any{
+		"type":       "object",
+		"properties": properties,
+	}
+	if len(required) > 0 {
+		sort.Strings(required)
+		schema["required"] = required
+	}
+	return schema
+}
+
+func inferBodySchema(body string) any {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		return map[string]any{"type": "null"}
+	}
+
+	var parsed any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+		return inferJSONSchemaValue(parsed)
+	}
+
+	if strings.HasPrefix(trimmed, "<") {
+		schema := map[string]any{
+			"type":   "string",
+			"format": "xml",
+		}
+		if strings.Contains(trimmed, "{{") {
+			schema["x-babel-template"] = trimmed
+		} else {
+			schema["example"] = trimmed
+		}
+		return schema
+	}
+
+	schema := map[string]any{
+		"type": "string",
+	}
+	if strings.Contains(trimmed, "{{") {
+		schema["x-babel-template"] = trimmed
+	} else {
+		schema["example"] = trimmed
+	}
+	return schema
+}
+
+func inferJSONSchemaValue(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		properties := make(map[string]any, len(typed))
+		for key, nested := range typed {
+			properties[key] = inferJSONSchemaValue(nested)
+		}
+		return map[string]any{
+			"type":       "object",
+			"properties": properties,
+		}
+	case []any:
+		schema := map[string]any{"type": "array"}
+		if len(typed) > 0 {
+			schema["items"] = inferJSONSchemaValue(typed[0])
+		}
+		return schema
+	case string:
+		schema := map[string]any{"type": "string"}
+		if strings.Contains(typed, "{{") {
+			schema["x-babel-template"] = typed
+		} else {
+			schema["example"] = typed
+		}
+		return schema
+	case bool:
+		return map[string]any{"type": "boolean", "example": typed}
+	case float64:
+		if typed == float64(int64(typed)) {
+			return map[string]any{"type": "integer", "example": int64(typed)}
+		}
+		return map[string]any{"type": "number", "example": typed}
+	case nil:
+		return map[string]any{"type": "null"}
+	default:
+		return map[string]any{"type": "string", "example": fmt.Sprint(typed)}
+	}
 }
 
 func defaultFixturePayload(suite suites.Definition, base string) any {

@@ -219,6 +219,29 @@
 .suite-token--string  { color: #f0ba73; }
 .suite-token--module  { color: #8ad0a1; }
 .suite-token--comment { color: #5c7a8e; }
+.suite-source-preview__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.suite-source-preview__language {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #edf2f6;
+  color: #4e6070;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.suite-source-preview__empty {
+  padding: 20px;
+  color: #5d7082;
+  font-size: 0.9rem;
+}
 
 /* ── Topology ── */
 .suite-topology {
@@ -711,16 +734,28 @@
   gap: 5px;
   margin-top: 10px;
 }
-.suite-folder-files span {
+.suite-folder-file {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
   padding: 0 8px;
+  border: 0;
   border-radius: 999px;
   background: #e6edf2;
   color: #4b6579;
   font-size: 0.76rem;
   font-family: monospace;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+.suite-folder-file:hover:not(:disabled) { background: #dbe7ef; }
+.suite-folder-file--active {
+  background: rgba(31, 126, 168, 0.12);
+  color: #1f7ea8;
+}
+.suite-folder-file:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /* ── Run modal ── */

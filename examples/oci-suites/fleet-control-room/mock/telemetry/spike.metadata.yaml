@@ -22,5 +22,6 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/fleet-control-room/dispatcher-api/assign-route
     runtimeUrl: /mocks/grpc/fleet-control-room/dispatcher-api/assign-route
     state: null

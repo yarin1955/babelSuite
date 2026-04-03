@@ -1,12 +1,159 @@
 {
-  "fraud-screen": {
-    "decision": "manual_review",
-    "quoteId": "quote_911",
-    "refundCents": 0
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "grpc",
+  "artifact": "mock/pricing/quote-refund.json",
+  "contractPath": "api/proto/refund_pricing.proto#QuoteRefund",
+  "dispatcher": "apisix",
+  "examples": {
+    "fraud-screen": {
+      "dispatch": [
+        {
+          "from": "body",
+          "param": "returnReason",
+          "value": "suspicious_activity"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "amountCents": {
+              "example": 15900,
+              "type": "integer"
+            },
+            "currency": {
+              "example": "USD",
+              "type": "string"
+            },
+            "returnReason": {
+              "example": "suspicious_activity",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-risk-tier": {
+              "example": "high",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-risk-tier"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "decision": {
+              "example": "manual_review",
+              "type": "string"
+            },
+            "quoteId": {
+              "example": "quote_911",
+              "type": "string"
+            },
+            "refundCents": {
+              "example": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-pricing-path": {
+              "example": "manual_review",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-pricing-path"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "0"
+      }
+    },
+    "low-risk": {
+      "dispatch": [
+        {
+          "from": "body",
+          "param": "returnReason",
+          "value": "damaged"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "amountCents": {
+              "example": 4200,
+              "type": "integer"
+            },
+            "currency": {
+              "example": "USD",
+              "type": "string"
+            },
+            "returnReason": {
+              "example": "damaged",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-risk-tier": {
+              "example": "low",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-risk-tier"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "decision": {
+              "example": "instant",
+              "type": "string"
+            },
+            "quoteId": {
+              "example": "quote_301",
+              "type": "string"
+            },
+            "refundCents": {
+              "example": 4200,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-pricing-path": {
+              "example": "instant",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-pricing-path"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "0"
+      }
+    }
   },
-  "low-risk": {
-    "decision": "instant",
-    "quoteId": "quote_301",
-    "refundCents": 4200
-  }
+  "operationId": "quote-refund",
+  "resolverUrl": "/internal/mock-data/returns-control-plane/pricing-service/quote-refund",
+  "runtimeUrl": "/mocks/grpc/returns-control-plane/pricing-service/quote-refund",
+  "suite": "returns-control-plane"
 }

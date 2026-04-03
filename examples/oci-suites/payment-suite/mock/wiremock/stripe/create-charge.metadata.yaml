@@ -38,6 +38,7 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/payment-suite/payment-gateway/create-payment
     runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments?status=approved
     state:
         lookupkeytemplate: ""

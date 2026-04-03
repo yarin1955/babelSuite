@@ -3,8 +3,7 @@
   "modules": [
     "postgres",
     "kafka",
-    "grpc",
-    "mock-api"
+    "grpc"
   ],
   "suite": "returns-control-plane"
 }

@@ -10,5 +10,6 @@ spec:
     delayMillis: 0
     fallback: null
     parameterConstraints: []
+    resolverUrl: /internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry
     runtimeUrl: /mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry
     state: null

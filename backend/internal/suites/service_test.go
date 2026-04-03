@@ -3,6 +3,7 @@ package suites
 import (
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/babelsuite/babelsuite/internal/examplefs"
@@ -39,8 +40,8 @@ func TestListReturnsSortedSuites(t *testing.T) {
 	service := NewService()
 
 	items := service.List()
-	if len(items) != 5 {
-		t.Fatalf("expected 5 suites, got %d", len(items))
+	if len(items) != 6 {
+		t.Fatalf("expected 6 suites, got %d", len(items))
 	}
 	if items[0].Title != "Fleet Control Room" {
 		t.Fatalf("expected sorted suites, got %q first", items[0].Title)
@@ -105,6 +106,153 @@ func TestReturnsSuiteHydratesMockMetadataFiles(t *testing.T) {
 
 	if !found {
 		t.Fatal("expected returns suite source files to include mock metadata")
+	}
+}
+
+func TestReturnsSuiteHydratesSchemaBasedMockSourceFiles(t *testing.T) {
+	configureExamplesRoot(t)
+
+	service := NewService()
+
+	suite, err := service.Get("returns-control-plane")
+	if err != nil {
+		t.Fatalf("get suite: %v", err)
+	}
+
+	var found bool
+	for _, file := range suite.SourceFiles {
+		if file.Path != "mock/events/refund-authorized.json" {
+			continue
+		}
+		found = true
+		if file.Language != "json" {
+			t.Fatalf("expected json language, got %q", file.Language)
+		}
+		if !strings.Contains(file.Content, `"requestSchema"`) {
+			t.Fatalf("expected generated mock source to include requestSchema, got:\n%s", file.Content)
+		}
+		if !strings.Contains(file.Content, `"responseSchema"`) {
+			t.Fatalf("expected generated mock source to include responseSchema, got:\n%s", file.Content)
+		}
+	}
+
+	if !found {
+		t.Fatal("expected returns suite source files to include refund-authorized.json")
+	}
+}
+
+func TestSoapSuiteHydratesWSDLAndSchemaMockSource(t *testing.T) {
+	configureExamplesRoot(t)
+
+	service := NewService()
+
+	suite, err := service.Get("soap-claims-hub")
+	if err != nil {
+		t.Fatalf("get suite: %v", err)
+	}
+	if len(suite.APISurfaces) == 0 || suite.APISurfaces[0].Protocol != "SOAP" {
+		t.Fatalf("expected SOAP api surface, got %+v", suite.APISurfaces)
+	}
+
+	var wsdlFound bool
+	var mockFound bool
+	for _, file := range suite.SourceFiles {
+		switch file.Path {
+		case "api/wsdl/claims.wsdl":
+			wsdlFound = true
+			if file.Language != "xml" {
+				t.Fatalf("expected wsdl to be xml, got %q", file.Language)
+			}
+			if !strings.Contains(file.Content, "<definitions") {
+				t.Fatalf("expected generated wsdl definitions, got:\n%s", file.Content)
+			}
+			if !strings.Contains(file.Content, "SubmitClaim") || !strings.Contains(file.Content, "GetClaimStatus") {
+				t.Fatalf("expected generated wsdl operations, got:\n%s", file.Content)
+			}
+		case "mock/claims/claim-service.json":
+			mockFound = true
+			if !strings.Contains(file.Content, `"requestSchema"`) || !strings.Contains(file.Content, `"responseSchema"`) {
+				t.Fatalf("expected schema-backed soap mock source, got:\n%s", file.Content)
+			}
+			if !strings.Contains(file.Content, `"x-babel-template"`) {
+				t.Fatalf("expected soap mock schema to preserve xml templates, got:\n%s", file.Content)
+			}
+		}
+	}
+
+	if !wsdlFound {
+		t.Fatal("expected soap suite source files to include api/wsdl/claims.wsdl")
+	}
+	if !mockFound {
+		t.Fatal("expected soap suite source files to include mock/claims/claim-service.json")
+	}
+}
+
+func TestSuitesExposeAPISIXGatewayAndDispatcherMetadata(t *testing.T) {
+	configureExamplesRoot(t)
+
+	service := NewService()
+	suite, err := service.Get("payment-suite")
+	if err != nil {
+		t.Fatalf("get suite: %v", err)
+	}
+
+	var gatewayFound bool
+	for _, folder := range suite.Folders {
+		if folder.Name != "gateway" {
+			continue
+		}
+		for _, file := range folder.Files {
+			if file == "apisix.yaml" {
+				gatewayFound = true
+				break
+			}
+		}
+	}
+	if !gatewayFound {
+		t.Fatal("expected payment suite to expose gateway/apisix.yaml")
+	}
+
+	operation := suite.APISurfaces[0].Operations[0]
+	if operation.Dispatcher != "apisix" {
+		t.Fatalf("expected operation dispatcher to default to apisix, got %q", operation.Dispatcher)
+	}
+	if operation.MockMetadata.ResolverURL != "/internal/mock-data/payment-suite/payment-gateway/create-payment" {
+		t.Fatalf("expected resolver url to be generated, got %q", operation.MockMetadata.ResolverURL)
+	}
+	if !strings.Contains(operation.MockMetadata.DispatcherRules, "/internal/mock-data/payment-suite/payment-gateway/create-payment") {
+		t.Fatalf("expected dispatcher rules to reference resolver path, got %q", operation.MockMetadata.DispatcherRules)
+	}
+}
+
+func TestSuitesGenerateAPISIXGatewaySourceWithoutUserManagedFile(t *testing.T) {
+	t.Setenv(examplefs.RootEnvVar, t.TempDir())
+
+	service := NewService()
+	suite, err := service.Get("payment-suite")
+	if err != nil {
+		t.Fatalf("get suite: %v", err)
+	}
+
+	var found bool
+	for _, file := range suite.SourceFiles {
+		if file.Path != "gateway/apisix.yaml" {
+			continue
+		}
+		found = true
+		if file.Language != "yaml" {
+			t.Fatalf("expected yaml language, got %q", file.Language)
+		}
+		if !strings.Contains(file.Content, "X-Babelsuite-Dispatcher: apisix") {
+			t.Fatalf("expected generated APISIX content, got:\n%s", file.Content)
+		}
+		if strings.Contains(file.Content, "Missing example source") {
+			t.Fatalf("expected generated APISIX content instead of missing-file placeholder, got:\n%s", file.Content)
+		}
+	}
+
+	if !found {
+		t.Fatal("expected payment suite source files to include generated gateway/apisix.yaml")
 	}
 }
 

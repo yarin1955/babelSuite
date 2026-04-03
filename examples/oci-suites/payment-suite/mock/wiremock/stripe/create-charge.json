@@ -1,12 +1,182 @@
 {
-  "approved-card": {
-    "paymentId": "pay_1043",
-    "processor": "stripe-mock",
-    "status": "authorized"
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "rest",
+  "artifact": "mock/wiremock/stripe/create-charge.json",
+  "contractPath": "api/openapi/payments.yaml#/paths/~1payments/post",
+  "dispatcher": "apisix",
+  "examples": {
+    "approved-card": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "status",
+          "value": "approved"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "amount": {
+              "example": 1299,
+              "type": "integer"
+            },
+            "cardToken": {
+              "example": "tok_visa",
+              "type": "string"
+            },
+            "currency": {
+              "example": "USD",
+              "type": "string"
+            },
+            "merchantId": {
+              "example": "m-117",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            },
+            "x-suite-profile": {
+              "example": "local.yaml",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type",
+            "x-suite-profile"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "paymentId": {
+              "example": "pay_1043",
+              "type": "string"
+            },
+            "processor": {
+              "example": "stripe-mock",
+              "type": "string"
+            },
+            "status": {
+              "example": "authorized",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "cache-control": {
+              "example": "no-store",
+              "type": "string"
+            },
+            "x-mock-source": {
+              "example": "stripe-approved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cache-control",
+            "x-mock-source"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "201"
+      }
+    },
+    "fraud-review": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "status",
+          "value": "review"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "amount": {
+              "example": 9900,
+              "type": "integer"
+            },
+            "cardToken": {
+              "example": "tok_risky",
+              "type": "string"
+            },
+            "currency": {
+              "example": "USD",
+              "type": "string"
+            },
+            "merchantId": {
+              "example": "m-441",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            },
+            "x-fraud-score": {
+              "example": "87",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type",
+            "x-fraud-score"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "paymentId": {
+              "example": "pay_2048",
+              "type": "string"
+            },
+            "reason": {
+              "example": "fraud-score-threshold",
+              "type": "string"
+            },
+            "status": {
+              "example": "pending_review",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-review-queue": {
+              "example": "fraud-worker",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-review-queue"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "202"
+      }
+    }
   },
-  "fraud-review": {
-    "paymentId": "pay_2048",
-    "reason": "fraud-score-threshold",
-    "status": "pending_review"
-  }
+  "operationId": "create-payment",
+  "resolverUrl": "/internal/mock-data/payment-suite/payment-gateway/create-payment",
+  "runtimeUrl": "/mocks/rest/payment-suite/payment-gateway/payments?status=approved",
+  "suite": "payment-suite"
 }

@@ -11,7 +11,7 @@ func seedSuites() map[string]Definition {
 			Version:     "v2.4.1",
 			Tags:        []string{"latest", "v2.4.1", "v2.4.0", "v2.3.8"},
 			Description: "Bank-grade reference environment with Postgres, Kafka, Wiremock, and a full fraud worker topology.",
-			Modules:     []string{"postgres", "kafka", "wiremock"},
+			Modules:     []string{"postgres", "kafka"},
 			Status:      "Official",
 			Score:       94,
 			PullCommand: "babelctl run localhost:5000/core-platform/payment-suite:v2.4.1",
@@ -365,7 +365,7 @@ fleet_smoke = scenario(name="fleet-smoke", after=["control-room-ui", "telemetry-
 			Version:     "v1.3.0",
 			Tags:        []string{"latest", "v1.3.0", "v1.2.5"},
 			Description: "Browser-first commerce lab with Kafka event streams, Playwright checkout journeys, and mock APIs for promo traffic validation.",
-			Modules:     []string{"kafka", "playwright", "mock-api"},
+			Modules:     []string{"kafka", "playwright"},
 			Status:      "Verified",
 			Score:       90,
 			PullCommand: "babelctl run localhost:5000/qa/storefront-browser-lab:v1.3.0",
@@ -575,7 +575,7 @@ playwright_checkout = scenario(name="playwright-checkout", after=["storefront-ui
 			Version:     "v1.0.0",
 			Tags:        []string{"latest", "v1.0.0", "v0.9.2"},
 			Description: "Reverse-logistics suite that shows BabelSuite's richer mock runtime with split metadata, templating, constraints, fallback, state, and multi-protocol surfaces.",
-			Modules:     []string{"postgres", "kafka", "grpc", "mock-api"},
+			Modules:     []string{"postgres", "kafka", "grpc"},
 			Status:      "Verified",
 			Score:       92,
 			PullCommand: "babelctl run localhost:5000/qa/returns-control-plane:v1.0.0",
@@ -694,10 +694,12 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 										{Name: "x-mock-source", Value: "returns-approved"},
 									},
 									ResponseBody: `{
-  "returnId": "ret_1001",
+  "returnId": "ret_{{ randomInt(1001, 9999) }}",
   "status": "approved",
   "refundMode": "instant_credit",
-  "queue": "auto"
+  "queue": "auto",
+  "traceId": "{{ randomUUID() }}",
+  "servedAt": "{{ now() }}"
 }`,
 								},
 								{
@@ -719,10 +721,12 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 										{Name: "x-review-queue", Value: "manual"},
 									},
 									ResponseBody: `{
-  "returnId": "ret_2002",
+  "returnId": "ret_{{ randomInt(2000, 9999) }}",
   "status": "manual_review",
   "refundMode": "agent_review",
-  "queue": "manual"
+  "queue": "manual",
+  "traceId": "{{ randomUUID() }}",
+  "servedAt": "{{ now() }}"
 }`,
 								},
 							},
@@ -763,7 +767,6 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 								{
 									Name:           "return-state",
 									SourceArtifact: "mock/returns/get-return.json",
-									When:           []MatchCondition{{From: "path", Param: "returnId", Value: "ret_1001"}},
 									RequestHeaders: []Header{
 										{Name: "x-request-id", Value: "req-100"},
 									},
@@ -777,7 +780,10 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
   "status": "{{ state.status }}",
   "refundMode": "{{ state.refundMode }}",
   "reviewQueue": "{{ state.reviewQueue }}",
-  "profile": "{{ state.profile }}"
+  "profile": "{{ state.profile }}",
+  "servedBy": "{{ request.headers.x-mock-node || 'apisix-sidecar' }}",
+  "traceId": "{{ randomUUID() }}",
+  "servedAt": "{{ now() }}"
 }`,
 								},
 							},
@@ -917,6 +923,7 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 				},
 			},
 		},
+		"soap-claims-hub": seedSOAPClaimsHubSuite(),
 		"identity-broker": {
 			ID:          "identity-broker",
 			Title:       "Identity Broker",
@@ -926,7 +933,7 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 			Version:     "v3.0.2",
 			Tags:        []string{"latest", "v3.0.2", "v3.0.1"},
 			Description: "OIDC and SAML integration sandbox with deterministic login failures, cert rotation, and secret injection paths.",
-			Modules:     []string{"vault", "wiremock", "postgres"},
+			Modules:     []string{"vault", "postgres"},
 			Status:      "Official",
 			Score:       91,
 			PullCommand: "babelctl run localhost:5000/security/identity-broker:v3.0.2",

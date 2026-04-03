@@ -10,5 +10,6 @@ spec:
     delayMillis: 0
     fallback: null
     parameterConstraints: []
+    resolverUrl: /internal/mock-data/identity-broker/broker-api/begin-login
     runtimeUrl: /mocks/rest/identity-broker/broker-api/sessions/login?provider=oidc
     state: null

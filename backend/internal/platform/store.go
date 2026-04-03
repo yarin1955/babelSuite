@@ -106,30 +106,39 @@ func (s *FileStore) saveUnlocked(settings *PlatformSettings) error {
 }
 
 type PlatformSettings struct {
-	Mode        string             `json:"mode" yaml:"mode"`
-	Agents      []ExecutionAgent   `json:"agents" yaml:"agents"`
-	Registries  []OCIRegistry      `json:"registries" yaml:"registries"`
-	Secrets     SecretsConfig      `json:"secrets" yaml:"secrets"`
-	UpdatedAt   time.Time          `json:"updatedAt" yaml:"updatedAt"`
-	Description string             `json:"description" yaml:"description"`
+	Mode        string           `json:"mode" yaml:"mode"`
+	Agents      []ExecutionAgent `json:"agents" yaml:"agents"`
+	Registries  []OCIRegistry    `json:"registries" yaml:"registries"`
+	Secrets     SecretsConfig    `json:"secrets" yaml:"secrets"`
+	UpdatedAt   time.Time        `json:"updatedAt" yaml:"updatedAt"`
+	Description string           `json:"description" yaml:"description"`
 }
 
 type ExecutionAgent struct {
-	AgentID             string   `json:"agentId" yaml:"agentId"`
-	Name                string   `json:"name" yaml:"name"`
-	Type                string   `json:"type" yaml:"type"`
-	Description         string   `json:"description" yaml:"description"`
-	Enabled             bool     `json:"enabled" yaml:"enabled"`
-	Default             bool     `json:"default" yaml:"default"`
-	Status              string   `json:"status" yaml:"status"`
-	RoutingTags         []string `json:"routingTags" yaml:"routingTags"`
-	DockerSocket        string   `json:"dockerSocket" yaml:"dockerSocket"`
-	HostURL             string   `json:"hostUrl" yaml:"hostUrl"`
-	TLSCert             string   `json:"tlsCert" yaml:"tlsCert"`
-	TLSKey              string   `json:"tlsKey" yaml:"tlsKey"`
-	KubeconfigPath      string   `json:"kubeconfigPath" yaml:"kubeconfigPath"`
-	TargetNamespace     string   `json:"targetNamespace" yaml:"targetNamespace"`
-	ServiceAccountToken string   `json:"serviceAccountToken" yaml:"serviceAccountToken"`
+	AgentID             string              `json:"agentId" yaml:"agentId"`
+	Name                string              `json:"name" yaml:"name"`
+	Type                string              `json:"type" yaml:"type"`
+	Description         string              `json:"description" yaml:"description"`
+	Enabled             bool                `json:"enabled" yaml:"enabled"`
+	Default             bool                `json:"default" yaml:"default"`
+	Status              string              `json:"status" yaml:"status"`
+	RoutingTags         []string            `json:"routingTags" yaml:"routingTags"`
+	DockerSocket        string              `json:"dockerSocket" yaml:"dockerSocket"`
+	HostURL             string              `json:"hostUrl" yaml:"hostUrl"`
+	TLSCert             string              `json:"tlsCert" yaml:"tlsCert"`
+	TLSKey              string              `json:"tlsKey" yaml:"tlsKey"`
+	KubeconfigPath      string              `json:"kubeconfigPath" yaml:"kubeconfigPath"`
+	TargetNamespace     string              `json:"targetNamespace" yaml:"targetNamespace"`
+	ServiceAccountToken string              `json:"serviceAccountToken" yaml:"serviceAccountToken"`
+	APISIXSidecar       APISIXSidecarConfig `json:"apisixSidecar" yaml:"apisixSidecar"`
+}
+
+type APISIXSidecarConfig struct {
+	Image           string   `json:"image" yaml:"image"`
+	ConfigMountPath string   `json:"configMountPath" yaml:"configMountPath"`
+	ListenPort      int      `json:"listenPort" yaml:"listenPort"`
+	AdminPort       int      `json:"adminPort" yaml:"adminPort"`
+	Capabilities    []string `json:"capabilities" yaml:"capabilities"`
 }
 
 type OCIRegistry struct {
@@ -171,28 +180,30 @@ func DefaultSettings() PlatformSettings {
 		Description: "Physical-layer configuration for BabelSuite execution agents, OCI catalog sources, and shared platform credentials.",
 		Agents: []ExecutionAgent{
 			{
-				AgentID:      "local-docker",
-				Name:         "Local Docker",
-				Type:         "local",
-				Description:  "Uses the host machine's native Docker socket with zero extra configuration.",
-				Enabled:      true,
-				Default:      true,
-				Status:       "Ready",
-				RoutingTags:  []string{"default", "local"},
-				DockerSocket: "/var/run/docker.sock",
+				AgentID:       "local-docker",
+				Name:          "Local Docker",
+				Type:          "local",
+				Description:   "Uses the host machine's native Docker socket with zero extra configuration.",
+				Enabled:       true,
+				Default:       true,
+				Status:        "Ready",
+				RoutingTags:   []string{"default", "local"},
+				DockerSocket:  "/var/run/docker.sock",
+				APISIXSidecar: defaultAPISIXSidecar(),
 			},
 			{
-				AgentID:      "remote-build",
-				Name:         "Remote Docker Pool",
-				Type:         "remote-docker",
-				Description:  "Connects to a remote Docker daemon for heavier or isolated suite workloads.",
-				Enabled:      false,
-				Default:      false,
-				Status:       "Disconnected",
-				RoutingTags:  []string{"high-memory"},
-				HostURL:      "tcp://docker.internal.company.com:2376",
-				TLSCert:      "vault://kv/platform/remote-docker/cert",
-				TLSKey:       "vault://kv/platform/remote-docker/key",
+				AgentID:       "remote-build",
+				Name:          "Remote Docker Pool",
+				Type:          "remote-docker",
+				Description:   "Connects to a remote Docker daemon for heavier or isolated suite workloads.",
+				Enabled:       false,
+				Default:       false,
+				Status:        "Disconnected",
+				RoutingTags:   []string{"high-memory"},
+				HostURL:       "tcp://docker.internal.company.com:2376",
+				TLSCert:       "vault://kv/platform/remote-docker/cert",
+				TLSKey:        "vault://kv/platform/remote-docker/key",
+				APISIXSidecar: defaultAPISIXSidecar(),
 			},
 			{
 				AgentID:             "kubernetes-burst",
@@ -206,6 +217,7 @@ func DefaultSettings() PlatformSettings {
 				KubeconfigPath:      "/etc/babelsuite/kubeconfig",
 				TargetNamespace:     "babelsuite-runs",
 				ServiceAccountToken: "vault://kv/platform/k8s/token",
+				APISIXSidecar:       defaultAPISIXSidecar(),
 			},
 		},
 		Registries: []OCIRegistry{
@@ -246,6 +258,16 @@ func DefaultSettings() PlatformSettings {
 	}
 }
 
+func defaultAPISIXSidecar() APISIXSidecarConfig {
+	return APISIXSidecarConfig{
+		Image:           "apache/apisix:latest",
+		ConfigMountPath: "/usr/local/apisix/conf/apisix.yaml",
+		ListenPort:      9080,
+		AdminPort:       9180,
+		Capabilities:    []string{"rest", "graphql", "grpc", "soap", "kafka"},
+	}
+}
+
 func normalize(settings *PlatformSettings) {
 	if settings.Mode == "" {
 		settings.Mode = "local"
@@ -269,6 +291,7 @@ func normalize(settings *PlatformSettings) {
 		settings.Agents[index].Type = strings.TrimSpace(settings.Agents[index].Type)
 		settings.Agents[index].Status = strings.TrimSpace(settings.Agents[index].Status)
 		settings.Agents[index].RoutingTags = compact(settings.Agents[index].RoutingTags)
+		normalizeAPISIXSidecar(&settings.Agents[index].APISIXSidecar)
 	}
 
 	for index := range settings.Registries {
@@ -300,6 +323,15 @@ func validate(settings *PlatformSettings) error {
 		if agent.AgentID == "" || agent.Name == "" || agent.Type == "" {
 			return errors.New("Each execution agent needs an ID, name, and type.")
 		}
+		if strings.TrimSpace(agent.APISIXSidecar.Image) == "" {
+			return errors.New("Each execution agent needs an APISIX sidecar image.")
+		}
+		if strings.TrimSpace(agent.APISIXSidecar.ConfigMountPath) == "" {
+			return errors.New("Each execution agent needs an APISIX config mount path.")
+		}
+		if agent.APISIXSidecar.ListenPort <= 0 || agent.APISIXSidecar.AdminPort <= 0 {
+			return errors.New("Each execution agent needs positive APISIX listen and admin ports.")
+		}
 	}
 
 	for _, registry := range settings.Registries {
@@ -326,4 +358,28 @@ func compact(values []string) []string {
 		}
 	}
 	return result
+}
+
+func normalizeAPISIXSidecar(sidecar *APISIXSidecarConfig) {
+	defaults := defaultAPISIXSidecar()
+
+	sidecar.Image = strings.TrimSpace(sidecar.Image)
+	sidecar.ConfigMountPath = strings.TrimSpace(sidecar.ConfigMountPath)
+	sidecar.Capabilities = compact(sidecar.Capabilities)
+
+	if sidecar.Image == "" {
+		sidecar.Image = defaults.Image
+	}
+	if sidecar.ConfigMountPath == "" {
+		sidecar.ConfigMountPath = defaults.ConfigMountPath
+	}
+	if sidecar.ListenPort == 0 {
+		sidecar.ListenPort = defaults.ListenPort
+	}
+	if sidecar.AdminPort == 0 {
+		sidecar.AdminPort = defaults.AdminPort
+	}
+	if len(sidecar.Capabilities) == 0 {
+		sidecar.Capabilities = append([]string{}, defaults.Capabilities...)
+	}
 }

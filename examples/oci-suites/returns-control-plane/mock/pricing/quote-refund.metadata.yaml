@@ -26,5 +26,6 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/returns-control-plane/pricing-service/quote-refund
     runtimeUrl: /mocks/grpc/returns-control-plane/pricing-service/quote-refund
     state: null

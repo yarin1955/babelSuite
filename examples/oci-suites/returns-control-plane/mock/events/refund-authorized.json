@@ -1,8 +1,82 @@
 {
-  "authorized-event": {
-    "eventId": "evt_7001",
-    "returnId": "ret_1001",
-    "status": "published",
-    "type": "returns.refund.authorized"
-  }
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "async",
+  "artifact": "mock/events/refund-authorized.json",
+  "contractPath": "api/proto/refund_pricing.proto#RefundPricing",
+  "dispatcher": "apisix",
+  "examples": {
+    "authorized-event": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "type",
+          "value": "returns.refund.authorized"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "returnId": {
+              "example": "ret_1001",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "eventId": {
+              "example": "evt_7001",
+              "type": "string"
+            },
+            "returnId": {
+              "example": "ret_1001",
+              "type": "string"
+            },
+            "status": {
+              "example": "published",
+              "type": "string"
+            },
+            "type": {
+              "example": "returns.refund.authorized",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-event-stream": {
+              "example": "refunds.authorized",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-event-stream"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "202"
+      }
+    }
+  },
+  "operationId": "publish-refund-authorized",
+  "resolverUrl": "/internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized",
+  "runtimeUrl": "/mocks/async/returns-control-plane/refund-events/publish-refund-authorized",
+  "suite": "returns-control-plane"
 }

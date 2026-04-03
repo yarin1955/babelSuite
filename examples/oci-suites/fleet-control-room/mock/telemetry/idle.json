@@ -1,7 +1,86 @@
 {
-  "idle-garage": {
-    "accepted": true,
-    "framesQueued": 1,
-    "scenario": "idle"
-  }
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "grpc",
+  "artifact": "mock/telemetry/idle.json",
+  "contractPath": "api/openapi/dispatcher.yaml#/paths/~1telemetry~1events/post",
+  "dispatcher": "apisix",
+  "examples": {
+    "idle-garage": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "scenario",
+          "value": "idle"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "battery": {
+              "example": 76,
+              "type": "integer"
+            },
+            "speed": {
+              "example": 0,
+              "type": "integer"
+            },
+            "vehicleId": {
+              "example": "vh-11",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "accepted": {
+              "example": true,
+              "type": "boolean"
+            },
+            "framesQueued": {
+              "example": 1,
+              "type": "integer"
+            },
+            "scenario": {
+              "example": "idle",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-ingest-batch": {
+              "example": "telemetry-mock",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-ingest-batch"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "202"
+      }
+    }
+  },
+  "operationId": "stream-telemetry",
+  "resolverUrl": "/internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry",
+  "runtimeUrl": "/mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry",
+  "suite": "fleet-control-room"
 }

@@ -36,6 +36,7 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/returns-control-plane/returns-api/create-return
     runtimeUrl: /mocks/rest/returns-control-plane/returns-api/returns?scenario=approved
     state:
         lookupkeytemplate: ""

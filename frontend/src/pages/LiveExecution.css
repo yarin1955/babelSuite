@@ -434,6 +434,165 @@
   margin-left: auto;
 }
 
+.exec-source-preview {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: clamp(220px, 34vh, 360px);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: #101b24;
+}
+
+.exec-source-preview__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: #0b141c;
+}
+
+.exec-source-preview__header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #d5e5ee;
+}
+
+.exec-source-preview__eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #4a7a92;
+}
+
+.exec-source-preview__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exec-source-preview__language {
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(13, 173, 234, 0.12);
+  color: #6dcce8;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.exec-source-preview__copy {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #b7ccda;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.exec-source-preview__copy:hover {
+  background: rgba(255, 255, 255, 0.11);
+  color: #eef7fb;
+}
+
+.exec-source-preview__switcher {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.exec-source-preview__chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #b9cfdd;
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.exec-source-preview__chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #eef7fb;
+}
+
+.exec-source-preview__chip--active {
+  background: rgba(24, 190, 148, 0.16);
+  color: #86e4c7;
+}
+
+.exec-source-preview__body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 0 14px;
+  scrollbar-width: thin;
+  scrollbar-color: #1e3044 transparent;
+}
+
+.exec-source-preview__body::-webkit-scrollbar { width: 6px; height: 6px; }
+.exec-source-preview__body::-webkit-scrollbar-thumb { background: #1e3044; border-radius: 3px; }
+
+.exec-source-preview__line {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  padding: 1px 16px 1px 0;
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #d5e5ee;
+}
+
+.exec-source-preview__line:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.exec-source-preview__line-number {
+  text-align: right;
+  padding-right: 10px;
+  color: #35576c;
+  user-select: none;
+}
+
+.exec-source-preview__line-content {
+  white-space: pre;
+  font: inherit;
+  color: inherit;
+}
+
+.exec-source-preview__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px;
+  color: #537085;
+  font-size: 0.86rem;
+  text-align: center;
+}
+
 .exec-stream-pill {
   display: inline-flex;
   align-items: center;
@@ -516,6 +675,115 @@
 
 .exec-sidebar__nodes::-webkit-scrollbar { width: 4px; }
 .exec-sidebar__nodes::-webkit-scrollbar-thumb { background: #162636; border-radius: 2px; }
+
+.exec-explorer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.exec-folder-list {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.exec-folder-btn {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #8fb0c2;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.exec-folder-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #d9eaf2;
+}
+
+.exec-folder-btn--active {
+  background: rgba(13, 173, 234, 0.12);
+  color: #6dcce8;
+}
+
+.exec-folder-btn__name {
+  font-weight: 700;
+}
+
+.exec-folder-btn__count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.68rem;
+}
+
+.exec-folder-detail {
+  padding: 0 10px 12px;
+}
+
+.exec-folder-detail__role {
+  margin: 0 0 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #38576a;
+}
+
+.exec-folder-detail__description {
+  margin: 0 0 10px;
+  color: #5d7b8d;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.exec-folder-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exec-folder-file {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #b9cfdd;
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.exec-folder-file:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  color: #eef7fb;
+}
+
+.exec-folder-file--active {
+  background: rgba(24, 190, 148, 0.16);
+  color: #86e4c7;
+}
+
+.exec-folder-file:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ── Wave sections ──────────────────────────────────────── */
 
@@ -895,6 +1163,19 @@
   .exec-terminal {
     height: 60vh;
     flex: none;
+  }
+
+  .exec-source-preview {
+    height: 280px;
+  }
+
+  .exec-source-preview__header {
+    flex-direction: column;
+  }
+
+  .exec-source-preview__actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .exec-header {

@@ -4,6 +4,14 @@ import type { AuthResponse } from './api/types'
 export { ApiError, clearSession, getSession, saveSession } from './api/client'
 export type { AuthResponse, User, Workspace } from './api/types'
 
+export interface APISIXSidecarConfig {
+  image: string
+  configMountPath: string
+  listenPort: number
+  adminPort: number
+  capabilities: string[]
+}
+
 export interface ExecutionAgent {
   agentId: string
   name: string
@@ -20,6 +28,7 @@ export interface ExecutionAgent {
   kubeconfigPath: string
   targetNamespace: string
   serviceAccountToken: string
+  apisixSidecar: APISIXSidecarConfig
 }
 
 export interface OCIRegistry {
@@ -255,6 +264,9 @@ export interface ExecutionRecord {
     repository: string
     suiteStar: string
     profiles: ExecutionProfileOption[]
+    folders: SuiteFolderEntry[]
+    sourceFiles: SuiteSourceFile[]
+    apiSurfaces: SuiteApiSurface[]
   }
   profile: string
   trigger: string
@@ -336,6 +348,7 @@ export interface SuiteMockMetadata {
   fallback?: SuiteMockFallback
   state?: SuiteMockState
   metadataPath?: string
+  resolverUrl?: string
   runtimeUrl?: string
 }
 
@@ -356,7 +369,7 @@ export interface SuiteApiOperation {
 export interface SuiteApiSurface {
   id: string
   title: string
-  protocol: 'REST' | 'gRPC' | 'Async'
+  protocol: 'REST' | 'gRPC' | 'Async' | 'SOAP'
   mockHost: string
   description: string
   operations: SuiteApiOperation[]

@@ -1,13 +1,168 @@
 {
-  "happy-path": {
-    "eventPublished": true,
-    "orderId": "ord_7001",
-    "previousAttempts": "{{ state.count }}",
-    "status": "accepted"
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "rest",
+  "artifact": "mock/orders/create-order.json",
+  "contractPath": "api/openapi/orders.yaml#/paths/~1orders/post",
+  "dispatcher": "apisix",
+  "examples": {
+    "happy-path": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "scenario",
+          "value": "happy-path"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "email": {
+              "example": "shopper@demo.test",
+              "type": "string"
+            },
+            "quantity": {
+              "example": 1,
+              "type": "integer"
+            },
+            "sku": {
+              "example": "sku_1001",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            },
+            "x-browser-suite": {
+              "example": "playwright",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type",
+            "x-browser-suite"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "eventPublished": {
+              "example": true,
+              "type": "boolean"
+            },
+            "orderId": {
+              "example": "ord_7001",
+              "type": "string"
+            },
+            "previousAttempts": {
+              "type": "string",
+              "x-babel-template": "{{ state.count }}"
+            },
+            "status": {
+              "example": "accepted",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-kafka-topic": {
+              "example": "checkout-events",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-kafka-topic"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "201"
+      }
+    },
+    "out-of-stock": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "scenario",
+          "value": "out-of-stock"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "email": {
+              "example": "shopper@demo.test",
+              "type": "string"
+            },
+            "quantity": {
+              "example": 1,
+              "type": "integer"
+            },
+            "sku": {
+              "example": "sku_4040",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "code": {
+              "example": "OUT_OF_STOCK",
+              "type": "string"
+            },
+            "message": {
+              "example": "Requested item is not available.",
+              "type": "string"
+            },
+            "previousAttempts": {
+              "type": "string",
+              "x-babel-template": "{{ state.count }}"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-mock-source": {
+              "example": "inventory-guard",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-mock-source"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "409"
+      }
+    }
   },
-  "out-of-stock": {
-    "code": "OUT_OF_STOCK",
-    "message": "Requested item is not available.",
-    "previousAttempts": "{{ state.count }}"
-  }
+  "operationId": "create-order",
+  "resolverUrl": "/internal/mock-data/storefront-browser-lab/storefront-api/create-order",
+  "runtimeUrl": "/mocks/rest/storefront-browser-lab/storefront-api/orders?scenario=happy-path",
+  "suite": "storefront-browser-lab"
 }

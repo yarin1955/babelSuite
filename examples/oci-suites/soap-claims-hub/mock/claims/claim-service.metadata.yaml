@@ -1,0 +1,46 @@
+apiVersion: mocks.babelsuite.io/v1alpha1
+kind: MockOperation
+metadata:
+    metadataPath: mock/claims/claim-service.metadata.yaml
+    operationId: claim-service
+    sourceArtifact: mock/claims/claim-service.json
+    suite: soap-claims-hub
+spec:
+    adapter: rest
+    delayMillis: 90
+    fallback:
+        mode: static
+        examplename: ""
+        proxyurl: ""
+        status: "500"
+        mediatype: text/xml; charset=utf-8
+        body: |-
+            <?xml version="1.0" encoding="UTF-8"?>
+            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+              <soapenv:Body>
+                <soapenv:Fault>
+                  <faultcode>soapenv:Client</faultcode>
+                  <faultstring>No SOAPAction matched the incoming request.</faultstring>
+                </soapenv:Fault>
+              </soapenv:Body>
+            </soapenv:Envelope>
+        headers: []
+    parameterConstraints:
+        - name: content-type
+          source: header
+          required: true
+          forward: false
+          pattern: (?i)^(text/xml|application/soap\+xml)
+        - name: soapaction
+          source: header
+          required: true
+          forward: false
+          pattern: ^urn:(SubmitClaim|GetClaimStatus)$
+        - name: x-suite-profile
+          source: header
+          required: false
+          forward: true
+          pattern: ""
+    resolverUrl: /internal/mock-data/soap-claims-hub/claims-soap/claim-service
+    runtimeUrl: /mocks/rest/soap-claims-hub/claims-soap/ClaimService
+    state: null

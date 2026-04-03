@@ -7,7 +7,6 @@ runtime:
   profileFile: canary.yaml
 modules:
     - vault
-    - wiremock
     - postgres
 observability:
   logs: structured

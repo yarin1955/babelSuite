@@ -35,11 +35,11 @@ type Header struct {
 }
 
 type ParameterConstraint struct {
-	Name            string `json:"name"`
+	Name     string `json:"name"`
 	Source   string `json:"source"`
 	Required bool   `json:"required"`
-	Forward bool   `json:"forward"`
-	Pattern string `json:"pattern,omitempty"`
+	Forward  bool   `json:"forward"`
+	Pattern  string `json:"pattern,omitempty"`
 }
 
 type MockFallback struct {
@@ -75,24 +75,27 @@ type MatchCondition struct {
 
 type MockOperationMetadata struct {
 	Adapter              string                `json:"adapter"`
+	Dispatcher           string                `json:"dispatcher,omitempty"`
+	DispatcherRules      string                `json:"dispatcherRules,omitempty"`
 	DelayMillis          int                   `json:"delayMillis,omitempty"`
 	ParameterConstraints []ParameterConstraint `json:"parameterConstraints,omitempty"`
 	Fallback             *MockFallback         `json:"fallback,omitempty"`
 	State                *MockState            `json:"state,omitempty"`
 	MetadataPath         string                `json:"metadataPath,omitempty"`
+	ResolverURL          string                `json:"resolverUrl,omitempty"`
 	RuntimeURL           string                `json:"runtimeUrl,omitempty"`
 }
 
 type ExchangeExample struct {
-	Name              string   `json:"name"`
-	SourceArtifact    string   `json:"sourceArtifact"`
+	Name              string           `json:"name"`
+	SourceArtifact    string           `json:"sourceArtifact"`
 	When              []MatchCondition `json:"when,omitempty"`
-	RequestHeaders    []Header `json:"requestHeaders"`
-	RequestBody       string   `json:"requestBody"`
-	ResponseStatus    string   `json:"responseStatus"`
-	ResponseMediaType string   `json:"responseMediaType"`
-	ResponseHeaders   []Header `json:"responseHeaders"`
-	ResponseBody      string   `json:"responseBody"`
+	RequestHeaders    []Header         `json:"requestHeaders"`
+	RequestBody       string           `json:"requestBody"`
+	ResponseStatus    string           `json:"responseStatus"`
+	ResponseMediaType string           `json:"responseMediaType"`
+	ResponseHeaders   []Header         `json:"responseHeaders"`
+	ResponseBody      string           `json:"responseBody"`
 }
 
 type APIOperation struct {
@@ -104,6 +107,7 @@ type APIOperation struct {
 	MockPath     string                `json:"mockPath"`
 	MockURL      string                `json:"mockUrl"`
 	CurlCommand  string                `json:"curlCommand"`
+	Dispatcher   string                `json:"dispatcher,omitempty"`
 	MockMetadata MockOperationMetadata `json:"mockMetadata"`
 	Exchanges    []ExchangeExample     `json:"exchanges"`
 }

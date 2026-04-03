@@ -17,5 +17,6 @@ spec:
         body: ""
         headers: []
     parameterConstraints: []
+    resolverUrl: /internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized
     runtimeUrl: /mocks/async/returns-control-plane/refund-events/publish-refund-authorized
     state: null

@@ -36,6 +36,7 @@ type SortKey = 'starred' | 'title' | 'version'
 const CAPABILITY_FILTERS = [
   { id: 'openapi', label: 'OpenAPI', terms: ['openapi', 'rest api', 'rest'] },
   { id: 'grpc', label: 'gRPC', terms: ['grpc', 'protobuf', 'proto'] },
+  { id: 'soap', label: 'SOAP', terms: ['soap', 'wsdl', 'xml envelope'] },
   { id: 'kafka', label: 'Kafka', terms: ['kafka'] },
   { id: 'redis', label: 'Redis', terms: ['redis'] },
   { id: 'postgres', label: 'Postgres', terms: ['postgres'] },

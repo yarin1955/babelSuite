@@ -17,6 +17,7 @@ import {
   getPlatformSettings,
   syncRegistry,
   updatePlatformSettings,
+  type APISIXSidecarConfig,
   type ExecutionAgent,
   type OCIRegistry,
   type PlatformSettings,
@@ -171,6 +172,23 @@ export default function PlatformSettings() {
     })
   }
 
+  const updateAgentSidecar = <K extends keyof APISIXSidecarConfig>(field: K, value: APISIXSidecarConfig[K]) => {
+    if (!selectedAgent) return
+    patchDraft((next) => {
+      next.agents = next.agents.map((agent) =>
+        agent.agentId === selectedAgent.agentId
+          ? {
+              ...agent,
+              apisixSidecar: {
+                ...agent.apisixSidecar,
+                [field]: value,
+              },
+            }
+          : agent,
+      )
+    })
+  }
+
   const updateRegistry = <K extends keyof OCIRegistry>(field: K, value: OCIRegistry[K]) => {
     if (!selectedRegistry) return
     patchDraft((next) => {
@@ -237,7 +255,7 @@ export default function PlatformSettings() {
               <div className='platform-redirect-panel__content'>
                 <div className='platform-redirect-panel__title'>Execution Agents</div>
                 <div className='platform-redirect-panel__description'>
-                  Configure the runner pools where suites execute — local Docker, remote Docker, and Kubernetes targets. {draft.agents.length} agent{draft.agents.length !== 1 ? 's' : ''} configured.
+                  Configure the runner pools where suites execute and where the APISIX sidecar is injected for API-facing suites. {draft.agents.length} agent{draft.agents.length !== 1 ? 's' : ''} configured.
                 </div>
               </div>
               <div className='platform-redirect-panel__arrow'><FaAngleRight /></div>
@@ -320,7 +338,7 @@ export default function PlatformSettings() {
             <div className='platform-section__header'>
               <div>
                 <h2>Execution Agents</h2>
-                <p>Configure the physical environments where suites execute, then tag them so heavier workloads route to the right pool.</p>
+                <p>Configure the physical environments where suites execute, then tag them so heavier workloads and APISIX-fronted APIs route to the right pool.</p>
               </div>
               <button className='platform-button platform-button--secondary' onClick={addAgent}>
                 <FaPlus />
@@ -454,6 +472,44 @@ export default function PlatformSettings() {
                       </div>
                     </div>
                   )}
+
+                  <div className='platform-detail-card'>
+                    <div className='platform-detail-card__title'>APISIX Sidecar</div>
+                    <div className='platform-form-grid'>
+                      <label className='platform-field platform-field--full'>
+                        <span>Runtime Image</span>
+                        <input value={selectedAgent.apisixSidecar.image} onChange={(e) => updateAgentSidecar('image', e.target.value)} />
+                      </label>
+                      <label className='platform-field platform-field--full'>
+                        <span>Config Mount Path</span>
+                        <input value={selectedAgent.apisixSidecar.configMountPath} onChange={(e) => updateAgentSidecar('configMountPath', e.target.value)} />
+                      </label>
+                      <label className='platform-field'>
+                        <span>Listen Port</span>
+                        <input
+                          type='number'
+                          value={selectedAgent.apisixSidecar.listenPort}
+                          onChange={(e) => updateAgentSidecar('listenPort', parseNumberInput(e.target.value))}
+                        />
+                      </label>
+                      <label className='platform-field'>
+                        <span>Admin Port</span>
+                        <input
+                          type='number'
+                          value={selectedAgent.apisixSidecar.adminPort}
+                          onChange={(e) => updateAgentSidecar('adminPort', parseNumberInput(e.target.value))}
+                        />
+                      </label>
+                      <label className='platform-field platform-field--full'>
+                        <span>Capabilities</span>
+                        <input
+                          value={selectedAgent.apisixSidecar.capabilities.join(', ')}
+                          onChange={(e) => updateAgentSidecar('capabilities', splitList(e.target.value))}
+                          placeholder='rest, graphql, grpc, soap, kafka'
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -687,6 +743,11 @@ function splitList(value: string) {
   return value.split(',').map((s) => s.trim()).filter(Boolean)
 }
 
+function parseNumberInput(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function emptyAgent(index: number): ExecutionAgent {
   return {
     agentId: `agent-${index}`,
@@ -704,6 +765,17 @@ function emptyAgent(index: number): ExecutionAgent {
     kubeconfigPath: '',
     targetNamespace: '',
     serviceAccountToken: '',
+    apisixSidecar: defaultAPISIXSidecar(),
+  }
+}
+
+function defaultAPISIXSidecar(): APISIXSidecarConfig {
+  return {
+    image: 'apache/apisix:latest',
+    configMountPath: '/usr/local/apisix/conf/apisix.yaml',
+    listenPort: 9080,
+    adminPort: 9180,
+    capabilities: ['rest', 'graphql', 'grpc', 'soap', 'kafka'],
   }
 }
 

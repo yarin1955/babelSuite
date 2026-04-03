@@ -31,6 +31,7 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/payment-suite/payment-gateway/get-payment
     runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments/pay_1043
     state:
         lookupkeytemplate: payment:{{ request.path.paymentId }}

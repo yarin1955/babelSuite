@@ -29,6 +29,9 @@ func RenderWorkspaceFiles() []RenderedFile {
 			RenderedFile{Path: joinPath(base, "suite.star"), Content: ensureTrailingNewline(suite.SuiteStar)},
 		)
 		for _, file := range examplegen.GeneratedSourceFiles(suite) {
+			if !shouldWriteExampleSourceFile(file.Path) {
+				continue
+			}
 			files = append(files, RenderedFile{
 				Path:    joinPath(base, file.Path),
 				Content: ensureTrailingNewline(file.Content),
@@ -54,6 +57,9 @@ func RenderWorkspaceFiles() []RenderedFile {
 func SyncWorkspace(repoRoot string) (int, error) {
 	files := RenderWorkspaceFiles()
 	examplesRoot := examplefs.ResolveRootFromRepo(repoRoot)
+	if err := cleanupGeneratedSuiteArtifacts(examplesRoot); err != nil {
+		return 0, err
+	}
 	for _, file := range files {
 		target := filepath.Join(examplesRoot, filepath.FromSlash(file.Path))
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -77,9 +83,34 @@ func renderSuiteReadme(suite suites.Definition) string {
 		"- `suite.star`: declarative topology",
 	}
 	for _, folder := range suite.Folders {
+		if !shouldDescribeExampleFolder(folder.Name) {
+			continue
+		}
 		lines = append(lines, fmt.Sprintf("- `%s/`: %s", folder.Name, folder.Description))
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func shouldWriteExampleSourceFile(path string) bool {
+	normalized := filepath.ToSlash(strings.Trim(strings.TrimSpace(path), "/"))
+	return !strings.HasPrefix(normalized, "gateway/")
+}
+
+func shouldDescribeExampleFolder(name string) bool {
+	return strings.TrimSpace(name) != "gateway"
+}
+
+func cleanupGeneratedSuiteArtifacts(examplesRoot string) error {
+	matches, err := filepath.Glob(filepath.Join(examplesRoot, "oci-suites", "*", "gateway"))
+	if err != nil {
+		return err
+	}
+	for _, match := range matches {
+		if err := os.RemoveAll(match); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func renderModuleReadme(module catalog.Package) string {

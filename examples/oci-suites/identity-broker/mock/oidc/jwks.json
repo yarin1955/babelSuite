@@ -1,12 +1,143 @@
 {
-  "oidc-admin": {
-    "provider": "oidc",
-    "redirect": "https://oidc-mock.internal/authorize",
-    "sessionId": "sess_9001"
+  "$schema": "https://schemas.babelsuite.dev/mock-exchange-source-v1.json",
+  "adapter": "rest",
+  "artifact": "mock/oidc/jwks.json",
+  "contractPath": "api/openapi/identity_broker.yaml#/paths/~1sessions~1login/post",
+  "dispatcher": "apisix",
+  "examples": {
+    "oidc-admin": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "provider",
+          "value": "oidc"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "email": {
+              "example": "admin@babelsuite.test",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "provider": {
+              "example": "oidc",
+              "type": "string"
+            },
+            "redirect": {
+              "example": "https://oidc-mock.internal/authorize",
+              "type": "string"
+            },
+            "sessionId": {
+              "example": "sess_9001",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "set-cookie": {
+              "example": "bs_session=abc123",
+              "type": "string"
+            }
+          },
+          "required": [
+            "set-cookie"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "200"
+      }
+    },
+    "saml-fallback": {
+      "dispatch": [
+        {
+          "from": "query",
+          "param": "provider",
+          "value": "saml"
+        }
+      ],
+      "requestSchema": {
+        "body": {
+          "properties": {
+            "email": {
+              "example": "ops@company.test",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "content-type": {
+              "example": "application/json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content-type"
+          ],
+          "type": "object"
+        }
+      },
+      "responseSchema": {
+        "body": {
+          "properties": {
+            "provider": {
+              "example": "saml",
+              "type": "string"
+            },
+            "redirect": {
+              "example": "https://saml-mock.internal/login",
+              "type": "string"
+            },
+            "sessionId": {
+              "example": "sess_9021",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "headers": {
+          "properties": {
+            "x-flow": {
+              "example": "saml",
+              "type": "string"
+            }
+          },
+          "required": [
+            "x-flow"
+          ],
+          "type": "object"
+        },
+        "mediaType": "application/json",
+        "status": "200"
+      }
+    }
   },
-  "saml-fallback": {
-    "provider": "saml",
-    "redirect": "https://saml-mock.internal/login",
-    "sessionId": "sess_9021"
-  }
+  "operationId": "begin-login",
+  "resolverUrl": "/internal/mock-data/identity-broker/broker-api/begin-login",
+  "runtimeUrl": "/mocks/rest/identity-broker/broker-api/sessions/login?provider=oidc",
+  "suite": "identity-broker"
 }
