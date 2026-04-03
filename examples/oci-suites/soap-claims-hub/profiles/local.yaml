@@ -1,0 +1,13 @@
+name: Local Debug
+description: Relaxed SOAP timeouts with verbose envelope logging.
+default: true
+runtime:
+  suite: soap-claims-hub
+  repository: localhost:5000/enterprise-integration/soap-claims-hub
+  profileFile: local.yaml
+modules:
+    - runtime
+observability:
+  logs: structured
+  traces: enabled
+  metrics: enabled

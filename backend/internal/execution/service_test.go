@@ -2,7 +2,9 @@ package execution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,5 +226,110 @@ func TestStorefrontExecutionUsesScenarioOnlyTopology(t *testing.T) {
 		case <-deadline:
 			t.Fatal("timed out waiting for storefront scenario step to appear in execution snapshot")
 		}
+	}
+}
+
+func TestGetExecutionIncludesSuiteSourceFiles(t *testing.T) {
+	service := NewService(suites.NewService())
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "returns-control-plane",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	record, err := service.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+	if len(record.Suite.Folders) == 0 {
+		t.Fatal("expected execution suite folders")
+	}
+	if len(record.Suite.SourceFiles) == 0 {
+		t.Fatal("expected execution suite source files")
+	}
+	if len(record.Suite.APISurfaces) == 0 {
+		t.Fatal("expected execution suite api surfaces")
+	}
+
+	foundMockFile := false
+	for _, file := range record.Suite.SourceFiles {
+		if file.Path != "mock/returns/create-return.cue" {
+			continue
+		}
+		foundMockFile = true
+		if !strings.Contains(file.Content, `@gen(`) {
+			t.Fatalf("expected declarative mock generation content, got %q", file.Content)
+		}
+	}
+
+	if !foundMockFile {
+		t.Fatal("expected returns execution to include mock source file")
+	}
+}
+
+func TestGetExecutionRendersGeneratedMockPreviewData(t *testing.T) {
+	service := NewService(suites.NewService())
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "returns-control-plane",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	record, err := service.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+
+	var preview string
+	for _, surface := range record.Suite.APISurfaces {
+		if surface.ID != "returns-api" {
+			continue
+		}
+		for _, operation := range surface.Operations {
+			if operation.ID != "create-return" {
+				continue
+			}
+			for _, exchange := range operation.Exchanges {
+				if exchange.Name == "approved-standard" {
+					preview = exchange.ResponseBody
+				}
+			}
+		}
+	}
+
+	if strings.TrimSpace(preview) == "" {
+		t.Fatal("expected create-return preview body")
+	}
+	if strings.Contains(preview, "{{") {
+		t.Fatalf("expected rendered preview body, got %q", preview)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(preview), &payload); err != nil {
+		t.Fatalf("preview body should be valid json: %v", err)
+	}
+
+	returnID, _ := payload["returnId"].(string)
+	traceID, _ := payload["traceId"].(string)
+	servedAt, _ := payload["servedAt"].(string)
+	returnID = strings.TrimSpace(returnID)
+	traceID = strings.TrimSpace(traceID)
+	servedAt = strings.TrimSpace(servedAt)
+	if !strings.HasPrefix(returnID, "ret_") {
+		t.Fatalf("expected generated returnId, got %q", returnID)
+	}
+	if traceID == "" {
+		t.Fatal("expected generated traceId")
+	}
+	if servedAt == "" {
+		t.Fatal("expected generated servedAt")
 	}
 }

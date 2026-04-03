@@ -1,8 +1,0 @@
-{
-  "authorized-event": {
-    "eventId": "evt_7001",
-    "returnId": "ret_1001",
-    "status": "published",
-    "type": "returns.refund.authorized"
-  }
-}

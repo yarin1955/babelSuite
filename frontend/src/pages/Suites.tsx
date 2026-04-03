@@ -41,6 +41,7 @@ export default function Suites() {
   const suiteId = params.suiteId ?? ''
   const [suite, setSuite] = useState<SuiteDefinition | null>(null)
   const [selectedFolder, setSelectedFolder] = useState('')
+  const [selectedSourcePath, setSelectedSourcePath] = useState('')
   const [selectedOperationId, setSelectedOperationId] = useState('')
   const [selectedExchangeName, setSelectedExchangeName] = useState('')
   const [selectedProfile, setSelectedProfile] = useState('')
@@ -77,11 +78,19 @@ export default function Suites() {
 
   const topology = useMemo(() => (suite ? parseSuiteTopology(suite.suiteStar) : []), [suite])
   const topologyLevels = useMemo(() => groupTopologyByLevel(topology), [topology])
+  const suiteSourceFiles = suite?.sourceFiles ?? []
+  const sourceFileByPath = useMemo(
+    () => new Map(suiteSourceFiles.map((file) => [file.path, file])),
+    [suiteSourceFiles],
+  )
 
   useEffect(() => {
     if (!suite) return
     const defaultOperation = suite.apiSurfaces[0]?.operations[0]
-    setSelectedFolder(suite.folders[0]?.name ?? '')
+    const defaultSourcePath = preferredSourcePath(suite, defaultOperation)
+    const defaultFolder = folderNameFromPath(defaultSourcePath) || suite.folders[0]?.name || ''
+    setSelectedFolder(defaultFolder)
+    setSelectedSourcePath(defaultSourcePath)
     setSelectedOperationId(defaultOperation?.id ?? '')
     setSelectedExchangeName(defaultOperation?.exchanges[0]?.name ?? '')
     setSelectedProfile(suite.profiles.find((p) => p.default)?.fileName ?? suite.profiles[0]?.fileName ?? '')
@@ -91,8 +100,21 @@ export default function Suites() {
 
   const copyValue = async (id: string, value: string) => {
     await navigator.clipboard.writeText(value)
+    const label = id === 'pull'
+      ? 'Pull command'
+      : id === 'fork'
+        ? 'Fork command'
+        : id === 'star'
+          ? 'suite.star'
+          : id === 'url'
+            ? 'Public endpoint'
+            : id === 'resolver'
+              ? 'Resolver URL'
+            : id === 'curl'
+              ? 'cURL command'
+              : id
     setCopiedId(id)
-    setNotice(`${id === 'pull' ? 'Pull' : id === 'fork' ? 'Fork' : ''} command copied.`)
+    setNotice(`${label} copied.`)
     window.setTimeout(() => { setCopiedId(''); setNotice('') }, 1800)
   }
 
@@ -139,7 +161,15 @@ export default function Suites() {
   const selectedSurface = suite.apiSurfaces.find((s) => s.operations.some((o) => o.id === selectedOperationId)) ?? suite.apiSurfaces[0]
   const selectedOperation = selectedSurface?.operations.find((o) => o.id === selectedOperationId) ?? selectedSurface?.operations[0]
   const selectedExchange = selectedOperation?.exchanges.find((e) => e.name === selectedExchangeName) ?? selectedOperation?.exchanges[0]
-  const selectedRuntimeUrl = selectedOperation?.mockMetadata?.runtimeUrl || selectedOperation?.mockUrl || ''
+  const selectedPublicUrl = selectedOperation?.mockUrl || ''
+  const selectedResolverUrl = selectedOperation?.mockMetadata?.resolverUrl || ''
+  const selectedRuntimeUrl = selectedOperation?.mockMetadata?.runtimeUrl || ''
+  const activeSourceFile = selectedSourcePath ? sourceFileByPath.get(selectedSourcePath) : suiteSourceFiles[0]
+  const selectSourceFile = (path: string) => {
+    setSelectedSourcePath(path)
+    const folderName = folderNameFromPath(path)
+    if (folderName) setSelectedFolder(folderName)
+  }
 
   return (
     <AppShell
@@ -239,6 +269,44 @@ export default function Suites() {
             </div>
           </section>
 
+          <section className='suite-section'>
+            <div className='suite-section__header'>
+              <div>
+                <p className='suite-eyebrow'>Source Preview</p>
+                <h3>{activeSourceFile?.path ?? 'Select a file from Package Explorer'}</h3>
+              </div>
+              {activeSourceFile && (
+                <div className='suite-source-preview__actions'>
+                  <span className='suite-source-preview__language'>{activeSourceFile.language}</span>
+                  <button
+                    type='button'
+                    className='suite-inline-btn'
+                    onClick={() => void copyValue(activeSourceFile.path, activeSourceFile.content)}
+                  >
+                    <FaCopy />
+                    <span>{copiedId === activeSourceFile.path ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            {activeSourceFile
+              ? (
+                  <div className='suite-code-viewer'>
+                    {activeSourceFile.content.split('\n').map((line, i) => (
+                      <div key={`${activeSourceFile.path}-${i + 1}`} className='suite-code-line'>
+                        <span className='suite-code-line__number'>{String(i + 1).padStart(3, ' ')}</span>
+                        <code className='suite-code-line__content'>{line || ' '}</code>
+                      </div>
+                    ))}
+                  </div>
+                )
+              : (
+                  <div className='suite-source-preview__empty'>
+                    Select a file from Package Explorer to inspect the generated contract or mock data.
+                  </div>
+                )}
+          </section>
+
           {/* Topology */}
           {topologyLevels.length > 0 && (
             <section className='suite-section'>
@@ -294,7 +362,12 @@ export default function Suites() {
                       key={op.id}
                       type='button'
                       className={`suite-op-btn${op.id === selectedOperation.id ? ' suite-op-btn--active' : ''}`}
-                      onClick={() => { setSelectedOperationId(op.id); setSelectedExchangeName(op.exchanges[0]?.name ?? '') }}
+                      onClick={() => {
+                        setSelectedOperationId(op.id)
+                        setSelectedExchangeName(op.exchanges[0]?.name ?? '')
+                        const previewPath = preferredSourcePath(suite, op)
+                        if (previewPath) selectSourceFile(previewPath)
+                      }}
                     >
                       <div className='suite-op-btn__top'>
                         <span className='suite-op-btn__method'>{op.method}</span>
@@ -345,17 +418,25 @@ export default function Suites() {
 
                   <div className='suite-mock-url'>
                     <div>
-                      <p className='suite-eyebrow'>Runtime URL</p>
-                      <strong>{selectedRuntimeUrl}</strong>
+                      <p className='suite-eyebrow'>Public Endpoint</p>
+                      <strong>{selectedPublicUrl || selectedRuntimeUrl}</strong>
                       <small>Dispatch: {selectedExchange.dispatchCriteria}</small>
-                      {selectedOperation.mockUrl !== selectedRuntimeUrl && (
-                        <small className='suite-mock-url__declared'>Declared: {selectedOperation.mockUrl}</small>
+                      {selectedResolverUrl && (
+                        <small className='suite-mock-url__declared'>Resolver: {selectedResolverUrl}</small>
+                      )}
+                      {selectedRuntimeUrl && selectedRuntimeUrl !== selectedPublicUrl && (
+                        <small className='suite-mock-url__declared'>Compatibility engine path: {selectedRuntimeUrl}</small>
                       )}
                     </div>
                     <div className='suite-mock-url__actions'>
-                      <button type='button' className='suite-inline-btn' onClick={() => void copyValue('url', selectedRuntimeUrl)}>
+                      <button type='button' className='suite-inline-btn' onClick={() => void copyValue('url', selectedPublicUrl || selectedRuntimeUrl)}>
                         <FaCopy /><span>Copy URL</span>
                       </button>
+                      {selectedResolverUrl && (
+                        <button type='button' className='suite-inline-btn' onClick={() => void copyValue('resolver', selectedResolverUrl)}>
+                          <FaCopy /><span>Copy Resolver</span>
+                        </button>
+                      )}
                       <button type='button' className='suite-inline-btn' onClick={() => void copyValue('curl', selectedOperation.curlCommand)}>
                         <FaTerminal /><span>Copy cURL</span>
                       </button>
@@ -368,6 +449,9 @@ export default function Suites() {
                       <div className='suite-runtime-card__rows'>
                         <div><span>Adapter</span><strong>{selectedOperation.mockMetadata.adapter}</strong></div>
                         <div><span>Dispatcher</span><strong>{selectedOperation.mockMetadata.dispatcher}</strong></div>
+                        {selectedOperation.mockMetadata.resolverUrl && (
+                          <div><span>Resolver</span><strong>{selectedOperation.mockMetadata.resolverUrl}</strong></div>
+                        )}
                         <div><span>Rules</span><strong>{selectedOperation.mockMetadata.dispatcherRules || 'Default field mapping'}</strong></div>
                         <div><span>Delay</span><strong>{selectedOperation.mockMetadata.delayMillis ? `${selectedOperation.mockMetadata.delayMillis} ms` : 'None'}</strong></div>
                       </div>
@@ -550,7 +634,13 @@ export default function Suites() {
                     key={folder.name}
                     type='button'
                     className={`suite-folder-btn${folder.name === activeFolder?.name ? ' suite-folder-btn--active' : ''}`}
-                    onClick={() => setSelectedFolder(folder.name)}
+                    onClick={() => {
+                      setSelectedFolder(folder.name)
+                      const previewPath = folder.files
+                        .map((fileName) => `${folder.name}/${fileName}`)
+                        .find((path) => sourceFileByPath.has(path))
+                      if (previewPath) setSelectedSourcePath(previewPath)
+                    }}
                   >
                     <span className='suite-folder-btn__name'>{folder.name}/</span>
                     <span className='suite-folder-btn__count'>{folder.files.length}</span>
@@ -562,7 +652,22 @@ export default function Suites() {
                   <p className='suite-eyebrow'>{activeFolder.role}</p>
                   <p>{activeFolder.description}</p>
                   <div className='suite-folder-files'>
-                    {activeFolder.files.map((f) => <span key={f}>{f}</span>)}
+                    {activeFolder.files.map((fileName) => {
+                      const sourcePath = `${activeFolder.name}/${fileName}`
+                      const hasPreview = sourceFileByPath.has(sourcePath)
+                      return (
+                        <button
+                          key={sourcePath}
+                          type='button'
+                          className={`suite-folder-file${selectedSourcePath === sourcePath ? ' suite-folder-file--active' : ''}`}
+                          disabled={!hasPreview}
+                          onClick={() => selectSourceFile(sourcePath)}
+                          title={hasPreview ? sourcePath : `${sourcePath} preview is unavailable`}
+                        >
+                          {fileName}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -667,4 +772,24 @@ function renderHighlightedLine(line: string): ReactNode[] {
   if (cursor < code.length) fragments.push(code.slice(cursor))
   if (comment) fragments.push(<span key={`comment-${comment}`} className='suite-token suite-token--comment'>{comment}</span>)
   return fragments
+}
+
+function preferredSourcePath(
+  suite: SuiteDefinition,
+  operation?: SuiteDefinition['apiSurfaces'][number]['operations'][number],
+): string {
+  const availablePaths = new Set(suite.sourceFiles.map((file) => file.path))
+  const candidates = [
+    operation?.mockPath,
+    operation?.mockMetadata.metadataPath,
+    operation?.contractPath,
+    suite.sourceFiles[0]?.path,
+  ]
+
+  return candidates.find((path): path is string => Boolean(path) && availablePaths.has(path)) ?? ''
+}
+
+function folderNameFromPath(path: string): string {
+  const slashIndex = path.indexOf('/')
+  return slashIndex >= 0 ? path.slice(0, slashIndex) : ''
 }

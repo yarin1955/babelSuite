@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="urn:babelsuite:soap-claims-hub" xmlns:xsd="http://www.w3.org/2001/XMLSchema" name="claimsService" targetNamespace="urn:babelsuite:soap-claims-hub">
+  <types>
+    <xsd:schema targetNamespace="urn:babelsuite:soap-claims-hub">
+      <xsd:element name="SubmitClaimRequest" type="xsd:string"/>
+      <xsd:element name="SubmitClaimResponse" type="xsd:string"/>
+      <xsd:element name="GetClaimStatusRequest" type="xsd:string"/>
+      <xsd:element name="GetClaimStatusResponse" type="xsd:string"/>
+    </xsd:schema>
+  </types>
+
+  <message name="SubmitClaimInput">
+    <part name="parameters" element="tns:SubmitClaimRequest"/>
+  </message>
+  <message name="SubmitClaimOutput">
+    <part name="parameters" element="tns:SubmitClaimResponse"/>
+  </message>
+
+  <message name="GetClaimStatusInput">
+    <part name="parameters" element="tns:GetClaimStatusRequest"/>
+  </message>
+  <message name="GetClaimStatusOutput">
+    <part name="parameters" element="tns:GetClaimStatusResponse"/>
+  </message>
+
+  <portType name="claimsPortType">
+    <operation name="SubmitClaim">
+      <input message="tns:SubmitClaimInput"/>
+      <output message="tns:SubmitClaimOutput"/>
+    </operation>
+    <operation name="GetClaimStatus">
+      <input message="tns:GetClaimStatusInput"/>
+      <output message="tns:GetClaimStatusOutput"/>
+    </operation>
+  </portType>
+  <binding name="claimsBinding" type="tns:claimsPortType">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="document"/>
+    <operation name="SubmitClaim">
+      <soap:operation soapAction="urn:SubmitClaim"/>
+      <input><soap:body use="literal"/></input>
+      <output><soap:body use="literal"/></output>
+    </operation>
+    <operation name="GetClaimStatus">
+      <soap:operation soapAction="urn:GetClaimStatus"/>
+      <input><soap:body use="literal"/></input>
+      <output><soap:body use="literal"/></output>
+    </operation>
+  </binding>
+  <service name="claimsService">
+    <port name="claimsPort" binding="tns:claimsBinding">
+      <soap:address location="https://soap-claims-hub.mock.internal/ClaimService"/>
+    </port>
+  </service>
+</definitions>

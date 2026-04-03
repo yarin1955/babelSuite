@@ -9,7 +9,6 @@ modules:
     - postgres
     - kafka
     - grpc
-    - mock-api
 observability:
   logs: structured
   traces: enabled

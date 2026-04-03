@@ -34,6 +34,17 @@ func TestWorkspaceExamplesMatchDefinitions(t *testing.T) {
 	}
 }
 
+func TestWorkspaceExamplesDoNotMaterializeGatewayArtifacts(t *testing.T) {
+	for _, file := range RenderWorkspaceFiles() {
+		if strings.Contains(filepath.ToSlash(file.Path), "/gateway/") {
+			t.Fatalf("did not expect generated example workspace to include gateway artifact %s", file.Path)
+		}
+		if filepath.Base(file.Path) == "README.md" && strings.Contains(file.Content, "- `gateway/`:") {
+			t.Fatalf("did not expect example README to list runtime-managed gateway folder in %s", file.Path)
+		}
+	}
+}
+
 func normalizeLineEndings(value string) string {
 	return strings.ReplaceAll(value, "\r\n", "\n")
 }

@@ -14,6 +14,7 @@ import {
   ApiError,
   getPlatformSettings,
   updatePlatformSettings,
+  type APISIXSidecarConfig,
   type ExecutionAgent,
   type PlatformSettings,
 } from '../../lib/api'
@@ -81,6 +82,21 @@ export default function Agents() {
     })
   }
 
+  const updatePanelSidecar = <K extends keyof APISIXSidecarConfig>(field: K, value: APISIXSidecarConfig[K]) => {
+    if (!panelAgent) return
+    const updated = {
+      ...panelAgent,
+      apisixSidecar: {
+        ...panelAgent.apisixSidecar,
+        [field]: value,
+      },
+    }
+    setPanelAgent(updated)
+    patchDraft((next) => {
+      next.agents = next.agents.map((agent) => agent.agentId === panelAgent.agentId ? updated : agent)
+    })
+  }
+
   const openPanel = (agent: ExecutionAgent) => {
     setPanelAgent(structuredClone(agent))
     setPanelOpen(true)
@@ -142,7 +158,7 @@ export default function Agents() {
     <AppShell
       section='Settings'
       title='Execution Agents'
-      description='Configure the physical environments where suites execute.'
+      description='Configure the physical environments where suites execute and where the APISIX sidecar fronts API-facing suites.'
       actions={(
         <>
           <Link to='/settings' className='platform-button platform-button--secondary'>← Settings</Link>
@@ -174,7 +190,7 @@ export default function Agents() {
             <div className='bs-table-list__empty'>
               <FaServer className='bs-table-list__empty-icon' />
               <h4>No execution agents</h4>
-              <p>Configure where your suites run — local Docker, remote Docker, or Kubernetes.</p>
+              <p>Configure where your suites run and how the APISIX sidecar should front mock APIs on each agent.</p>
               <button className='platform-button' onClick={addAgent}><FaPlus /> Add Agent</button>
             </div>
           )}
@@ -340,6 +356,44 @@ export default function Agents() {
                 </div>
               </div>
             )}
+
+            <div className='white-box'>
+              <p className='white-box__section-header'>APISIX Sidecar</p>
+              <div className='bs-form-row'>
+                <label>Runtime Image</label>
+                <input value={panelAgent.apisixSidecar.image} onChange={(e) => updatePanelSidecar('image', e.target.value)} />
+              </div>
+              <div className='bs-form-row'>
+                <label>Config Mount Path</label>
+                <input value={panelAgent.apisixSidecar.configMountPath} onChange={(e) => updatePanelSidecar('configMountPath', e.target.value)} />
+              </div>
+              <div className='bs-form-row bs-form-row--two'>
+                <div>
+                  <label>Listen Port</label>
+                  <input
+                    type='number'
+                    value={panelAgent.apisixSidecar.listenPort}
+                    onChange={(e) => updatePanelSidecar('listenPort', parseNumberInput(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label>Admin Port</label>
+                  <input
+                    type='number'
+                    value={panelAgent.apisixSidecar.adminPort}
+                    onChange={(e) => updatePanelSidecar('adminPort', parseNumberInput(e.target.value))}
+                  />
+                </div>
+              </div>
+              <div className='bs-form-row'>
+                <label>Capabilities <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(comma-separated)</span></label>
+                <input
+                  value={panelAgent.apisixSidecar.capabilities.join(', ')}
+                  onChange={(e) => updatePanelSidecar('capabilities', splitList(e.target.value))}
+                  placeholder='rest, graphql, grpc, soap, kafka'
+                />
+              </div>
+            </div>
           </>
         )}
       </SlidingPanel>
@@ -366,6 +420,11 @@ function statusTone(status: string) {
 
 function splitList(value: string) {
   return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+function parseNumberInput(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function RowMenu({ items }: {
@@ -439,5 +498,16 @@ function emptyAgent(index: number): ExecutionAgent {
     kubeconfigPath: '',
     targetNamespace: '',
     serviceAccountToken: '',
+    apisixSidecar: defaultAPISIXSidecar(),
+  }
+}
+
+function defaultAPISIXSidecar(): APISIXSidecarConfig {
+  return {
+    image: 'apache/apisix:latest',
+    configMountPath: '/usr/local/apisix/conf/apisix.yaml',
+    listenPort: 9080,
+    adminPort: 9180,
+    capabilities: ['rest', 'graphql', 'grpc', 'soap', 'kafka'],
   }
 }

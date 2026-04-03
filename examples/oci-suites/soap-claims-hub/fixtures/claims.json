@@ -1,0 +1,10 @@
+[
+  {
+    "email": "admin@babelsuite.test",
+    "role": "admin"
+  },
+  {
+    "email": "shopper@demo.test",
+    "role": "demo"
+  }
+]

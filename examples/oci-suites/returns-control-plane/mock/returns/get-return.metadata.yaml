@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/returns/get-return.metadata.yaml
     operationId: get-return
-    sourceArtifact: mock/returns/get-return.json
+    sourceArtifact: mock/returns/get-return.cue
     suite: returns-control-plane
 spec:
     adapter: rest
@@ -31,6 +31,7 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/returns-control-plane/returns-api/get-return
     runtimeUrl: /mocks/rest/returns-control-plane/returns-api/returns/ret_1001
     state:
         lookupkeytemplate: return:{{ request.path.returnId }}

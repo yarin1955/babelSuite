@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/wiremock/stripe/create-charge.metadata.yaml
     operationId: create-payment
-    sourceArtifact: mock/wiremock/stripe/create-charge.json
+    sourceArtifact: mock/wiremock/stripe/create-charge.cue
     suite: payment-suite
 spec:
     adapter: rest
@@ -38,6 +38,7 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/payment-suite/payment-gateway/create-payment
     runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments?status=approved
     state:
         lookupkeytemplate: ""

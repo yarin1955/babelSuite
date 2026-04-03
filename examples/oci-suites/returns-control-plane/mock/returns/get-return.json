@@ -1,9 +1,0 @@
-{
-  "return-state": {
-    "profile": "{{ state.profile }}",
-    "refundMode": "{{ state.refundMode }}",
-    "returnId": "{{ request.path.returnId }}",
-    "reviewQueue": "{{ state.reviewQueue }}",
-    "status": "{{ state.status }}"
-  }
-}

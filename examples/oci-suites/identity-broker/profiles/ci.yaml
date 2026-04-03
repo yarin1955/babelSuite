@@ -7,7 +7,6 @@ runtime:
   profileFile: ci.yaml
 modules:
     - vault
-    - wiremock
     - postgres
 observability:
   logs: structured

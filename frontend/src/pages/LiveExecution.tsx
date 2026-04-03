@@ -35,6 +35,7 @@ export default function LiveExecution() {
     logStreamState,
   } = useExecutionStream(executionId)
   const [selectedSource, setSelectedSource] = useState<'all' | string>('all')
+  const [selectedMockPreviewId, setSelectedMockPreviewId] = useState('')
   const [showDag, setShowDag] = useState(false)
   const [notice, setNotice] = useState('')
   const [actionError, setActionError] = useState('')
@@ -54,11 +55,29 @@ export default function LiveExecution() {
     if (selectedSource === 'all') return logs
     return logs.filter((line) => line.source === selectedSource)
   }, [logs, selectedSource])
+  const mockPreviews = useMemo(
+    () => (execution?.suite.apiSurfaces ?? []).flatMap((surface) => (
+      surface.operations.flatMap((operation) => (
+        operation.exchanges.map((exchange, index) => ({
+          id: `${surface.id}:${operation.id}:${exchange.name}:${index}`,
+          label: mockLabelFromPath(exchange.sourceArtifact || operation.mockPath || operation.id),
+          language: languageFromMediaType(exchange.responseMediaType),
+          content: exchange.responseBody || '(empty body)',
+        }))
+      ))
+    )),
+    [execution?.suite.apiSurfaces],
+  )
 
   useEffect(() => {
     if (!logRef.current || paused) return
     logRef.current.scrollTop = logRef.current.scrollHeight
   }, [filteredLogs, paused])
+
+  useEffect(() => {
+    if (!execution) return
+    setSelectedMockPreviewId(mockPreviews[0]?.id ?? '')
+  }, [execution?.id])
 
   const copyVisibleLogs = async () => {
     const text = filteredLogs
@@ -105,6 +124,25 @@ export default function LiveExecution() {
     : Math.round(((readyNodes + activeNodes) / flatTopology.length) * 100)
 
   const alert = notice || actionError || error
+  const activeMockPreview = mockPreviews.find((preview) => preview.id === selectedMockPreviewId) ?? mockPreviews[0]
+
+  const selectMockPreview = (id: string) => {
+    setSelectedMockPreviewId(id)
+  }
+
+  const copyMockPreview = async () => {
+    if (!activeMockPreview) return
+    await navigator.clipboard.writeText(activeMockPreview.content)
+    setNotice(`${activeMockPreview.label} copied.`)
+    window.setTimeout(() => setNotice(''), 1600)
+  }
+
+  const focusMockPreview = () => {
+    const nextPreview = mockPreviews[0]
+    if (nextPreview) {
+      selectMockPreview(nextPreview.id)
+    }
+  }
 
   return (
     <AppShell
@@ -213,7 +251,12 @@ export default function LiveExecution() {
                     key={node.id}
                     type='button'
                     className={`exec-tab${selectedSource === node.id ? ' exec-tab--active' : ''}`}
-                    onClick={() => setSelectedSource(node.id)}
+                    onClick={() => {
+                      setSelectedSource(node.id)
+                      if (node.kind === 'mock') {
+                        focusMockPreview()
+                      }
+                    }}
                   >
                     <ExecDot status={statusMap[node.id]} />
                     <span>{node.name}</span>
@@ -269,6 +312,55 @@ export default function LiveExecution() {
                 <StreamPill state={executionStreamState} paused={paused} label='events' />
               </div>
             </div>
+            {mockPreviews.length > 0 && (
+              <section className='exec-source-preview'>
+                <div className='exec-source-preview__header'>
+                  <div>
+                    <p className='exec-source-preview__eyebrow'>Generated Mock Data</p>
+                    <h3>{activeMockPreview?.label ?? 'Waiting for mock data'}</h3>
+                  </div>
+                  {activeMockPreview && (
+                    <div className='exec-source-preview__actions'>
+                      <span className='exec-source-preview__language'>{activeMockPreview.language}</span>
+                      <button type='button' className='exec-source-preview__copy' onClick={() => void copyMockPreview()}>
+                        <FaCopy />
+                        <span>Copy</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {mockPreviews.length > 1 && (
+                  <div className='exec-source-preview__switcher'>
+                    {mockPreviews.map((preview) => (
+                      <button
+                        key={preview.id}
+                        type='button'
+                        className={`exec-source-preview__chip${activeMockPreview?.id === preview.id ? ' exec-source-preview__chip--active' : ''}`}
+                        onClick={() => selectMockPreview(preview.id)}
+                      >
+                        {preview.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {activeMockPreview ? (
+                  <div className='exec-source-preview__body'>
+                    {activeMockPreview.content.split('\n').map((line, index) => (
+                      <div key={`${activeMockPreview.id}-${index + 1}`} className='exec-source-preview__line'>
+                        <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
+                        <code className='exec-source-preview__line-content'>{line || ' '}</code>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className='exec-source-preview__empty'>
+                    Waiting for mock data to become available for this suite.
+                  </div>
+                )}
+              </section>
+            )}
           </section>
 
           {/* ── Topology sidebar ── */}
@@ -294,7 +386,12 @@ export default function LiveExecution() {
                         key={node.id}
                         type='button'
                         className={`exec-node exec-node--${st}${selectedSource === node.id ? ' exec-node--selected' : ''}`}
-                        onClick={() => setSelectedSource(node.id)}
+                        onClick={() => {
+                          setSelectedSource(node.id)
+                          if (node.kind === 'mock') {
+                            focusMockPreview()
+                          }
+                        }}
                       >
                         <ExecDot status={st} />
                         <div className='exec-node__info'>
@@ -307,6 +404,7 @@ export default function LiveExecution() {
                   })}
                 </div>
               ))}
+
             </div>
 
             {/* Stats footer */}
@@ -338,7 +436,13 @@ export default function LiveExecution() {
           flatTopology={flatTopology}
           statusMap={statusMap}
           selectedSource={selectedSource}
-          onSelectSource={(id) => { setSelectedSource(id); setShowDag(false) }}
+          onSelectSource={(id) => {
+            setSelectedSource(id)
+            if (flatTopology.find((node) => node.id === id)?.kind === 'mock') {
+              focusMockPreview()
+            }
+            setShowDag(false)
+          }}
           onClose={() => setShowDag(false)}
         />
       )}
@@ -347,6 +451,19 @@ export default function LiveExecution() {
 }
 
 /* ── Sub-components ─────────────────────────────────────── */
+
+function mockLabelFromPath(path: string): string {
+  return path.replace(/^mock\//, '')
+}
+
+function languageFromMediaType(mediaType: string): string {
+  const normalized = mediaType.toLowerCase()
+  if (normalized.includes('json')) return 'json'
+  if (normalized.includes('xml')) return 'xml'
+  if (normalized.includes('yaml') || normalized.includes('yml')) return 'yaml'
+  if (normalized.includes('protobuf') || normalized.includes('grpc')) return 'protobuf'
+  return 'text'
+}
 
 function ExecDot({ status }: { status: RuntimeStatus }) {
   return <span className={`exec-dot exec-dot--${status}`} />

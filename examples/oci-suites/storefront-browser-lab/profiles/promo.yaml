@@ -8,7 +8,6 @@ runtime:
 modules:
     - kafka
     - playwright
-    - mock-api
 observability:
   logs: structured
   traces: enabled

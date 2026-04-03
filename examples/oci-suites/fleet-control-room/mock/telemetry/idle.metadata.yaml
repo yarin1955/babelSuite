@@ -3,12 +3,13 @@ kind: MockOperation
 metadata:
     metadataPath: mock/telemetry/idle.metadata.yaml
     operationId: stream-telemetry
-    sourceArtifact: mock/telemetry/idle.json
+    sourceArtifact: mock/telemetry/idle.cue
     suite: fleet-control-room
 spec:
     adapter: grpc
     delayMillis: 0
     fallback: null
     parameterConstraints: []
+    resolverUrl: /internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry
     runtimeUrl: /mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry
     state: null

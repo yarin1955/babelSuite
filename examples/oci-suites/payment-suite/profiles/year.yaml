@@ -8,7 +8,6 @@ runtime:
 modules:
     - postgres
     - kafka
-    - wiremock
 observability:
   logs: structured
   traces: enabled

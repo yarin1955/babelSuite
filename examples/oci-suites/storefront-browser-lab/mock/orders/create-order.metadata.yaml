@@ -3,7 +3,7 @@ kind: MockOperation
 metadata:
     metadataPath: mock/orders/create-order.metadata.yaml
     operationId: create-order
-    sourceArtifact: mock/orders/create-order.json
+    sourceArtifact: mock/orders/create-order.cue
     suite: storefront-browser-lab
 spec:
     adapter: rest
@@ -36,6 +36,7 @@ spec:
           required: false
           forward: true
           pattern: ""
+    resolverUrl: /internal/mock-data/storefront-browser-lab/storefront-api/create-order
     runtimeUrl: /mocks/rest/storefront-browser-lab/storefront-api/orders?scenario=happy-path
     state:
         lookupkeytemplate: checkout-attempt:{{ request.body.email }}
