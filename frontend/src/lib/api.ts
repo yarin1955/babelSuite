@@ -369,7 +369,7 @@ export interface SuiteApiOperation {
 export interface SuiteApiSurface {
   id: string
   title: string
-  protocol: 'REST' | 'gRPC' | 'Async' | 'SOAP'
+  protocol: 'REST' | 'gRPC' | 'Async' | 'SOAP' | 'GraphQL' | 'Kafka' | 'MQTT' | 'WebSocket' | 'SSE' | 'AMQP' | 'NATS' | 'TCP' | 'UDP' | 'Webhook'
   mockHost: string
   description: string
   operations: SuiteApiOperation[]

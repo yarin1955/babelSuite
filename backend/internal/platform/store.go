@@ -264,7 +264,7 @@ func defaultAPISIXSidecar() APISIXSidecarConfig {
 		ConfigMountPath: "/usr/local/apisix/conf/apisix.yaml",
 		ListenPort:      9080,
 		AdminPort:       9180,
-		Capabilities:    []string{"rest", "graphql", "grpc", "soap", "kafka"},
+		Capabilities:    []string{"rest", "soap", "graphql", "grpc", "async", "kafka", "mqtt", "websocket", "sse", "tcp", "udp", "amqp", "nats", "webhook"},
 	}
 }
 

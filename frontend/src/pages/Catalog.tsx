@@ -34,10 +34,14 @@ import './Catalog.css'
 type SortKey = 'starred' | 'title' | 'version'
 
 const CAPABILITY_FILTERS = [
-  { id: 'openapi', label: 'OpenAPI', terms: ['openapi', 'rest api', 'rest'] },
+  { id: 'openapi', label: 'REST/OpenAPI', terms: ['openapi', 'rest api', 'rest'] },
   { id: 'grpc', label: 'gRPC', terms: ['grpc', 'protobuf', 'proto'] },
   { id: 'soap', label: 'SOAP', terms: ['soap', 'wsdl', 'xml envelope'] },
+  { id: 'graphql', label: 'GraphQL', terms: ['graphql'] },
+  { id: 'async', label: 'Async', terms: ['async', 'event stream', 'event-driven'] },
   { id: 'kafka', label: 'Kafka', terms: ['kafka'] },
+  { id: 'mqtt', label: 'MQTT', terms: ['mqtt'] },
+  { id: 'websocket', label: 'WebSocket', terms: ['websocket', 'ws '] },
   { id: 'redis', label: 'Redis', terms: ['redis'] },
   { id: 'postgres', label: 'Postgres', terms: ['postgres'] },
   { id: 'wiremock', label: 'Wiremock', terms: ['wiremock'] },
