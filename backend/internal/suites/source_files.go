@@ -324,12 +324,13 @@ func apisixSuiteConfig(suite Definition) apisix.SuiteConfig {
 		}
 		for _, operation := range surface.Operations {
 			convertedSurface.Operations = append(convertedSurface.Operations, apisix.OperationConfig{
-				ID:           operation.ID,
-				Method:       operation.Method,
-				Name:         operation.Name,
-				Summary:      operation.Summary,
-				ContractPath: operation.ContractPath,
-				MockURL:      operation.MockURL,
+				ID:              operation.ID,
+				Method:          operation.Method,
+				Name:            operation.Name,
+				Summary:         operation.Summary,
+				ContractPath:    operation.ContractPath,
+				ContractContent: contractSourceContent(suite, operation.ContractPath),
+				MockURL:         operation.MockURL,
 				MockMetadata: apisix.OperationMetadataConfig{
 					Adapter:         operation.MockMetadata.Adapter,
 					DispatcherRules: operation.MockMetadata.DispatcherRules,
@@ -341,4 +342,24 @@ func apisixSuiteConfig(suite Definition) apisix.SuiteConfig {
 		output.APISurfaces = append(output.APISurfaces, convertedSurface)
 	}
 	return output
+}
+
+func contractSourceContent(suite Definition, contractPath string) string {
+	path := strings.TrimSpace(contractFilePath(contractPath))
+	if path == "" || !strings.EqualFold(filepath.Ext(path), ".proto") {
+		return ""
+	}
+
+	if content, ok := explicitSuiteSourceContent(suite.SeedSources, path); ok {
+		return content
+	}
+	if content, ok := readExampleSourceFile(suite.ID, path); ok {
+		return content
+	}
+	return ""
+}
+
+func contractFilePath(contractPath string) string {
+	base, _, _ := strings.Cut(strings.TrimSpace(contractPath), "#")
+	return strings.Trim(base, "/")
 }

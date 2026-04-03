@@ -11,7 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const engineAddrEnv = "${{BABELSUITE_ENGINE_ADDR}}"
+const (
+	engineAddrEnv        = "${{BABELSUITE_ENGINE_ADDR}}"
+	grpcUpstreamAddrEnv  = "${{APISIX_GRPC_UPSTREAM_ADDR}}"
+	kafkaUpstreamAddrEnv = "${{APISIX_KAFKA_UPSTREAM_ADDR}}"
+	mqttUpstreamAddrEnv  = "${{APISIX_MQTT_UPSTREAM_ADDR}}"
+	tcpUpstreamAddrEnv   = "${{APISIX_TCP_UPSTREAM_ADDR}}"
+	udpUpstreamAddrEnv   = "${{APISIX_UDP_UPSTREAM_ADDR}}"
+)
 
 var pathParameterPattern = regexp.MustCompile(`\{[^/]+\}`)
 
@@ -28,13 +35,14 @@ type SurfaceConfig struct {
 }
 
 type OperationConfig struct {
-	ID           string
-	Method       string
-	Name         string
-	Summary      string
-	ContractPath string
-	MockURL      string
-	MockMetadata OperationMetadataConfig
+	ID              string
+	Method          string
+	Name            string
+	Summary         string
+	ContractPath    string
+	ContractContent string
+	MockURL         string
+	MockMetadata    OperationMetadataConfig
 }
 
 type OperationMetadataConfig struct {
@@ -45,9 +53,12 @@ type OperationMetadataConfig struct {
 }
 
 type routeDocument struct {
-	Deployment deploymentBlock `yaml:"deployment"`
-	Plugins    []pluginSpec    `yaml:"plugins,omitempty"`
-	Routes     []routeBlock    `yaml:"routes"`
+	Deployment   deploymentBlock      `yaml:"deployment"`
+	Plugins      []pluginSpec         `yaml:"plugins,omitempty"`
+	Protos       []protoBlock         `yaml:"protos,omitempty"`
+	Upstreams    []namedUpstreamBlock `yaml:"upstreams,omitempty"`
+	Routes       []routeBlock         `yaml:"routes,omitempty"`
+	StreamRoutes []streamRouteBlock   `yaml:"stream_routes,omitempty"`
 }
 
 type pluginSpec struct {
@@ -82,6 +93,27 @@ type upstreamBlock struct {
 	Nodes  map[string]int `yaml:"nodes"`
 }
 
+type namedUpstreamBlock struct {
+	ID     string         `yaml:"id"`
+	Type   string         `yaml:"type"`
+	Scheme string         `yaml:"scheme,omitempty"`
+	Nodes  map[string]int `yaml:"nodes"`
+}
+
+type streamRouteBlock struct {
+	ID         string         `yaml:"id"`
+	ServerAddr string         `yaml:"server_addr,omitempty"`
+	ServerPort int            `yaml:"server_port"`
+	Plugins    map[string]any `yaml:"plugins,omitempty"`
+	UpstreamID string         `yaml:"upstream_id"`
+}
+
+type protoBlock struct {
+	ID      string `yaml:"id"`
+	Desc    string `yaml:"desc,omitempty"`
+	Content string `yaml:"content"`
+}
+
 type deferredAdapter struct {
 	ID          string
 	Protocol    string
@@ -100,7 +132,7 @@ type resolverBinding struct {
 }
 
 func RenderStandaloneConfig(suite SuiteConfig) string {
-	routes, deferred := buildRoutes(suite)
+	routes, streamRoutes, upstreams, protos, deferred := buildResources(suite)
 	resolvers := buildResolverBindings(suite)
 	pluginTemplates := buildProtocolTemplates(suite)
 	document := routeDocument{
@@ -110,8 +142,11 @@ func RenderStandaloneConfig(suite SuiteConfig) string {
 				ConfigProvider: "yaml",
 			},
 		},
-		Plugins: buildPluginCatalog(suite),
-		Routes:  routes,
+		Plugins:      buildPluginCatalog(suite),
+		Protos:       protos,
+		Upstreams:    upstreams,
+		Routes:       routes,
+		StreamRoutes: streamRoutes,
 	}
 
 	body, err := yaml.Marshal(document)
@@ -123,14 +158,15 @@ func RenderStandaloneConfig(suite SuiteConfig) string {
 		strings.TrimRight(string(body), "\n"),
 		"",
 		"# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.",
-		"# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run before the APISIX sidecar enables protocol-specific plugins.",
+		"# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.",
+		"# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.",
 		"# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.",
 	}
 
-	if suiteHasStreamTransports(suite) {
+	if len(streamRoutes) > 0 {
 		lines = append(lines,
 			"#",
-			"# Stream-style transports such as MQTT/TCP/UDP require APISIX stream listeners to be enabled on the agent sidecar before the templates below can be activated.",
+			"# Stream-style transports such as MQTT/TCP/UDP require APISIX stream listeners to be enabled on the agent sidecar before the generated stream routes can accept traffic.",
 		)
 	}
 
@@ -149,7 +185,7 @@ func RenderStandaloneConfig(suite SuiteConfig) string {
 	if len(deferred) > 0 {
 		lines = append(lines,
 			"#",
-			"# Non-HTTP transports below still need APISIX-native plugin or stream wiring before they can call the resolver and emit the final protocol response:",
+			"# Transports below still need APISIX-side plugin-runner or custom sidecar wiring before they can call the resolver and emit the final protocol response:",
 		)
 		for _, item := range deferred {
 			lines = append(lines,
@@ -162,7 +198,7 @@ func RenderStandaloneConfig(suite SuiteConfig) string {
 	if len(pluginTemplates) > 0 {
 		lines = append(lines,
 			"#",
-			"# Protocol plugin templates below show the APISIX-native plugins to use when you enable deferred transport support in the sidecar:",
+			"# Optional APISIX snippets below cover transports that still need sidecar-specific plugin wiring:",
 		)
 		lines = append(lines, pluginTemplates...)
 	}
@@ -171,57 +207,78 @@ func RenderStandaloneConfig(suite SuiteConfig) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-func buildRoutes(suite SuiteConfig) ([]routeBlock, []deferredAdapter) {
+func buildResources(suite SuiteConfig) ([]routeBlock, []streamRouteBlock, []namedUpstreamBlock, []protoBlock, []deferredAdapter) {
 	routes := make([]routeBlock, 0)
+	streamRoutes := make([]streamRouteBlock, 0)
 	deferred := make([]deferredAdapter, 0)
+	upstreamByID := make(map[string]namedUpstreamBlock)
+	protoByID := make(map[string]protoBlock)
+	streamPorts := map[string]int{
+		"mqtt": 9100,
+		"tcp":  9200,
+		"udp":  9300,
+	}
 
 	for _, surface := range suite.APISurfaces {
 		for _, operation := range surface.Operations {
 			transport := transportKind(surface, operation)
-			if !isHTTPCompatibleTransport(transport) {
-				deferred = append(deferred, deferredAdapter{
-					ID:          suite.ID + "." + operation.ID,
-					Protocol:    firstNonEmpty(strings.TrimSpace(surface.Protocol), strings.ToUpper(strings.TrimSpace(operation.MockMetadata.Adapter))),
-					PublicPath:  publicPath(operation),
-					ResolverURL: resolverPath(operation.MockMetadata.ResolverURL),
-					RuntimeURL:  runtimePath(operation.MockMetadata.RuntimeURL),
-					Description: strings.TrimSpace(operation.MockMetadata.DispatcherRules),
-				})
-				continue
+			switch transport {
+			case "rest", "soap", "graphql", "websocket", "sse", "webhook":
+				routes = append(routes, httpCompatibleRoute(suite, surface, operation, transport))
+			case "grpc":
+				route, proto, ok := grpcRoute(suite, surface, operation)
+				if !ok {
+					deferred = append(deferred, newDeferredAdapter(suite, surface, operation, transport))
+					continue
+				}
+				routes = append(routes, route)
+				protoByID[proto.ID] = proto
+			case "kafka":
+				routes = append(routes, kafkaRoute(suite, surface, operation))
+			case "mqtt", "tcp", "udp":
+				streamPorts[transport]++
+				streamRoute, upstream := streamRouteResource(suite, surface, operation, transport, streamPorts[transport]-1)
+				streamRoutes = append(streamRoutes, streamRoute)
+				upstreamByID[upstream.ID] = upstream
+			default:
+				deferred = append(deferred, newDeferredAdapter(suite, surface, operation, transport))
 			}
-
-			route := routeBlock{
-				ID:              suite.ID + "." + operation.ID,
-				Name:            operation.ID,
-				Desc:            strings.TrimSpace(operation.Summary),
-				URI:             matchURI(operation),
-				Methods:         []string{httpMethod(operation)},
-				Hosts:           routeHosts(surface),
-				EnableWebsocket: transport == "websocket",
-				Plugins: map[string]any{
-					"ext-plugin-pre-req": resolverPlugin(surface, operation),
-					"proxy-rewrite":      proxyRewrite(suite.ID, surface.ID, operation),
-				},
-				Upstream: upstreamBlock{
-					Type:   "roundrobin",
-					Scheme: "http",
-					Nodes: map[string]int{
-						engineAddrEnv: 1,
-					},
-				},
-			}
-			routes = append(routes, route)
 		}
 	}
 
 	sort.Slice(routes, func(i, j int) bool {
 		return routes[i].ID < routes[j].ID
 	})
+	sort.Slice(streamRoutes, func(i, j int) bool {
+		return streamRoutes[i].ID < streamRoutes[j].ID
+	})
 	sort.Slice(deferred, func(i, j int) bool {
 		return deferred[i].ID < deferred[j].ID
 	})
 
-	return routes, deferred
+	upstreamIDs := make([]string, 0, len(upstreamByID))
+	for id := range upstreamByID {
+		upstreamIDs = append(upstreamIDs, id)
+	}
+	sort.Strings(upstreamIDs)
+
+	upstreams := make([]namedUpstreamBlock, 0, len(upstreamIDs))
+	for _, id := range upstreamIDs {
+		upstreams = append(upstreams, upstreamByID[id])
+	}
+
+	protoIDs := make([]string, 0, len(protoByID))
+	for id := range protoByID {
+		protoIDs = append(protoIDs, id)
+	}
+	sort.Strings(protoIDs)
+
+	protos := make([]protoBlock, 0, len(protoIDs))
+	for _, id := range protoIDs {
+		protos = append(protos, protoByID[id])
+	}
+
+	return routes, streamRoutes, upstreams, protos, deferred
 }
 
 func buildPluginCatalog(suite SuiteConfig) []pluginSpec {
@@ -233,22 +290,18 @@ func buildPluginCatalog(suite SuiteConfig) []pluginSpec {
 				seen["proxy-rewrite"] = pluginSpec{Name: "proxy-rewrite"}
 				seen["ext-plugin-pre-req"] = pluginSpec{Name: "ext-plugin-pre-req"}
 			}
-			if transport == "graphql" {
-				seen["degraphql"] = pluginSpec{Name: "degraphql"}
-				seen["ext-plugin-pre-req"] = pluginSpec{Name: "ext-plugin-pre-req"}
-			}
 			if transport == "grpc" {
 				seen["grpc-transcode"] = pluginSpec{Name: "grpc-transcode"}
 				seen["ext-plugin-pre-req"] = pluginSpec{Name: "ext-plugin-pre-req"}
 			}
-			if transport == "async" || transport == "kafka" || transport == "mqtt" || transport == "amqp" || transport == "nats" || transport == "tcp" || transport == "udp" {
-				seen["ext-plugin-pre-req"] = pluginSpec{Name: "ext-plugin-pre-req"}
-				switch transport {
-				case "kafka":
-					seen["kafka-proxy"] = pluginSpec{Name: "kafka-proxy"}
-				case "mqtt":
-					seen["mqtt-proxy"] = pluginSpec{Name: "mqtt-proxy", Stream: true}
-				}
+			if transport == "graphql" {
+				seen["degraphql"] = pluginSpec{Name: "degraphql"}
+			}
+			switch transport {
+			case "kafka":
+				seen["kafka-proxy"] = pluginSpec{Name: "kafka-proxy"}
+			case "mqtt":
+				seen["mqtt-proxy"] = pluginSpec{Name: "mqtt-proxy", Stream: true}
 			}
 		}
 	}
@@ -270,9 +323,10 @@ func buildResolverBindings(suite SuiteConfig) []resolverBinding {
 	output := make([]resolverBinding, 0)
 	for _, surface := range suite.APISurfaces {
 		for _, operation := range surface.Operations {
+			transport := transportKind(surface, operation)
 			output = append(output, resolverBinding{
 				ID:          suite.ID + "." + operation.ID,
-				Protocol:    firstNonEmpty(strings.TrimSpace(surface.Protocol), strings.ToUpper(strings.TrimSpace(operation.MockMetadata.Adapter))),
+				Protocol:    transportDisplayName(transport),
 				PublicPath:  publicPath(operation),
 				ResolverURL: resolverPath(operation.MockMetadata.ResolverURL),
 				RuntimeURL:  runtimePath(operation.MockMetadata.RuntimeURL),
@@ -291,28 +345,8 @@ func buildProtocolTemplates(suite SuiteConfig) []string {
 	for _, surface := range suite.APISurfaces {
 		for _, operation := range surface.Operations {
 			switch transportKind(surface, operation) {
-			case "grpc":
-				lines = append(lines, renderCommentedBlock(grpcTemplateBlock(suite, surface, operation))...)
-			case "kafka":
-				lines = append(lines, renderCommentedBlock(kafkaTemplateBlock(suite, surface, operation))...)
-			case "mqtt":
-				lines = append(lines, renderCommentedBlock(mqttTemplateBlock(suite, surface, operation))...)
 			case "graphql":
 				lines = append(lines, renderCommentedBlock(graphqlTemplateBlock(surface, operation))...)
-			case "websocket":
-				lines = append(lines, renderCommentedBlock(websocketTemplateBlock(suite, surface, operation))...)
-			case "sse":
-				lines = append(lines, renderCommentedBlock(sseTemplateBlock(suite, surface, operation))...)
-			case "amqp":
-				lines = append(lines, renderCommentedBlock(amqpTemplateBlock(suite, surface, operation))...)
-			case "nats":
-				lines = append(lines, renderCommentedBlock(natsTemplateBlock(suite, surface, operation))...)
-			case "tcp":
-				lines = append(lines, renderCommentedBlock(tcpTemplateBlock(suite, surface, operation))...)
-			case "udp":
-				lines = append(lines, renderCommentedBlock(udpTemplateBlock(suite, surface, operation))...)
-			case "async":
-				lines = append(lines, renderCommentedBlock(asyncTemplateBlock(suite, surface, operation))...)
 			}
 		}
 	}
@@ -411,6 +445,39 @@ func suiteHasStreamTransports(suite SuiteConfig) bool {
 	return false
 }
 
+func transportDisplayName(transport string) string {
+	switch transport {
+	case "rest":
+		return "REST"
+	case "soap":
+		return "SOAP"
+	case "graphql":
+		return "GraphQL"
+	case "websocket":
+		return "WebSocket"
+	case "sse":
+		return "SSE"
+	case "grpc":
+		return "gRPC"
+	case "kafka":
+		return "Kafka"
+	case "mqtt":
+		return "MQTT"
+	case "amqp":
+		return "AMQP"
+	case "nats":
+		return "NATS"
+	case "tcp":
+		return "TCP"
+	case "udp":
+		return "UDP"
+	case "webhook":
+		return "Webhook"
+	default:
+		return "Async"
+	}
+}
+
 func publicPath(operation OperationConfig) string {
 	if strings.HasPrefix(strings.TrimSpace(operation.Name), "/") {
 		return strings.TrimSpace(operation.Name)
@@ -464,11 +531,11 @@ func proxyRewrite(suiteID, surfaceID string, operation OperationConfig) map[stri
 	}
 }
 
-func resolverPlugin(surface SurfaceConfig, operation OperationConfig) map[string]any {
+func resolverPlugin(transport string, operation OperationConfig) map[string]any {
 	value, _ := json.Marshal(map[string]string{
 		"resolver_url":      resolverPath(operation.MockMetadata.ResolverURL),
 		"public_path":       publicPath(operation),
-		"protocol":          strings.ToUpper(strings.TrimSpace(surface.Protocol)),
+		"protocol":          strings.ToUpper(strings.TrimSpace(transport)),
 		"operation_id":      operation.ID,
 		"compatibility_url": runtimePath(operation.MockMetadata.RuntimeURL),
 	})
@@ -563,6 +630,150 @@ func runtimeTargetPath(suiteID, surfaceID string, operation OperationConfig) str
 		path = "/" + strings.Trim(path, "/")
 	}
 	return "/mocks/rest/" + strings.Trim(suiteID, "/") + "/" + strings.Trim(surfaceID, "/") + path
+}
+
+func httpCompatibleRoute(suite SuiteConfig, surface SurfaceConfig, operation OperationConfig, transport string) routeBlock {
+	return routeBlock{
+		ID:              suite.ID + "." + operation.ID,
+		Name:            operation.ID,
+		Desc:            strings.TrimSpace(operation.Summary),
+		URI:             matchURI(operation),
+		Methods:         []string{httpMethod(operation)},
+		Hosts:           routeHosts(surface),
+		EnableWebsocket: transport == "websocket",
+		Plugins: map[string]any{
+			"ext-plugin-pre-req": resolverPlugin(transport, operation),
+			"proxy-rewrite":      proxyRewrite(suite.ID, surface.ID, operation),
+		},
+		Upstream: upstreamBlock{
+			Type:   "roundrobin",
+			Scheme: "http",
+			Nodes: map[string]int{
+				engineAddrEnv: 1,
+			},
+		},
+	}
+}
+
+func grpcRoute(suite SuiteConfig, surface SurfaceConfig, operation OperationConfig) (routeBlock, protoBlock, bool) {
+	contract := strings.TrimSpace(operation.ContractContent)
+	if contract == "" {
+		return routeBlock{}, protoBlock{}, false
+	}
+
+	protoID := suite.ID + "." + operation.ID
+	serviceName, methodName := grpcServiceMethod(operation.Name)
+	return routeBlock{
+			ID:      protoID + ".grpc",
+			Name:    operation.ID,
+			Desc:    strings.TrimSpace(operation.Summary),
+			URI:     publicPath(operation),
+			Methods: []string{"POST"},
+			Hosts:   routeHosts(surface),
+			Plugins: map[string]any{
+				"grpc-transcode": map[string]any{
+					"proto_id": protoID,
+					"service":  serviceName,
+					"method":   methodName,
+				},
+				"ext-plugin-pre-req": resolverPlugin("grpc", operation),
+			},
+			Upstream: upstreamBlock{
+				Type:   "roundrobin",
+				Scheme: "grpc",
+				Nodes: map[string]int{
+					grpcUpstreamAddrEnv: 1,
+				},
+			},
+		}, protoBlock{
+			ID:      protoID,
+			Desc:    firstNonEmpty(contractSourcePath(operation.ContractPath), operation.ID),
+			Content: ensureTrailingNewline(contract),
+		}, true
+}
+
+func kafkaRoute(suite SuiteConfig, surface SurfaceConfig, operation OperationConfig) routeBlock {
+	return routeBlock{
+		ID:      suite.ID + "." + operation.ID + ".kafka",
+		Name:    operation.ID,
+		Desc:    strings.TrimSpace(operation.Summary),
+		URI:     publicPath(operation),
+		Methods: []string{httpMethod(operation)},
+		Hosts:   routeHosts(surface),
+		Plugins: map[string]any{
+			"kafka-proxy": map[string]any{
+				"sasl": map[string]string{
+					"username": "${{BABELSUITE_KAFKA_USERNAME}}",
+					"password": "${{BABELSUITE_KAFKA_PASSWORD}}",
+				},
+			},
+			"ext-plugin-pre-req": resolverPlugin("kafka", operation),
+		},
+		Upstream: upstreamBlock{
+			Type:   "roundrobin",
+			Scheme: "kafka",
+			Nodes: map[string]int{
+				kafkaUpstreamAddrEnv: 1,
+			},
+		},
+	}
+}
+
+func streamRouteResource(suite SuiteConfig, _ SurfaceConfig, operation OperationConfig, transport string, serverPort int) (streamRouteBlock, namedUpstreamBlock) {
+	id := suite.ID + "." + operation.ID + "." + transport
+	route := streamRouteBlock{
+		ID:         id,
+		ServerPort: serverPort,
+		UpstreamID: id,
+	}
+
+	upstream := namedUpstreamBlock{
+		ID:    id,
+		Type:  "roundrobin",
+		Nodes: map[string]int{},
+	}
+
+	switch transport {
+	case "mqtt":
+		route.Plugins = map[string]any{
+			"mqtt-proxy": map[string]any{
+				"protocol_name":  "MQTT",
+				"protocol_level": 4,
+			},
+		}
+		upstream.Nodes[mqttUpstreamAddrEnv] = 1
+	case "tcp":
+		upstream.Scheme = "tcp"
+		upstream.Nodes[tcpUpstreamAddrEnv] = 1
+	case "udp":
+		upstream.Scheme = "udp"
+		upstream.Nodes[udpUpstreamAddrEnv] = 1
+	}
+
+	return route, upstream
+}
+
+func newDeferredAdapter(suite SuiteConfig, surface SurfaceConfig, operation OperationConfig, transport string) deferredAdapter {
+	return deferredAdapter{
+		ID:          suite.ID + "." + operation.ID,
+		Protocol:    transportDisplayName(transport),
+		PublicPath:  publicPath(operation),
+		ResolverURL: resolverPath(operation.MockMetadata.ResolverURL),
+		RuntimeURL:  runtimePath(operation.MockMetadata.RuntimeURL),
+		Description: strings.TrimSpace(operation.MockMetadata.DispatcherRules),
+	}
+}
+
+func contractSourcePath(contractPath string) string {
+	base, _, _ := strings.Cut(strings.TrimSpace(contractPath), "#")
+	return strings.TrimSpace(base)
+}
+
+func ensureTrailingNewline(value string) string {
+	if value == "" || strings.HasSuffix(value, "\n") {
+		return value
+	}
+	return value + "\n"
 }
 
 func grpcTemplateBlock(suite SuiteConfig, surface SurfaceConfig, operation OperationConfig) []string {
@@ -698,54 +909,6 @@ func sseTemplateBlock(suite SuiteConfig, _ SurfaceConfig, operation OperationCon
 		"    nodes:",
 		"      \"${{APISIX_SSE_UPSTREAM_ADDR}}\": 1",
 		"note: keep the event stream open in APISIX while the sidecar upstream pulls BabelSuite-generated events from the resolver",
-	}
-}
-
-func asyncTemplateBlock(suite SuiteConfig, _ SurfaceConfig, operation OperationConfig) []string {
-	return []string{
-		fmt.Sprintf("template: %s.%s.async-adapter", suite.ID, operation.ID),
-		"route:",
-		fmt.Sprintf("  id: %s.%s.async", suite.ID, operation.ID),
-		fmt.Sprintf("  uri: %s", publicPath(operation)),
-		"  plugins:",
-		"    ext-plugin-pre-req:",
-		"      allow_degradation: true",
-		"      conf:",
-		"        - name: babelsuite-resolver",
-		fmt.Sprintf("          value: '{\"resolver_url\":\"%s\",\"transport\":\"async\",\"operation_id\":\"%s\"}'", resolverPath(operation.MockMetadata.ResolverURL), operation.ID),
-		"note: use APISIX plugin-runner wiring here when the async transport is not tied to a built-in broker plugin",
-	}
-}
-
-func amqpTemplateBlock(suite SuiteConfig, _ SurfaceConfig, operation OperationConfig) []string {
-	return []string{
-		fmt.Sprintf("template: %s.%s.amqp-adapter", suite.ID, operation.ID),
-		"route:",
-		fmt.Sprintf("  id: %s.%s.amqp", suite.ID, operation.ID),
-		fmt.Sprintf("  uri: %s", publicPath(operation)),
-		"  plugins:",
-		"    ext-plugin-pre-req:",
-		"      allow_degradation: true",
-		"      conf:",
-		"        - name: babelsuite-resolver",
-		fmt.Sprintf("          value: '{\"resolver_url\":\"%s\",\"transport\":\"amqp\",\"operation_id\":\"%s\"}'", resolverPath(operation.MockMetadata.ResolverURL), operation.ID),
-		"note: wire this route through APISIX plugin-runner support because APISIX does not ship a dedicated AMQP mock responder plugin",
-	}
-}
-
-func natsTemplateBlock(suite SuiteConfig, _ SurfaceConfig, operation OperationConfig) []string {
-	return []string{
-		fmt.Sprintf("template: %s.%s.nats-adapter", suite.ID, operation.ID),
-		"route:",
-		fmt.Sprintf("  id: %s.%s.nats", suite.ID, operation.ID),
-		fmt.Sprintf("  uri: %s", publicPath(operation)),
-		"  plugins:",
-		"    ext-plugin-pre-req:",
-		"      allow_degradation: true",
-		"      conf:",
-		"        - name: babelsuite-resolver",
-		fmt.Sprintf("          value: '{\"resolver_url\":\"%s\",\"transport\":\"nats\",\"operation_id\":\"%s\"}'", resolverPath(operation.MockMetadata.ResolverURL), operation.ID),
-		"note: wire this route through APISIX plugin-runner support because APISIX does not ship a dedicated NATS mock responder plugin",
 	}
 }
 

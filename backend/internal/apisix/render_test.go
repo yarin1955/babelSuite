@@ -114,7 +114,7 @@ func TestRenderStandaloneConfigIncludesRESTRoutes(t *testing.T) {
 	}
 }
 
-func TestRenderStandaloneConfigNotesDeferredAdapters(t *testing.T) {
+func TestRenderStandaloneConfigPromotesGRPCAndKafkaToActiveConfig(t *testing.T) {
 	body := RenderStandaloneConfig(SuiteConfig{
 		ID: "returns-control-plane",
 		APISurfaces: []SurfaceConfig{
@@ -123,9 +123,11 @@ func TestRenderStandaloneConfigNotesDeferredAdapters(t *testing.T) {
 				Protocol: "gRPC",
 				Operations: []OperationConfig{
 					{
-						ID:     "quote-refund",
-						Method: "RPC",
-						Name:   "/returns.v1.RefundPricing/QuoteRefund",
+						ID:              "quote-refund",
+						Method:          "RPC",
+						Name:            "/returns.v1.RefundPricing/QuoteRefund",
+						ContractPath:    "api/proto/refund_pricing.proto#QuoteRefund",
+						ContractContent: "syntax = \"proto3\";\npackage returns_control_plane.v1;\nservice RefundPricing {\n  rpc QuoteRefund (QuoteRefundRequest) returns (QuoteRefundResponse);\n}\nmessage QuoteRefundRequest {}\nmessage QuoteRefundResponse {}\n",
 						MockMetadata: OperationMetadataConfig{
 							Adapter:         "grpc",
 							ResolverURL:     "/internal/mock-data/returns-control-plane/pricing-service/quote-refund",
@@ -157,8 +159,11 @@ func TestRenderStandaloneConfigNotesDeferredAdapters(t *testing.T) {
 		},
 	})
 
-	if !strings.Contains(body, "returns-control-plane.quote-refund (gRPC)") {
-		t.Fatalf("expected deferred gRPC adapter note, got:\n%s", body)
+	if !strings.Contains(body, "protos:") {
+		t.Fatalf("expected embedded proto registry in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "id: returns-control-plane.quote-refund") {
+		t.Fatalf("expected grpc proto id in APISIX config, got:\n%s", body)
 	}
 	if !strings.Contains(body, "name: grpc-transcode") {
 		t.Fatalf("expected plugin catalog to include grpc-transcode, got:\n%s", body)
@@ -166,17 +171,26 @@ func TestRenderStandaloneConfigNotesDeferredAdapters(t *testing.T) {
 	if !strings.Contains(body, "name: kafka-proxy") {
 		t.Fatalf("expected plugin catalog to include kafka-proxy, got:\n%s", body)
 	}
+	if !strings.Contains(body, "grpc-transcode:") {
+		t.Fatalf("expected active grpc-transcode route in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "scheme: grpc") {
+		t.Fatalf("expected grpc upstream in APISIX config, got:\n%s", body)
+	}
 	if !strings.Contains(body, "resolver=/internal/mock-data/returns-control-plane/pricing-service/quote-refund") {
-		t.Fatalf("expected deferred gRPC resolver note, got:\n%s", body)
+		t.Fatalf("expected gRPC resolver contract note, got:\n%s", body)
 	}
-	if !strings.Contains(body, "returns-control-plane.publish-refund-authorized (Async)") {
-		t.Fatalf("expected deferred async adapter note, got:\n%s", body)
+	if !strings.Contains(body, "returns-control-plane.publish-refund-authorized (Kafka)") {
+		t.Fatalf("expected Kafka resolver contract note, got:\n%s", body)
 	}
-	if !strings.Contains(body, "#     grpc-transcode:") {
-		t.Fatalf("expected gRPC plugin template in APISIX config, got:\n%s", body)
+	if !strings.Contains(body, "id: returns-control-plane.publish-refund-authorized.kafka") {
+		t.Fatalf("expected active kafka route in APISIX config, got:\n%s", body)
 	}
-	if !strings.Contains(body, "#     kafka-proxy:") {
-		t.Fatalf("expected kafka plugin template in APISIX config, got:\n%s", body)
+	if !strings.Contains(body, "scheme: kafka") {
+		t.Fatalf("expected kafka upstream in APISIX config, got:\n%s", body)
+	}
+	if strings.Contains(body, "# Transports below still need APISIX-side plugin-runner") {
+		t.Fatalf("did not expect deferred transport note for active grpc and kafka config, got:\n%s", body)
 	}
 }
 
@@ -286,22 +300,112 @@ func TestRenderStandaloneConfigSupportsExtendedProtocols(t *testing.T) {
 	if !strings.Contains(body, "enable_websocket: true") {
 		t.Fatalf("expected websocket route support in APISIX config, got:\n%s", body)
 	}
+	if !strings.Contains(body, "stream_routes:") {
+		t.Fatalf("expected active stream routes in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "upstreams:") {
+		t.Fatalf("expected shared upstream objects in APISIX config, got:\n%s", body)
+	}
 	if !strings.Contains(body, "name: mqtt-proxy") {
 		t.Fatalf("expected mqtt-proxy plugin in catalog, got:\n%s", body)
 	}
-	if !strings.Contains(body, "edge-lab.publish-order-created (Kafka)") {
-		t.Fatalf("expected deferred Kafka adapter note, got:\n%s", body)
+	if !strings.Contains(body, "id: edge-lab.publish-order-created.kafka") {
+		t.Fatalf("expected active Kafka route in APISIX config, got:\n%s", body)
 	}
-	if !strings.Contains(body, "edge-lab.publish-device-heartbeat (MQTT)") {
-		t.Fatalf("expected deferred MQTT adapter note, got:\n%s", body)
+	if !strings.Contains(body, "id: edge-lab.publish-device-heartbeat.mqtt") {
+		t.Fatalf("expected active MQTT stream route in APISIX config, got:\n%s", body)
 	}
-	if !strings.Contains(body, "#     mqtt-proxy:") {
-		t.Fatalf("expected MQTT plugin template in APISIX config, got:\n%s", body)
+	if !strings.Contains(body, "mqtt-proxy:") {
+		t.Fatalf("expected active MQTT plugin in APISIX config, got:\n%s", body)
 	}
-	if !strings.Contains(body, "#   server_port: 9200") {
-		t.Fatalf("expected TCP stream-route template in APISIX config, got:\n%s", body)
+	if !strings.Contains(body, "id: edge-lab.accept-session.tcp") {
+		t.Fatalf("expected active TCP stream route in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "server_port: 9200") {
+		t.Fatalf("expected TCP stream listener in APISIX config, got:\n%s", body)
 	}
 	if !strings.Contains(body, "Stream-style transports such as MQTT/TCP/UDP require APISIX stream listeners") {
 		t.Fatalf("expected stream transport guidance note, got:\n%s", body)
+	}
+	if strings.Contains(body, "# Transports below still need APISIX-side plugin-runner") {
+		t.Fatalf("did not expect deferred transport note for active kafka, mqtt, and tcp config, got:\n%s", body)
+	}
+}
+
+func TestRenderStandaloneConfigLeavesUnsupportedAsyncAMQPAndNATSDeferred(t *testing.T) {
+	body := RenderStandaloneConfig(SuiteConfig{
+		ID: "event-hub",
+		APISurfaces: []SurfaceConfig{
+			{
+				ID:       "generic-events",
+				Protocol: "Async",
+				MockHost: "https://event-hub.mock.internal",
+				Operations: []OperationConfig{
+					{
+						ID:      "publish-domain-event",
+						Method:  "EVENT",
+						Name:    "/events/domain",
+						MockURL: "https://event-hub.mock.internal/events/domain",
+						MockMetadata: OperationMetadataConfig{
+							Adapter:     "async",
+							ResolverURL: "/internal/mock-data/event-hub/generic-events/publish-domain-event",
+							RuntimeURL:  "/mocks/async/event-hub/generic-events/publish-domain-event",
+						},
+					},
+				},
+			},
+			{
+				ID:       "billing-bus",
+				Protocol: "AMQP",
+				MockHost: "amqp://event-hub.mock.internal",
+				Operations: []OperationConfig{
+					{
+						ID:      "publish-invoice-issued",
+						Method:  "EVENT",
+						Name:    "/billing.invoice.issued",
+						MockURL: "amqp://event-hub.mock.internal/billing.invoice.issued",
+						MockMetadata: OperationMetadataConfig{
+							Adapter:     "async",
+							ResolverURL: "/internal/mock-data/event-hub/billing-bus/publish-invoice-issued",
+							RuntimeURL:  "/mocks/async/event-hub/billing-bus/publish-invoice-issued",
+						},
+					},
+				},
+			},
+			{
+				ID:       "ops-bus",
+				Protocol: "NATS",
+				MockHost: "nats://event-hub.mock.internal",
+				Operations: []OperationConfig{
+					{
+						ID:      "publish-cache-invalidated",
+						Method:  "EVENT",
+						Name:    "/cache.invalidated",
+						MockURL: "nats://event-hub.mock.internal/cache.invalidated",
+						MockMetadata: OperationMetadataConfig{
+							Adapter:     "async",
+							ResolverURL: "/internal/mock-data/event-hub/ops-bus/publish-cache-invalidated",
+							RuntimeURL:  "/mocks/async/event-hub/ops-bus/publish-cache-invalidated",
+						},
+					},
+				},
+			},
+		},
+	})
+
+	if !strings.Contains(body, "# - event-hub.publish-domain-event (Async)") {
+		t.Fatalf("expected deferred async note in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "# - event-hub.publish-invoice-issued (AMQP)") {
+		t.Fatalf("expected deferred AMQP note in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "# - event-hub.publish-cache-invalidated (NATS)") {
+		t.Fatalf("expected deferred NATS note in APISIX config, got:\n%s", body)
+	}
+	if strings.Contains(body, ".async") || strings.Contains(body, ".amqp") || strings.Contains(body, ".nats") {
+		t.Fatalf("did not expect active unsupported routes in APISIX config, got:\n%s", body)
+	}
+	if !strings.Contains(body, "# Transports below still need APISIX-side plugin-runner") {
+		t.Fatalf("expected unsupported transport note in APISIX config, got:\n%s", body)
 	}
 }

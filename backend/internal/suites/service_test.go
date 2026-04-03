@@ -259,6 +259,31 @@ func TestSuitesGenerateAPISIXGatewaySourceWithoutUserManagedFile(t *testing.T) {
 	}
 }
 
+func TestSuitesGenerateAPISIXGatewayWithEmbeddedGRPCProto(t *testing.T) {
+	configureExamplesRoot(t)
+
+	service := NewService()
+	suite, err := service.Get("returns-control-plane")
+	if err != nil {
+		t.Fatalf("get suite: %v", err)
+	}
+
+	for _, file := range suite.SourceFiles {
+		if file.Path != "gateway/apisix.yaml" {
+			continue
+		}
+		if !strings.Contains(file.Content, "protos:") {
+			t.Fatalf("expected generated APISIX content to include protos, got:\n%s", file.Content)
+		}
+		if !strings.Contains(file.Content, "syntax = \"proto3\";") {
+			t.Fatalf("expected generated APISIX content to embed proto content, got:\n%s", file.Content)
+		}
+		return
+	}
+
+	t.Fatal("expected returns-control-plane source files to include generated gateway/apisix.yaml")
+}
+
 func configureExamplesRoot(t *testing.T) {
 	t.Helper()
 
