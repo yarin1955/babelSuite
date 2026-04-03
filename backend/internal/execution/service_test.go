@@ -23,6 +23,26 @@ func (o *captureObserver) SyncExecution(snapshot Snapshot) {
 	}
 }
 
+type staticSuiteSource struct {
+	items map[string]suites.Definition
+}
+
+func (s staticSuiteSource) List() []suites.Definition {
+	result := make([]suites.Definition, 0, len(s.items))
+	for _, item := range s.items {
+		result = append(result, item)
+	}
+	return result
+}
+
+func (s staticSuiteSource) Get(id string) (*suites.Definition, error) {
+	item, ok := s.items[id]
+	if !ok {
+		return nil, suites.ErrNotFound
+	}
+	return &item, nil
+}
+
 func TestCreateExecutionRejectsProfileFromAnotherSuite(t *testing.T) {
 	service := NewService(suites.NewService())
 	defer service.Close()
@@ -48,6 +68,32 @@ func TestCreateExecutionUsesSuiteSpecificDefaultProfile(t *testing.T) {
 	}
 	if execution.Profile != "local.yaml" {
 		t.Fatalf("expected suite default profile, got %q", execution.Profile)
+	}
+}
+
+func TestCreateExecutionRejectsInvalidTopology(t *testing.T) {
+	source := staticSuiteSource{
+		items: map[string]suites.Definition{
+			"broken-suite": {
+				ID:        "broken-suite",
+				Title:     "Broken Suite",
+				SuiteStar: "api = container.run(name=\"api\", after=[\"db\"])\n",
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+			},
+		},
+	}
+
+	service := NewService(source)
+	defer service.Close()
+
+	_, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "broken-suite",
+		Profile: "local.yaml",
+	})
+	if !errors.Is(err, ErrInvalidTopology) {
+		t.Fatalf("expected ErrInvalidTopology, got %v", err)
 	}
 }
 

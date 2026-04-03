@@ -54,6 +54,8 @@ func bootMessage(step StepSpec) string {
 	switch step.Node.Kind {
 	case "mock":
 		return fmt.Sprintf("[%s] Hydrating mock assets for %s with the %s profile.", step.Node.Name, step.SuiteTitle, step.Profile)
+	case "service":
+		return fmt.Sprintf("[%s] Starting external compatibility service assets for %s.", step.Node.Name, step.SuiteTitle)
 	case "script":
 		return fmt.Sprintf("[%s] Executing bootstrap logic and preparing outputs for downstream steps.", step.Node.Name)
 	case "load":
@@ -69,6 +71,8 @@ func probeMessage(step StepSpec) string {
 	switch step.Node.Kind {
 	case "mock":
 		return fmt.Sprintf("[%s] Dispatch table loaded and mock endpoint is answering health probes.", step.Node.Name)
+	case "service":
+		return fmt.Sprintf("[%s] External compatibility service answered readiness probes and exposed its local endpoint.", step.Node.Name)
 	case "script":
 		return fmt.Sprintf("[%s] Bootstrap script completed and published its derived outputs.", step.Node.Name)
 	case "load":
@@ -86,6 +90,8 @@ func nodeDelay(kind string) time.Duration {
 		return 450 * time.Millisecond
 	case "mock":
 		return 550 * time.Millisecond
+	case "service":
+		return 650 * time.Millisecond
 	case "load":
 		return 1100 * time.Millisecond
 	case "scenario":

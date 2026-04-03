@@ -1,4 +1,4 @@
-export type RuntimeKind = 'container' | 'mock' | 'script' | 'load' | 'scenario'
+export type RuntimeKind = 'container' | 'mock' | 'service' | 'script' | 'load' | 'scenario'
 export type RuntimeStatus = 'pending' | 'running' | 'healthy' | 'failed'
 
 export interface TopologyNode {
@@ -9,7 +9,9 @@ export interface TopologyNode {
   level: number
 }
 
-const NODE_PATTERN = /^([a-zA-Z_][\w]*)\s*=\s*(container|mock|script|load|scenario)\(\s*name="([^"]+)"(?:,\s*after=\[([^\]]*)\])?.*\)$/
+const ASSIGNMENT_PATTERN = /^([a-zA-Z_][\w]*)\s*=\s*([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)?)\((.*)\)$/
+const NAME_PATTERN = /(?:^|,)\s*(?:name|name_or_id|id)\s*=\s*"([^"]+)"/
+const AFTER_PATTERN = /(?:^|,)\s*after\s*=\s*\[([^\]]*)\]/
 
 export function parseSuiteTopology(suiteStar: string): TopologyNode[] {
   const nodes: TopologyNode[] = []
@@ -20,51 +22,153 @@ export function parseSuiteTopology(suiteStar: string): TopologyNode[] {
       continue
     }
 
-    const match = line.match(NODE_PATTERN)
-    if (!match) {
+    const node = parseTopologyLine(line)
+    if (!node) {
       continue
     }
+    nodes.push(node)
+  }
 
-    const [, , kind, name, rawDeps] = match
-    nodes.push({
-      id: name,
-      name,
-      kind: kind as RuntimeKind,
-      dependsOn: rawDeps
-        ? rawDeps
+  return resolveTopology(nodes)
+}
+
+function parseTopologyLine(line: string): TopologyNode | null {
+  const match = line.match(ASSIGNMENT_PATTERN)
+  if (!match) {
+    return null
+  }
+
+  const [, , rawCall, rawArgs] = match
+  const kind = topologyKind(rawCall)
+  if (!kind) {
+    return null
+  }
+
+  const nameMatch = rawArgs.match(NAME_PATTERN)
+  if (!nameMatch) {
+    return null
+  }
+
+  const afterMatch = rawArgs.match(AFTER_PATTERN)
+  return {
+    id: nameMatch[1],
+    name: nameMatch[1],
+    kind,
+    dependsOn: afterMatch
+      ? afterMatch[1]
           .split(',')
           .map((item) => item.trim().replaceAll('"', ''))
           .filter(Boolean)
-        : [],
-      level: 0,
-    })
+          .filter((item, index, items) => items.indexOf(item) === index)
+      : [],
+    level: 0,
+  }
+}
+
+function resolveTopology(nodes: TopologyNode[]): TopologyNode[] {
+  if (nodes.length === 0) {
+    return []
   }
 
-  const byId = new Map(nodes.map((node) => [node.id, node]))
-  const levelCache = new Map<string, number>()
+  const byId = new Map<string, TopologyNode>()
+  const order = new Map<string, number>()
 
-  const resolveLevel = (id: string): number => {
-    if (levelCache.has(id)) {
-      return levelCache.get(id) ?? 0
+  for (const [index, node] of nodes.entries()) {
+    if (byId.has(node.id)) {
+      return []
     }
-
-    const node = byId.get(id)
-    if (!node || node.dependsOn.length === 0) {
-      levelCache.set(id, 0)
-      return 0
-    }
-
-    const level = Math.max(...node.dependsOn.map((dependency) => resolveLevel(dependency))) + 1
-    levelCache.set(id, level)
-    return level
+    byId.set(node.id, node)
+    order.set(node.id, index)
   }
 
-  return nodes
-    .map((node) => ({
-      ...node,
-      level: resolveLevel(node.id),
-    }))
-    .sort((left, right) => left.level - right.level || left.name.localeCompare(right.name))
+  const indegree = new Map<string, number>()
+  const dependants = new Map<string, string[]>()
+  for (const node of nodes) {
+    indegree.set(node.id, node.dependsOn.length)
+    for (const dependency of node.dependsOn) {
+      if (!byId.has(dependency)) {
+        return []
+      }
+      const children = dependants.get(dependency) ?? []
+      children.push(node.id)
+      dependants.set(dependency, children)
+    }
+  }
+
+  let ready = nodes.filter((node) => (indegree.get(node.id) ?? 0) === 0).map((node) => node.id)
+  ready.sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0))
+
+  const resolved: TopologyNode[] = []
+  let level = 0
+  while (ready.length > 0) {
+    const current = [...ready]
+    const nextReady: string[] = []
+
+    for (const id of current) {
+      const node = byId.get(id)
+      if (!node) {
+        continue
+      }
+      resolved.push({
+        ...node,
+        level,
+      })
+
+      for (const dependant of dependants.get(id) ?? []) {
+        const nextDegree = (indegree.get(dependant) ?? 0) - 1
+        indegree.set(dependant, nextDegree)
+        if (nextDegree === 0) {
+          nextReady.push(dependant)
+        }
+      }
+    }
+
+    nextReady.sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0))
+    ready = nextReady
+    level++
+  }
+
+  if (resolved.length !== nodes.length) {
+    return []
+  }
+
+  return resolved
+}
+
+function topologyKind(rawCall: string): RuntimeKind | null {
+  const call = rawCall.trim()
+  switch (call) {
+    case 'container':
+    case 'container.run':
+    case 'container.create':
+    case 'container.get':
+      return 'container'
+    case 'mock':
+    case 'mock.serve':
+      return 'mock'
+    case 'service':
+    case 'service.wiremock':
+    case 'service.prism':
+    case 'service.custom':
+      return 'service'
+    case 'script':
+    case 'script.file':
+    case 'script.bash':
+    case 'script.sql_migrate':
+    case 'script.exec':
+      return 'script'
+    case 'load':
+    case 'scenario':
+    case 'scenario.go':
+    case 'scenario.python':
+    case 'scenario.http':
+      if (call.startsWith('scenario.')) {
+        return 'scenario'
+      }
+      return call
+    default:
+      return null
+  }
 }
 
 export function groupTopologyByLevel(topology: TopologyNode[]) {

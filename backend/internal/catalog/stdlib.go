@@ -7,6 +7,23 @@ func SeedStdlibPackages() []Package {
 func seedStdlib() []Package {
 	return []Package{
 		{
+			ID:          "stdlib-runtime",
+			Kind:        "stdlib",
+			Title:       "@babelsuite/runtime",
+			Repository:  "localhost:5000/babelsuite/runtime",
+			Owner:       "BabelSuite Stdlib",
+			Provider:    "Stdlib",
+			Version:     "0.9.0",
+			Tags:        []string{"0.9.0", "0.8.3", "latest"},
+			Description: "Core suite runtime module exposing container.run/create/get, mock.serve, service.wiremock/prism/custom, plus script and scenario entry points for topology orchestration.",
+			Modules:     []string{"container lifecycle", "native mocks", "compat services", "topology steps", "debug helpers"},
+			Status:      "Official",
+			Score:       97,
+			PullCommand: "babelctl run localhost:5000/babelsuite/runtime:0.9.0",
+			ForkCommand: "babelctl fork localhost:5000/babelsuite/runtime:0.9.0 ./stdlib-runtime",
+			Inspectable: false,
+		},
+		{
 			ID:          "stdlib-postgres",
 			Kind:        "stdlib",
 			Title:       "@babelsuite/postgres",
