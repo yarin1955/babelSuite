@@ -608,6 +608,7 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 				{Name: "fixtures", Role: "Core", Description: "Seeded return cases and customer profiles.", Files: []string{"customers.json", "returns.json"}},
 				{Name: "policies", Role: "Core", Description: "Refund-limit and event-schema validation policies.", Files: []string{"refund_limits.rego", "event_schema.rego"}},
 			},
+			SeedSources: returnsControlPlaneSeedSources,
 			Contracts: []string{
 				"Examples live in mock/ while runtime behavior is split into adjacent metadata files so dispatch logic can evolve without rewriting payloads.",
 				"Return creation writes persisted mock state that the lookup operation renders later through templates.",
@@ -694,12 +695,12 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 										{Name: "x-mock-source", Value: "returns-approved"},
 									},
 									ResponseBody: `{
-  "returnId": "ret_{{ randomInt(1001, 9999) }}",
+  "returnId": "ret_1001",
   "status": "approved",
   "refundMode": "instant_credit",
   "queue": "auto",
-  "traceId": "{{ randomUUID() }}",
-  "servedAt": "{{ now() }}"
+  "traceId": "00000000-0000-0000-0000-000000000001",
+  "servedAt": "2026-01-01T00:00:00Z"
 }`,
 								},
 								{
@@ -721,12 +722,12 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 										{Name: "x-review-queue", Value: "manual"},
 									},
 									ResponseBody: `{
-  "returnId": "ret_{{ randomInt(2000, 9999) }}",
+  "returnId": "ret_2042",
   "status": "manual_review",
   "refundMode": "agent_review",
   "queue": "manual",
-  "traceId": "{{ randomUUID() }}",
-  "servedAt": "{{ now() }}"
+  "traceId": "00000000-0000-0000-0000-000000000002",
+  "servedAt": "2026-01-01T00:05:00Z"
 }`,
 								},
 							},
@@ -776,14 +777,14 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 										{Name: "x-mock-source", Value: "returns-state"},
 									},
 									ResponseBody: `{
-  "returnId": "{{ request.path.returnId }}",
-  "status": "{{ state.status }}",
-  "refundMode": "{{ state.refundMode }}",
-  "reviewQueue": "{{ state.reviewQueue }}",
-  "profile": "{{ state.profile }}",
-  "servedBy": "{{ request.headers.x-mock-node || 'apisix-sidecar' }}",
-  "traceId": "{{ randomUUID() }}",
-  "servedAt": "{{ now() }}"
+  "returnId": "ret_1001",
+  "status": "approved",
+  "refundMode": "instant_credit",
+  "reviewQueue": "auto",
+  "profile": "local.yaml",
+  "servedBy": "apisix-sidecar",
+  "traceId": "00000000-0000-0000-0000-000000000003",
+  "servedAt": "2026-01-01T00:10:00Z"
 }`,
 								},
 							},

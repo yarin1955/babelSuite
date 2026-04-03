@@ -33,6 +33,7 @@ claims_smoke = scenario(name="claims-smoke", after=["claims-bridge"])`,
 			{Name: "fixtures", Role: "Core", Description: "Seeded partner claims and policy fixtures.", Files: []string{"claims.json"}},
 			{Name: "policies", Role: "Core", Description: "SOAP fault and envelope validation policies.", Files: []string{"soap_faults.rego"}},
 		},
+		SeedSources: soapClaimsHubSeedSources,
 		Contracts: []string{
 			"The SOAP endpoint is fronted by APISIX, but BabelSuite still owns the request/response mock generation behind the sidecar.",
 			"WSDL stays under api/ while schema-backed mock definitions in mock/ drive runtime XML envelopes.",
@@ -117,11 +118,11 @@ claims_smoke = scenario(name="claims-smoke", after=["claims-bridge"])`,
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:clm="urn:claims:v1">
   <soapenv:Body>
     <clm:SubmitClaimResponse>
-      <clm:ClaimId>clm_{{ randomInt(1001, 9999) }}</clm:ClaimId>
+      <clm:ClaimId>clm_2048</clm:ClaimId>
       <clm:Decision>APPROVED</clm:Decision>
-      <clm:Profile>{{ request.headers.x-suite-profile || 'local.yaml' }}</clm:Profile>
-      <clm:TraceId>{{ randomUUID() }}</clm:TraceId>
-      <clm:ServedAt>{{ now() }}</clm:ServedAt>
+      <clm:Profile>canary.yaml</clm:Profile>
+      <clm:TraceId>00000000-0000-0000-0000-000000000010</clm:TraceId>
+      <clm:ServedAt>2026-01-01T00:00:00Z</clm:ServedAt>
     </clm:SubmitClaimResponse>
   </soapenv:Body>
 </soapenv:Envelope>`,
@@ -155,8 +156,8 @@ claims_smoke = scenario(name="claims-smoke", after=["claims-bridge"])`,
       <clm:ClaimId>clm_2048</clm:ClaimId>
       <clm:Status>IN_REVIEW</clm:Status>
       <clm:Owner>manual_queue</clm:Owner>
-      <clm:TraceId>{{ randomUUID() }}</clm:TraceId>
-      <clm:ServedAt>{{ now() }}</clm:ServedAt>
+      <clm:TraceId>00000000-0000-0000-0000-000000000011</clm:TraceId>
+      <clm:ServedAt>2026-01-01T00:05:00Z</clm:ServedAt>
     </clm:GetClaimStatusResponse>
   </soapenv:Body>
 </soapenv:Envelope>`,
