@@ -4,6 +4,7 @@ import {
   FaArrowsRotate,
   FaCopy,
   FaDiagramProject,
+  FaMagnifyingGlass,
   FaPause,
   FaPlay,
   FaXmark,
@@ -37,6 +38,7 @@ export default function LiveExecution() {
   const [selectedSource, setSelectedSource] = useState<'all' | string>('all')
   const [selectedMockPreviewId, setSelectedMockPreviewId] = useState('')
   const [showDag, setShowDag] = useState(false)
+  const [logSearch, setLogSearch] = useState('')
   const [notice, setNotice] = useState('')
   const [actionError, setActionError] = useState('')
   const [restarting, setRestarting] = useState(false)
@@ -52,9 +54,13 @@ export default function LiveExecution() {
     [execution?.events, flatTopology],
   )
   const filteredLogs = useMemo(() => {
-    if (selectedSource === 'all') return logs
-    return logs.filter((line) => line.source === selectedSource)
-  }, [logs, selectedSource])
+    let result = selectedSource === 'all' ? logs : logs.filter((line) => line.source === selectedSource)
+    if (logSearch.trim()) {
+      const term = logSearch.toLowerCase()
+      result = result.filter((line) => line.text.toLowerCase().includes(term))
+    }
+    return result
+  }, [logs, selectedSource, logSearch])
   const mockPreviews = useMemo(
     () => (execution?.suite.apiSurfaces ?? []).flatMap((surface) => (
       surface.operations.flatMap((operation) => (
@@ -162,13 +168,6 @@ export default function LiveExecution() {
           <button
             type='button'
             className='exec-toolbar-btn exec-toolbar-btn--ghost'
-            onClick={() => navigate(`/suites/${execution.suite.id}`)}
-          >
-            <span>Suite</span>
-          </button>
-          <button
-            type='button'
-            className='exec-toolbar-btn exec-toolbar-btn--ghost'
             onClick={() => void restartExecution()}
             disabled={restarting}
           >
@@ -233,57 +232,44 @@ export default function LiveExecution() {
           {/* ── Terminal panel ── */}
           <section className='exec-terminal'>
 
-            {/* Source filter tabs */}
+            {/* Log search bar */}
             <div className='exec-tabs'>
-              <button
-                type='button'
-                className={`exec-tab${selectedSource === 'all' ? ' exec-tab--active' : ''}`}
-                onClick={() => setSelectedSource('all')}
-              >
-                <ExecDot status={statusFromExecution(execution.status)} />
-                <span>All</span>
-                {logs.length > 0 && <em className='exec-tab__count'>{logs.length}</em>}
-              </button>
-
-              {flatTopology.map((node) => {
-                const cnt = logs.filter((l) => l.source === node.id).length
-                return (
-                  <button
-                    key={node.id}
-                    type='button'
-                    className={`exec-tab${selectedSource === node.id ? ' exec-tab--active' : ''}`}
-                    onClick={() => {
-                      setSelectedSource(node.id)
-                      if (node.kind === 'mock') {
-                        focusMockPreview()
-                      }
-                    }}
-                  >
-                    <ExecDot status={statusMap[node.id]} />
-                    <span>{node.name}</span>
-                    {cnt > 0 && <em className='exec-tab__count'>{cnt}</em>}
+              <div style={{width: 12, flexShrink: 0}} />
+              <div className='exec-log-search'>
+                <FaMagnifyingGlass className='exec-log-search__icon' />
+                <input
+                  type='text'
+                  className='exec-log-search__input'
+                  placeholder='Search logs…'
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                />
+                {logSearch && (
+                  <button type='button' className='exec-log-search__clear' onClick={() => setLogSearch('')}>
+                    <FaXmark />
                   </button>
-                )
-              })}
+                )}
+              </div>
 
+              <div className='exec-tabs__actions'>
+                <button
+                  type='button'
+                  className='exec-tab-action'
+                  title='Copy visible logs'
+                  onClick={() => void copyVisibleLogs()}
+                >
+                  <FaCopy />
+                </button>
+                <button
+                  type='button'
+                  className='exec-tab-action'
+                  title={paused ? 'Resume stream' : 'Pause stream'}
+                  onClick={() => setPaused((p) => !p)}
+                >
+                  {paused ? <FaPlay /> : <FaPause />}
+                </button>
+              </div>
               <div className='exec-tabs__spacer' />
-
-              <button
-                type='button'
-                className='exec-tab-action'
-                title='Copy visible logs'
-                onClick={() => void copyVisibleLogs()}
-              >
-                <FaCopy />
-              </button>
-              <button
-                type='button'
-                className='exec-tab-action'
-                title={paused ? 'Resume stream' : 'Pause stream'}
-                onClick={() => setPaused((p) => !p)}
-              >
-                {paused ? <FaPlay /> : <FaPause />}
-              </button>
             </div>
 
             {/* Log body */}

@@ -305,6 +305,64 @@
   flex: 1;
 }
 
+.exec-log-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  padding: 0 8px;
+  height: 28px;
+  width: 260px;
+}
+
+.exec-tabs__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  margin-left: 6px;
+}
+
+.exec-log-search__icon {
+  color: #3a5a6e;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.exec-log-search__input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #c4d8e2;
+  font: inherit;
+  font-size: 0.83rem;
+}
+
+.exec-log-search__input::placeholder {
+  color: #3a5a6e;
+}
+
+.exec-log-search__clear {
+  background: transparent;
+  border: 0;
+  color: #3a5a6e;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+  transition: color 120ms ease;
+}
+
+.exec-log-search__clear:hover {
+  color: #90b4c4;
+}
+
 .exec-tab-action {
   width: 28px;
   height: 28px;

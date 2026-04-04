@@ -204,10 +204,6 @@ export default function Home() {
       description='Launch suites quickly, inspect recent runs, and move from failures to logs without thinking about the underlying OCI layout.'
       actions={(
         <>
-          <div className='runs-toolbar__identity'>
-            <strong>{session.workspace.name}</strong>
-            <span>{session.user.email}</span>
-          </div>
           <button type='button' className='runs-button runs-button--secondary' onClick={() => navigate('/environments')}>
             <FaDocker />
             <span>Environments</span>
