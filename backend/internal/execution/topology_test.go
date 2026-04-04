@@ -215,6 +215,53 @@ http_smoke = scenario.http(name="checkout-http", collection_path="./scenarios/ht
 	}
 }
 
+func TestParseSuiteTopologySupportsLoadModuleEntrypoints(t *testing.T) {
+	suiteStar := `load("@babelsuite/runtime", "load")
+
+	checkout_http = load.http(name="checkout-http-load", plan="./load/checkout.star", target="http://payments-api:8080")
+	orders_grpc = load.grpc(name="orders-grpc-load", plan="./load/orders.star", target="dns:///orders-api:9090", after=["checkout-http-load"])
+	legacy_locust = load.locust(name="legacy-locust", file_path="./load/legacy_locust.py", host="http://legacy-api:8080", after=["orders-grpc-load"])
+	graphql_jmx = load.jmx(name="graphql-jmx", plan_path="./load/graphql.jmx", properties={"threads":"10"}, after=["legacy-locust"])
+	storefront_k6 = load.k6(name="storefront-k6", file_path="./load/storefront_k6.js", after=["graphql-jmx"])`
+
+	topology, err := parseSuiteTopology(suiteStar)
+	if err != nil {
+		t.Fatalf("parse topology: %v", err)
+	}
+	if len(topology) != 5 {
+		t.Fatalf("expected 5 topology nodes, got %d", len(topology))
+	}
+
+	expected := []struct {
+		id   string
+		deps []string
+	}{
+		{id: "checkout-http-load"},
+		{id: "orders-grpc-load", deps: []string{"checkout-http-load"}},
+		{id: "legacy-locust", deps: []string{"orders-grpc-load"}},
+		{id: "graphql-jmx", deps: []string{"legacy-locust"}},
+		{id: "storefront-k6", deps: []string{"graphql-jmx"}},
+	}
+
+	for index, item := range expected {
+		node := topology[index]
+		if node.ID != item.id {
+			t.Fatalf("expected node %d id %q, got %q", index, item.id, node.ID)
+		}
+		if node.Kind != "load" {
+			t.Fatalf("expected node %q kind load, got %q", item.id, node.Kind)
+		}
+		if len(node.DependsOn) != len(item.deps) {
+			t.Fatalf("expected node %q deps %v, got %v", item.id, item.deps, node.DependsOn)
+		}
+		for dependencyIndex, dependency := range item.deps {
+			if node.DependsOn[dependencyIndex] != dependency {
+				t.Fatalf("expected node %q deps %v, got %v", item.id, item.deps, node.DependsOn)
+			}
+		}
+	}
+}
+
 func TestParseSuiteTopologyRejectsMissingDependency(t *testing.T) {
 	suiteStar := `load("@babelsuite/runtime", "container")
 

@@ -158,10 +158,18 @@ function topologyKind(rawCall: string): RuntimeKind | null {
     case 'script.exec':
       return 'script'
     case 'load':
+    case 'load.http':
+    case 'load.grpc':
+    case 'load.locust':
+    case 'load.jmx':
+    case 'load.k6':
     case 'scenario':
     case 'scenario.go':
     case 'scenario.python':
     case 'scenario.http':
+      if (call.startsWith('load.')) {
+        return 'load'
+      }
       if (call.startsWith('scenario.')) {
         return 'scenario'
       }

@@ -1,4 +1,4 @@
-load("@babelsuite/runtime", "container", "mock", "service", "script", "scenario")
+load("@babelsuite/runtime", "container", "mock", "service", "script", "load", "scenario")
 
 redis = container.run(
     name="redis-cache",
@@ -28,4 +28,6 @@ catalog_compat = service.prism(
 
 seed = script.file(name="seed-data", file_path="./scripts/bootstrap.sh", interpreter="bash", after=["payments-api"])
 migrate = script.sql_migrate(name="migrate-db", target="db", sql_dir="./sql", after=["seed-data"])
-smoke = scenario.go(name="checkout-smoke", test_dir="./scenarios/go", objectives=["checkout"], tags=["smoke"], after=["migrate-db", "catalog-compat"])
+checkout_load = load.http(name="checkout-http-load", plan="./load/http_checkout.star", target="http://payments-api:8080", after=["migrate-db"])
+storefront_k6 = load.k6(name="storefront-k6", file_path="./load/storefront_k6.js", after=["checkout-http-load"])
+smoke = scenario.go(name="checkout-smoke", test_dir="./scenarios/go", objectives=["checkout"], tags=["smoke"], after=["storefront-k6", "catalog-compat"])
