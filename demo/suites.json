@@ -1,0 +1,2440 @@
+[
+  {
+    "id": "fleet-control-room",
+    "title": "Fleet Control Room",
+    "repository": "localhost:5000/platform/fleet-control-room",
+    "owner": "Mobility QA",
+    "provider": "Zot",
+    "version": "v1.8.0",
+    "tags": [
+      "latest",
+      "v1.8.0",
+      "v1.7.5"
+    ],
+    "description": "End-to-end vehicle orchestration environment with Redis, gRPC contracts, and mocked telemetry spikes.",
+    "modules": [
+      "redis",
+      "grpc",
+      "prometheus"
+    ],
+    "status": "Verified",
+    "score": 88,
+    "pullCommand": "babelctl run localhost:5000/platform/fleet-control-room:v1.8.0",
+    "forkCommand": "babelctl fork localhost:5000/platform/fleet-control-room:v1.8.0 ./fleet-lab",
+    "suiteStar": "load(\"@babelsuite/redis\", \"redis\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nredis_cache = container.run(name=\"redis-cache\")\ntelemetry_mock = mock(name=\"telemetry-mock\", after=[\"redis-cache\"])\nseed_routes = script(name=\"seed-routes\", after=[\"redis-cache\"])\ndispatcher_api = container.run(name=\"dispatcher-api\", after=[\"redis-cache\", \"seed-routes\"])\nplanner = container.run(name=\"route-planner\", after=[\"dispatcher-api\"])\ncontrol_room = container.run(name=\"control-room-ui\", after=[\"dispatcher-api\", \"route-planner\"])\nfleet_smoke = scenario(name=\"fleet-smoke\", after=[\"control-room-ui\", \"telemetry-mock\"])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local Debug",
+        "description": "Browser-forwarded ports and verbose telemetry payloads.",
+        "default": true
+      },
+      {
+        "fileName": "perf.yaml",
+        "label": "Performance",
+        "description": "Synthetic bursts for planner saturation tests.",
+        "default": false
+      },
+      {
+        "fileName": "staging.yaml",
+        "label": "Staging",
+        "description": "Shared staging identities and realistic routing backends.",
+        "default": false
+      }
+    ],
+    "folders": [
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Driver-specific runtime knobs for local, perf, and staging lanes.",
+        "files": [
+          "local.yaml",
+          "perf.yaml",
+          "staging.yaml"
+        ]
+      },
+      {
+        "name": "api",
+        "role": "Core",
+        "description": "gRPC protobuf definitions and REST gateway overlays.",
+        "files": [
+          "proto/fleet_control.proto",
+          "openapi/dispatcher.yaml"
+        ]
+      },
+      {
+        "name": "mock",
+        "role": "Core",
+        "description": "Telemetry playback feeds and fault injections for route spikes.",
+        "files": [
+          "telemetry/idle.cue",
+          "telemetry/idle.metadata.yaml",
+          "telemetry/spike.cue",
+          "telemetry/spike.metadata.yaml"
+        ]
+      },
+      {
+        "name": "scripts",
+        "role": "Core",
+        "description": "Redis seeders and topology bootstrap hooks.",
+        "files": [
+          "seed_routes.sh",
+          "prime_cache.py"
+        ]
+      },
+      {
+        "name": "scenarios",
+        "role": "Core",
+        "description": "Control room smoke runs and degraded GPS scenarios.",
+        "files": [
+          "fleet_smoke.py",
+          "route_degradation.py"
+        ]
+      },
+      {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Vehicle manifests and fake GPS frames.",
+        "files": [
+          "vehicles.json",
+          "gps_frames.ndjson"
+        ]
+      },
+      {
+        "name": "policies",
+        "role": "Core",
+        "description": "Route SLA validation and forbidden-zone checks.",
+        "files": [
+          "route_latency.rego",
+          "geo_boundary.rego"
+        ]
+      },
+      {
+        "name": "gateway",
+        "role": "Extension",
+        "description": "Runtime-managed APISIX sidecar routes that front suite APIs and forward traffic into the BabelSuite mock engine.",
+        "files": [
+          "apisix.yaml"
+        ]
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "api/openapi/dispatcher.yaml",
+        "language": "yaml",
+        "content": "openapi: 3.1.0\ninfo:\n  title: Fleet Control Room\n  version: v1.8.0\nservers:\n  - url: https://fleet-control-room.mock.internal\npaths:\n  /telemetry/events:\n    post:\n      operationId: stream_telemetry\n      summary: Inject mock telemetry frames into the control room pipeline.\n      responses:\n        \"200\":\n          description: Successful mock response\n"
+      },
+      {
+        "path": "api/proto/fleet_control.proto",
+        "language": "protobuf",
+        "content": "syntax = \"proto3\";\n\npackage fleet_control_room.v1;\n\nservice fleet_controlService {\n  rpc AssignRoute (AssignRouteRequest) returns (AssignRouteResponse);\n}\n\nmessage PingRequest {}\n\nmessage PingResponse {\n  string status = 1;\n}\n"
+      },
+      {
+        "path": "fixtures/gps_frames.ndjson",
+        "language": "json",
+        "content": "{\"vehicleId\":\"vh-11\",\"speed\":0,\"battery\":76}\n{\"vehicleId\":\"vh-12\",\"speed\":31,\"battery\":68}\n"
+      },
+      {
+        "path": "fixtures/vehicles.json",
+        "language": "json",
+        "content": "[\n  {\n    \"state\": \"idle\",\n    \"vehicleId\": \"vh-11\"\n  },\n  {\n    \"state\": \"charging\",\n    \"vehicleId\": \"vh-12\"\n  }\n]\n"
+      },
+      {
+        "path": "gateway/apisix.yaml",
+        "language": "yaml",
+        "content": "deployment:\n    role: data_plane\n    role_data_plane:\n        config_provider: yaml\nplugins:\n    - name: ext-plugin-pre-req\n    - name: grpc-transcode\nprotos:\n    - id: fleet-control-room.assign-route\n      desc: api/proto/fleet_control.proto\n      content: |\n        syntax = \"proto3\";\n\n        package fleet_control_room.v1;\n\n        service fleet_controlService {\n          rpc AssignRoute (AssignRouteRequest) returns (AssignRouteResponse);\n        }\n\n        message PingRequest {}\n\n        message PingResponse {\n          string status = 1;\n        }\nroutes:\n    - id: fleet-control-room.assign-route.grpc\n      name: assign-route\n      desc: Assign a route to a vehicle and publish routing metadata.\n      uri: /fleet.v1.Dispatcher/AssignRoute\n      methods:\n        - POST\n      hosts:\n        - fleet-control-room.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/grpc/fleet-control-room/dispatcher-api/assign-route\",\"operation_id\":\"assign-route\",\"protocol\":\"GRPC\",\"public_path\":\"/fleet.v1.Dispatcher/AssignRoute\",\"resolver_url\":\"/internal/mock-data/fleet-control-room/dispatcher-api/assign-route\"}'\n        grpc-transcode:\n            method: AssignRoute\n            proto_id: fleet-control-room.assign-route\n            service: fleet.v1.Dispatcher\n      upstream:\n        type: roundrobin\n        scheme: grpc\n        nodes:\n            ${{APISIX_GRPC_UPSTREAM_ADDR}}: 1\n\n# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.\n# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.\n# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.\n# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.\n#\n# Resolver contracts below describe the internal BabelSuite endpoint APISIX should call to fetch normalized mock data:\n# - fleet-control-room.assign-route (gRPC) public=/fleet.v1.Dispatcher/AssignRoute resolver=/internal/mock-data/fleet-control-room/dispatcher-api/assign-route compatibility=/mocks/grpc/fleet-control-room/dispatcher-api/assign-route\n# - fleet-control-room.stream-telemetry (gRPC) public=/telemetry/events resolver=/internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry compatibility=/mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry\n#\n# Transports below still need APISIX-side plugin-runner or custom sidecar wiring before they can call the resolver and emit the final protocol response:\n# - fleet-control-room.stream-telemetry (gRPC) public=/telemetry/events resolver=/internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry compatibility=/mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry\n#   The APISIX sidecar should terminate or normalize gRPC traffic for /telemetry/events and call /internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry to fetch normalized status, headers, and body so APISIX remains the visible responder while BabelSuite only resolves the matched exchange.\n#END\n"
+      },
+      {
+        "path": "mock/telemetry/idle.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"fleet-control-room\"\nartifact: \"mock/telemetry/idle.cue\"\noperationId: \"stream-telemetry\"\nadapter: \"grpc\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/dispatcher.yaml#/paths/~1telemetry~1events/post\"\nresolverUrl: \"/internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry\"\nruntimeUrl: \"/mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry\"\nexamples: {\n  \"idle-garage\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"scenario\",\"value\":\"idle\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n      }\n      body: {\n        battery: 76\n        speed: 0\n        vehicleId: \"vh-11\"\n      }\n    }\n    responseSchema: {\n      status: \"202\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-ingest-batch\": \"telemetry-mock\"\n      }\n      body: {\n        accepted: true\n        framesQueued: 1\n        scenario: \"idle\"\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/telemetry/idle.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/telemetry/idle.metadata.yaml\n    operationId: stream-telemetry\n    sourceArtifact: mock/telemetry/idle.cue\n    suite: fleet-control-room\nspec:\n    adapter: grpc\n    delayMillis: 0\n    fallback: null\n    parameterConstraints: []\n    resolverUrl: /internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry\n    runtimeUrl: /mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry\n    state: null\n"
+      },
+      {
+        "path": "mock/telemetry/spike.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"fleet-control-room\"\nartifact: \"mock/telemetry/spike.cue\"\noperationId: \"assign-route\"\nadapter: \"grpc\"\ndispatcher: \"apisix\"\ncontractPath: \"api/proto/fleet_control.proto#AssignRoute\"\nresolverUrl: \"/internal/mock-data/fleet-control-room/dispatcher-api/assign-route\"\nruntimeUrl: \"/mocks/grpc/fleet-control-room/dispatcher-api/assign-route\"\nexamples: {\n  \"urban-shift\": {\n    dispatch: [{\"from\":\"body\",\"param\":\"vehicleId\",\"value\":\"vh-11\"}]\n    requestSchema: {\n      headers: {\n        \"x-profile\": \"perf.yaml\"\n      }\n      body: {\n        routeId: \"route-778\"\n        vehicleId: \"vh-11\"\n      }\n    }\n    responseSchema: {\n      status: \"0\"\n      mediaType: \"application/grpc\"\n      headers: {\n        \"x-topology-wave\": \"planner\"\n      }\n      body: {\n        status: \"accepted\"\n        assignmentId: \"asg-778\"\n        plannerRevision: \"route-planner@4\"\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/telemetry/spike.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/telemetry/spike.metadata.yaml\n    operationId: assign-route\n    sourceArtifact: mock/telemetry/spike.cue\n    suite: fleet-control-room\nspec:\n    adapter: grpc\n    delayMillis: 0\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"5\"\n        mediatype: application/json\n        body: \"{\\n  \\\"code\\\": \\\"ROUTE_ASSIGNMENT_NOT_FOUND\\\",\\n  \\\"message\\\": \\\"No gRPC exchange matched the incoming vehicle.\\\" \\n}\"\n        headers: []\n    parameterConstraints:\n        - name: x-profile\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/fleet-control-room/dispatcher-api/assign-route\n    runtimeUrl: /mocks/grpc/fleet-control-room/dispatcher-api/assign-route\n    state: null\n"
+      },
+      {
+        "path": "policies/geo_boundary.rego",
+        "language": "rego",
+        "content": "package babelsuite.geo_boundary\n\ndefault allow := false\n\nallow if {\n  input.suite == \"fleet-control-room\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "policies/route_latency.rego",
+        "language": "rego",
+        "content": "package babelsuite.route_latency\n\ndefault allow := false\n\nallow if {\n  input.suite == \"fleet-control-room\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "profiles/local.yaml",
+        "language": "yaml",
+        "content": "name: Local Debug\ndescription: Browser-forwarded ports and verbose telemetry payloads.\ndefault: true\nruntime:\n  suite: fleet-control-room\n  repository: localhost:5000/platform/fleet-control-room\n  profileFile: local.yaml\nmodules:\n    - redis\n    - grpc\n    - prometheus\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/perf.yaml",
+        "language": "yaml",
+        "content": "name: Performance\ndescription: Synthetic bursts for planner saturation tests.\ndefault: false\nruntime:\n  suite: fleet-control-room\n  repository: localhost:5000/platform/fleet-control-room\n  profileFile: perf.yaml\nmodules:\n    - redis\n    - grpc\n    - prometheus\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/staging.yaml",
+        "language": "yaml",
+        "content": "name: Staging\ndescription: Shared staging identities and realistic routing backends.\ndefault: false\nruntime:\n  suite: fleet-control-room\n  repository: localhost:5000/platform/fleet-control-room\n  profileFile: staging.yaml\nmodules:\n    - redis\n    - grpc\n    - prometheus\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "scenarios/fleet_smoke.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
+      },
+      {
+        "path": "scenarios/route_degradation.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
+      },
+      {
+        "path": "scripts/prime_cache.py",
+        "language": "python",
+        "content": "from pathlib import Path\n\nSUITE_ID = \"fleet-control-room\"\nSCRIPT_NAME = \"prime_cache.py\"\n\ndef main() -\u003e None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
+      },
+      {
+        "path": "scripts/seed_routes.sh",
+        "language": "bash",
+        "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_routes.sh for Fleet Control Room\"\necho \"resolved modules: redis, grpc, prometheus\"\n"
+      }
+    ],
+    "contracts": [
+      "The dispatcher API reads strict outputs from redis-cache instead of inferring connection details from container names.",
+      "Telemetry mocks are treated as first-class topology nodes so they can be selected, filtered, and replayed from the UI.",
+      "gRPC contracts in api/ remain immutable while mock payloads in mock/ evolve alongside scenario coverage."
+    ],
+    "apiSurfaces": [
+      {
+        "id": "dispatcher-api",
+        "title": "Dispatcher API",
+        "protocol": "gRPC",
+        "mockHost": "grpc://fleet-control-room.mock.internal",
+        "description": "Planner control APIs exposed through protobuf contracts with a mocked telemetry side-channel.",
+        "operations": [
+          {
+            "id": "assign-route",
+            "method": "RPC",
+            "name": "fleet.v1.Dispatcher/AssignRoute",
+            "summary": "Assign a route to a vehicle and publish routing metadata.",
+            "contractPath": "api/proto/fleet_control.proto#AssignRoute",
+            "mockPath": "mock/telemetry/spike.cue",
+            "mockUrl": "grpc://fleet-control-room.mock.internal/fleet.v1.Dispatcher/AssignRoute",
+            "curlCommand": "grpcurl -plaintext -d '{\"vehicleId\":\"vh-11\",\"routeId\":\"route-778\"}' fleet-control-room.mock.internal fleet.v1.Dispatcher/AssignRoute",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "grpc",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar should terminate or normalize gRPC traffic for /fleet.v1.Dispatcher/AssignRoute and call /internal/mock-data/fleet-control-room/dispatcher-api/assign-route to fetch normalized status, headers, and body so APISIX remains the visible responder while BabelSuite only resolves the matched exchange.",
+              "parameterConstraints": [
+                {
+                  "name": "x-profile",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "5",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"ROUTE_ASSIGNMENT_NOT_FOUND\",\n  \"message\": \"No gRPC exchange matched the incoming vehicle.\" \n}"
+              },
+              "metadataPath": "mock/telemetry/spike.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/fleet-control-room/dispatcher-api/assign-route",
+              "runtimeUrl": "/mocks/grpc/fleet-control-room/dispatcher-api/assign-route"
+            },
+            "exchanges": [
+              {
+                "name": "urban-shift",
+                "sourceArtifact": "mock/telemetry/spike.cue",
+                "when": [
+                  {
+                    "from": "body",
+                    "param": "vehicleId",
+                    "value": "vh-11"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "x-profile",
+                    "value": "perf.yaml"
+                  }
+                ],
+                "requestBody": "{\n  \"vehicleId\": \"vh-11\",\n  \"routeId\": \"route-778\"\n}",
+                "responseStatus": "0",
+                "responseMediaType": "application/grpc",
+                "responseHeaders": [
+                  {
+                    "name": "x-topology-wave",
+                    "value": "planner"
+                  }
+                ],
+                "responseBody": "{\n  \"assignmentId\": \"asg-778\",\n  \"status\": \"accepted\",\n  \"plannerRevision\": \"route-planner@4\"\n}"
+              }
+            ]
+          },
+          {
+            "id": "stream-telemetry",
+            "method": "POST",
+            "name": "/telemetry/events",
+            "summary": "Inject mock telemetry frames into the control room pipeline.",
+            "contractPath": "api/openapi/dispatcher.yaml#/paths/~1telemetry~1events/post",
+            "mockPath": "mock/telemetry/idle.cue",
+            "mockUrl": "https://fleet-control-room.mock.internal/telemetry/events?scenario=idle",
+            "curlCommand": "curl -X POST https://fleet-control-room.mock.internal/telemetry/events?scenario=idle -H 'content-type: application/json' -d '{\"vehicleId\":\"vh-11\",\"speed\":0}'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "grpc",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar should terminate or normalize gRPC traffic for /telemetry/events and call /internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry to fetch normalized status, headers, and body so APISIX remains the visible responder while BabelSuite only resolves the matched exchange.",
+              "metadataPath": "mock/telemetry/idle.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/fleet-control-room/dispatcher-api/stream-telemetry",
+              "runtimeUrl": "/mocks/grpc/fleet-control-room/dispatcher-api/stream-telemetry"
+            },
+            "exchanges": [
+              {
+                "name": "idle-garage",
+                "sourceArtifact": "mock/telemetry/idle.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "scenario",
+                    "value": "idle"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  }
+                ],
+                "requestBody": "{\n  \"vehicleId\": \"vh-11\",\n  \"speed\": 0,\n  \"battery\": 76\n}",
+                "responseStatus": "202",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-ingest-batch",
+                    "value": "telemetry-mock"
+                  }
+                ],
+                "responseBody": "{\n  \"accepted\": true,\n  \"scenario\": \"idle\",\n  \"framesQueued\": 1\n}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "identity-broker",
+    "title": "Identity Broker",
+    "repository": "localhost:5000/security/identity-broker",
+    "owner": "Security Enablement",
+    "provider": "Zot",
+    "version": "v3.0.2",
+    "tags": [
+      "latest",
+      "v3.0.2",
+      "v3.0.1"
+    ],
+    "description": "OIDC and SAML integration sandbox with deterministic login failures, cert rotation, and secret injection paths.",
+    "modules": [
+      "vault",
+      "postgres"
+    ],
+    "status": "Official",
+    "score": 91,
+    "pullCommand": "babelctl run localhost:5000/security/identity-broker:v3.0.2",
+    "forkCommand": "babelctl fork localhost:5000/security/identity-broker:v3.0.2 ./identity-broker-local",
+    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nbroker_db = container.run(name=\"broker-db\")\noidc_mock = mock(name=\"oidc-mock\", after=[\"broker-db\"])\nsaml_mock = mock(name=\"saml-mock\", after=[\"broker-db\"])\nseed_realms = script(name=\"seed-realms\", after=[\"broker-db\"])\nbroker_api = container.run(name=\"broker-api\", after=[\"broker-db\", \"oidc-mock\", \"saml-mock\", \"seed-realms\"])\nsession_worker = container.run(name=\"session-worker\", after=[\"broker-api\"])\nlogin_smoke = scenario(name=\"login-smoke\", after=[\"broker-api\", \"session-worker\"])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local Debug",
+        "description": "Relaxed certificates and hot-reloadable providers.",
+        "default": true
+      },
+      {
+        "fileName": "canary.yaml",
+        "label": "Canary",
+        "description": "New session persistence behavior and stricter cookie policies.",
+        "default": false
+      },
+      {
+        "fileName": "ci.yaml",
+        "label": "CI Smoke",
+        "description": "Fast login assertions with deterministic realms.",
+        "default": false
+      }
+    ],
+    "folders": [
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Realm, issuer, and session-storage overrides by environment.",
+        "files": [
+          "local.yaml",
+          "canary.yaml",
+          "ci.yaml"
+        ]
+      },
+      {
+        "name": "api",
+        "role": "Core",
+        "description": "OIDC bridge OpenAPI and SAML mapping definitions.",
+        "files": [
+          "openapi/identity_broker.yaml",
+          "proto/session.proto"
+        ]
+      },
+      {
+        "name": "mock",
+        "role": "Core",
+        "description": "OIDC JWKS payloads and SAML assertion fixtures.",
+        "files": [
+          "oidc/jwks.cue",
+          "oidc/jwks.metadata.yaml",
+          "saml/assertion.xml"
+        ]
+      },
+      {
+        "name": "scripts",
+        "role": "Core",
+        "description": "Realm seeders and certificate bootstrap helpers.",
+        "files": [
+          "seed_realms.ts",
+          "rotate_certs.sh"
+        ]
+      },
+      {
+        "name": "scenarios",
+        "role": "Core",
+        "description": "Login smoke suites and expired-session validation.",
+        "files": [
+          "login_smoke.py",
+          "expired_session.py"
+        ]
+      },
+      {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Realm definitions and claim payloads.",
+        "files": [
+          "claims.json",
+          "realm_seed.yaml"
+        ]
+      },
+      {
+        "name": "policies",
+        "role": "Core",
+        "description": "Cookie scope and token issuance validation.",
+        "files": [
+          "session.rego",
+          "issuer.rego"
+        ]
+      },
+      {
+        "name": "gateway",
+        "role": "Extension",
+        "description": "Runtime-managed APISIX sidecar routes that front suite APIs and forward traffic into the BabelSuite mock engine.",
+        "files": [
+          "apisix.yaml"
+        ]
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "api/openapi/identity_broker.yaml",
+        "language": "yaml",
+        "content": "openapi: 3.1.0\ninfo:\n  title: Identity Broker\n  version: v3.0.2\nservers:\n  - url: https://identity-broker.mock.internal\npaths:\n  /sessions/login:\n    post:\n      operationId: begin_login\n      summary: Start an identity-broker login transaction.\n      responses:\n        \"200\":\n          description: Successful mock response\n"
+      },
+      {
+        "path": "api/proto/session.proto",
+        "language": "protobuf",
+        "content": "syntax = \"proto3\";\n\npackage identity_broker.v1;\n\nservice sessionService {\n  rpc Ping (PingRequest) returns (PingResponse);\n}\n\nmessage PingRequest {}\n\nmessage PingResponse {\n  string status = 1;\n}\n"
+      },
+      {
+        "path": "fixtures/claims.json",
+        "language": "json",
+        "content": "[\n  {\n    \"email\": \"admin@babelsuite.test\",\n    \"role\": \"admin\"\n  },\n  {\n    \"email\": \"shopper@demo.test\",\n    \"role\": \"demo\"\n  }\n]\n"
+      },
+      {
+        "path": "fixtures/realm_seed.yaml",
+        "language": "yaml",
+        "content": "realm: example\nissuer: https://issuer.demo.test\nseedUsers:\n  - admin@babelsuite.test\n"
+      },
+      {
+        "path": "gateway/apisix.yaml",
+        "language": "yaml",
+        "content": "deployment:\n    role: data_plane\n    role_data_plane:\n        config_provider: yaml\nplugins:\n    - name: ext-plugin-pre-req\n    - name: proxy-rewrite\nroutes:\n    - id: identity-broker.begin-login\n      name: begin-login\n      desc: Start an identity-broker login transaction.\n      uri: /sessions/login\n      methods:\n        - POST\n      hosts:\n        - identity-broker.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/identity-broker/broker-api/sessions/login\",\"operation_id\":\"begin-login\",\"protocol\":\"REST\",\"public_path\":\"/sessions/login\",\"resolver_url\":\"/internal/mock-data/identity-broker/broker-api/begin-login\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: begin-login\n            uri: /mocks/rest/identity-broker/broker-api/sessions/login\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n\n# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.\n# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.\n# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.\n# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.\n#\n# Resolver contracts below describe the internal BabelSuite endpoint APISIX should call to fetch normalized mock data:\n# - identity-broker.begin-login (REST) public=/sessions/login resolver=/internal/mock-data/identity-broker/broker-api/begin-login compatibility=/mocks/rest/identity-broker/broker-api/sessions/login\n#END\n"
+      },
+      {
+        "path": "mock/oidc/jwks.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"identity-broker\"\nartifact: \"mock/oidc/jwks.cue\"\noperationId: \"begin-login\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/identity_broker.yaml#/paths/~1sessions~1login/post\"\nresolverUrl: \"/internal/mock-data/identity-broker/broker-api/begin-login\"\nruntimeUrl: \"/mocks/rest/identity-broker/broker-api/sessions/login?provider=oidc\"\nexamples: {\n  \"oidc-admin\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"provider\",\"value\":\"oidc\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n      }\n      body: {\n        email: \"admin@babelsuite.test\"\n      }\n    }\n    responseSchema: {\n      status: \"200\"\n      mediaType: \"application/json\"\n      headers: {\n        \"set-cookie\": \"bs_session=abc123\"\n      }\n      body: {\n        provider: \"oidc\"\n        redirect: \"https://oidc-mock.internal/authorize\"\n        sessionId: \"sess_9001\"\n      }\n    }\n  }\n  \"saml-fallback\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"provider\",\"value\":\"saml\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n      }\n      body: {\n        email: \"ops@company.test\"\n      }\n    }\n    responseSchema: {\n      status: \"200\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-flow\": \"saml\"\n      }\n      body: {\n        provider: \"saml\"\n        redirect: \"https://saml-mock.internal/login\"\n        sessionId: \"sess_9021\"\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/oidc/jwks.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/oidc/jwks.metadata.yaml\n    operationId: begin-login\n    sourceArtifact: mock/oidc/jwks.cue\n    suite: identity-broker\nspec:\n    adapter: rest\n    delayMillis: 0\n    fallback: null\n    parameterConstraints: []\n    resolverUrl: /internal/mock-data/identity-broker/broker-api/begin-login\n    runtimeUrl: /mocks/rest/identity-broker/broker-api/sessions/login?provider=oidc\n    state: null\n"
+      },
+      {
+        "path": "mock/saml/assertion.xml",
+        "language": "xml",
+        "content": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cmockResponse\u003e\n  \u003csuite\u003eidentity-broker\u003c/suite\u003e\n  \u003cartifact\u003emock/saml/assertion.xml\u003c/artifact\u003e\n  \u003cstatus\u003eok\u003c/status\u003e\n\u003c/mockResponse\u003e\n"
+      },
+      {
+        "path": "policies/issuer.rego",
+        "language": "rego",
+        "content": "package babelsuite.issuer\n\ndefault allow := false\n\nallow if {\n  input.suite == \"identity-broker\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "policies/session.rego",
+        "language": "rego",
+        "content": "package babelsuite.session\n\ndefault allow := false\n\nallow if {\n  input.suite == \"identity-broker\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "profiles/canary.yaml",
+        "language": "yaml",
+        "content": "name: Canary\ndescription: New session persistence behavior and stricter cookie policies.\ndefault: false\nruntime:\n  suite: identity-broker\n  repository: localhost:5000/security/identity-broker\n  profileFile: canary.yaml\nmodules:\n    - vault\n    - postgres\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/ci.yaml",
+        "language": "yaml",
+        "content": "name: CI Smoke\ndescription: Fast login assertions with deterministic realms.\ndefault: false\nruntime:\n  suite: identity-broker\n  repository: localhost:5000/security/identity-broker\n  profileFile: ci.yaml\nmodules:\n    - vault\n    - postgres\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/local.yaml",
+        "language": "yaml",
+        "content": "name: Local Debug\ndescription: Relaxed certificates and hot-reloadable providers.\ndefault: true\nruntime:\n  suite: identity-broker\n  repository: localhost:5000/security/identity-broker\n  profileFile: local.yaml\nmodules:\n    - vault\n    - postgres\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "scenarios/expired_session.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
+      },
+      {
+        "path": "scenarios/login_smoke.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
+      },
+      {
+        "path": "scripts/rotate_certs.sh",
+        "language": "bash",
+        "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping rotate_certs.sh for Identity Broker\"\necho \"resolved modules: vault, postgres\"\n"
+      },
+      {
+        "path": "scripts/seed_realms.ts",
+        "language": "typescript",
+        "content": "const suiteId = \"identity-broker\"\nconst scriptName = \"seed_realms.ts\"\n\nconsole.log(`running ${scriptName} for ${suiteId}`)\n"
+      }
+    ],
+    "contracts": [
+      "Identity providers are represented as mocks with explicit dependency edges so login flows stay observable in the topology graph.",
+      "Broker API containers consume db.url and signed mock endpoints from strict module return values instead of manual wiring.",
+      "Scenario containers treat api/ as immutable truth and keep drift isolated to mock/ and profiles/."
+    ],
+    "apiSurfaces": [
+      {
+        "id": "broker-api",
+        "title": "Identity Broker API",
+        "protocol": "REST",
+        "mockHost": "https://identity-broker.mock.internal",
+        "description": "Login bridge APIs backed by OIDC and SAML mocks for deterministic browser and service flows.",
+        "operations": [
+          {
+            "id": "begin-login",
+            "method": "POST",
+            "name": "/sessions/login",
+            "summary": "Start an identity-broker login transaction.",
+            "contractPath": "api/openapi/identity_broker.yaml#/paths/~1sessions~1login/post",
+            "mockPath": "mock/oidc/jwks.cue",
+            "mockUrl": "https://identity-broker.mock.internal/sessions/login?provider=oidc",
+            "curlCommand": "curl -X POST https://identity-broker.mock.internal/sessions/login?provider=oidc -H 'content-type: application/json' -d '{\"email\":\"admin@babelsuite.test\"}'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches POST /sessions/login and calls /internal/mock-data/identity-broker/broker-api/begin-login to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "metadataPath": "mock/oidc/jwks.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/identity-broker/broker-api/begin-login",
+              "runtimeUrl": "/mocks/rest/identity-broker/broker-api/sessions/login?provider=oidc"
+            },
+            "exchanges": [
+              {
+                "name": "oidc-admin",
+                "sourceArtifact": "mock/oidc/jwks.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "provider",
+                    "value": "oidc"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  }
+                ],
+                "requestBody": "{\n  \"email\": \"admin@babelsuite.test\"\n}",
+                "responseStatus": "200",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "set-cookie",
+                    "value": "bs_session=abc123"
+                  }
+                ],
+                "responseBody": "{\n  \"sessionId\": \"sess_9001\",\n  \"provider\": \"oidc\",\n  \"redirect\": \"https://oidc-mock.internal/authorize\"\n}"
+              },
+              {
+                "name": "saml-fallback",
+                "sourceArtifact": "mock/saml/assertion.xml",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "provider",
+                    "value": "saml"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  }
+                ],
+                "requestBody": "{\n  \"email\": \"ops@company.test\"\n}",
+                "responseStatus": "200",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-flow",
+                    "value": "saml"
+                  }
+                ],
+                "responseBody": "{\n  \"sessionId\": \"sess_9021\",\n  \"provider\": \"saml\",\n  \"redirect\": \"https://saml-mock.internal/login\"\n}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "payment-suite",
+    "title": "Payment Suite",
+    "repository": "localhost:5000/core-platform/payment-suite",
+    "owner": "Core Platform",
+    "provider": "Zot",
+    "version": "v2.4.1",
+    "tags": [
+      "latest",
+      "v2.4.1",
+      "v2.4.0",
+      "v2.3.8"
+    ],
+    "description": "Bank-grade reference environment with Postgres, Kafka, Wiremock, and a full fraud worker topology.",
+    "modules": [
+      "postgres",
+      "kafka"
+    ],
+    "status": "Official",
+    "score": 94,
+    "pullCommand": "babelctl run localhost:5000/core-platform/payment-suite:v2.4.1",
+    "forkCommand": "babelctl fork localhost:5000/core-platform/payment-suite:v2.4.1 ./payment-suite-local",
+    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\n# Pre-registered Starlark Modules return strict structs.\ndb = container.run(name=\"db\")\nkafka = container.run(name=\"kafka\")\nstripe_mock = mock(name=\"stripe-mock\", after=[\"db\"])\nbootstrap_topics = script(name=\"bootstrap-topics\", after=[\"kafka\"])\nmigrations = script(name=\"migrations\", after=[\"db\"])\npayment_gateway = container.run(name=\"payment-gateway\", after=[\"db\", \"stripe-mock\", \"migrations\"])\nfraud_worker = container.run(name=\"fraud-worker\", after=[\"kafka\", \"bootstrap-topics\", \"payment-gateway\"])\ncheckout_smoke = scenario(name=\"checkout-smoke\", after=[\"payment-gateway\", \"fraud-worker\"])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local Debug",
+        "description": "Verbose logs, local secrets, and relaxed timeouts.",
+        "default": true
+      },
+      {
+        "fileName": "staging.yaml",
+        "label": "Staging",
+        "description": "Production-like service topology with Vault-backed references.",
+        "default": false
+      },
+      {
+        "fileName": "year.yaml",
+        "label": "Year-End",
+        "description": "Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.",
+        "default": false
+      }
+    ],
+    "folders": [
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Environment variable toggles and runtime overrides.",
+        "files": [
+          "local.yaml",
+          "staging.yaml",
+          "year.yaml"
+        ]
+      },
+      {
+        "name": "api",
+        "role": "Core",
+        "description": "Immutable OpenAPI and protobuf contracts for the suite.",
+        "files": [
+          "openapi/payments.yaml",
+          "proto/payments.proto"
+        ]
+      },
+      {
+        "name": "mock",
+        "role": "Core",
+        "description": "Wiremock mappings and scenario-specific stub bodies.",
+        "files": [
+          "wiremock/stripe/create-charge.cue",
+          "wiremock/stripe/create-charge.metadata.yaml",
+          "wiremock/stripe/get-payment.metadata.yaml",
+          "wiremock/stripe/refund.cue"
+        ]
+      },
+      {
+        "name": "scripts",
+        "role": "Core",
+        "description": "Boot-time migrations and broker preparation scripts.",
+        "files": [
+          "migrate.py",
+          "bootstrap_topics.sh"
+        ]
+      },
+      {
+        "name": "scenarios",
+        "role": "Core",
+        "description": "Smoke tests and attack-path executions.",
+        "files": [
+          "checkout_smoke.py",
+          "refund_regression.py"
+        ]
+      },
+      {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Static input data for cards, merchants, and seeded accounts.",
+        "files": [
+          "cards.json",
+          "merchants.csv"
+        ]
+      },
+      {
+        "name": "policies",
+        "role": "Core",
+        "description": "Rego payload validation and ledger invariants.",
+        "files": [
+          "ledger.rego",
+          "pci.rego"
+        ]
+      },
+      {
+        "name": "gateway",
+        "role": "Extension",
+        "description": "Runtime-managed APISIX sidecar routes that front suite APIs and forward traffic into the BabelSuite mock engine.",
+        "files": [
+          "apisix.yaml"
+        ]
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "api/openapi/payments.yaml",
+        "language": "yaml",
+        "content": "openapi: 3.1.0\ninfo:\n  title: Payment Suite\n  version: v2.4.1\nservers:\n  - url: https://payment-suite.mock.internal\npaths:\n  /payments:\n    post:\n      operationId: create_payment\n      summary: Create a payment authorization and fan out to Stripe.\n      responses:\n        \"200\":\n          description: Successful mock response\n  /payments/{paymentId}:\n    get:\n      operationId: get_payment\n      summary: Retrieve a previously authorized payment and ledger status.\n      responses:\n        \"200\":\n          description: Successful mock response\n"
+      },
+      {
+        "path": "api/proto/payments.proto",
+        "language": "protobuf",
+        "content": "syntax = \"proto3\";\n\npackage payment_suite.v1;\n\nservice paymentsService {\n  rpc Ping (PingRequest) returns (PingResponse);\n}\n\nmessage PingRequest {}\n\nmessage PingResponse {\n  string status = 1;\n}\n"
+      },
+      {
+        "path": "fixtures/cards.json",
+        "language": "json",
+        "content": "[\n  {\n    \"brand\": \"visa\",\n    \"country\": \"US\",\n    \"token\": \"tok_visa\"\n  },\n  {\n    \"brand\": \"mastercard\",\n    \"country\": \"GB\",\n    \"token\": \"tok_risky\"\n  }\n]\n"
+      },
+      {
+        "path": "fixtures/merchants.csv",
+        "language": "csv",
+        "content": "id,name,status\nm-117,Core Merchant,active\nm-441,Risky Merchant,review\n"
+      },
+      {
+        "path": "gateway/apisix.yaml",
+        "language": "yaml",
+        "content": "deployment:\n    role: data_plane\n    role_data_plane:\n        config_provider: yaml\nplugins:\n    - name: ext-plugin-pre-req\n    - name: proxy-rewrite\nroutes:\n    - id: payment-suite.create-payment\n      name: create-payment\n      desc: Create a payment authorization and fan out to Stripe.\n      uri: /payments\n      methods:\n        - POST\n      hosts:\n        - payment-suite.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/payment-suite/payment-gateway/payments\",\"operation_id\":\"create-payment\",\"protocol\":\"REST\",\"public_path\":\"/payments\",\"resolver_url\":\"/internal/mock-data/payment-suite/payment-gateway/create-payment\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: create-payment\n            uri: /mocks/rest/payment-suite/payment-gateway/payments\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n    - id: payment-suite.get-payment\n      name: get-payment\n      desc: Retrieve a previously authorized payment and ledger status.\n      uri: /payments/*\n      methods:\n        - GET\n      hosts:\n        - payment-suite.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/payment-suite/payment-gateway/payments/pay_1043\",\"operation_id\":\"get-payment\",\"protocol\":\"REST\",\"public_path\":\"/payments/{paymentId}\",\"resolver_url\":\"/internal/mock-data/payment-suite/payment-gateway/get-payment\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: get-payment\n            regex_uri:\n                - ^/payments/([^/]+)$\n                - /mocks/rest/payment-suite/payment-gateway/payments/$1\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n\n# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.\n# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.\n# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.\n# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.\n#\n# Resolver contracts below describe the internal BabelSuite endpoint APISIX should call to fetch normalized mock data:\n# - payment-suite.create-payment (REST) public=/payments resolver=/internal/mock-data/payment-suite/payment-gateway/create-payment compatibility=/mocks/rest/payment-suite/payment-gateway/payments\n# - payment-suite.get-payment (REST) public=/payments/{paymentId} resolver=/internal/mock-data/payment-suite/payment-gateway/get-payment compatibility=/mocks/rest/payment-suite/payment-gateway/payments/pay_1043\n#END\n"
+      },
+      {
+        "path": "mock/wiremock/stripe/create-charge.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"payment-suite\"\nartifact: \"mock/wiremock/stripe/create-charge.cue\"\noperationId: \"create-payment\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/payments.yaml#/paths/~1payments/post\"\nresolverUrl: \"/internal/mock-data/payment-suite/payment-gateway/create-payment\"\nruntimeUrl: \"/mocks/rest/payment-suite/payment-gateway/payments?status=approved\"\nexamples: {\n  \"approved-card\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"status\",\"value\":\"approved\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n        \"x-suite-profile\": \"local.yaml\"\n      }\n      body: {\n        amount: 1299\n        cardToken: \"tok_visa\"\n        currency: \"USD\"\n        merchantId: \"m-117\"\n      }\n    }\n    responseSchema: {\n      status: \"201\"\n      mediaType: \"application/json\"\n      headers: {\n        \"cache-control\": \"no-store\"\n        \"x-mock-source\": \"stripe-approved\"\n      }\n      body: {\n        status: \"authorized\"\n        paymentId: \"pay_1043\"\n        processor: \"stripe-mock\"\n      }\n    }\n  }\n  \"fraud-review\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"status\",\"value\":\"review\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n        \"x-fraud-score\": \"87\"\n      }\n      body: {\n        amount: 9900\n        cardToken: \"tok_risky\"\n        currency: \"USD\"\n        merchantId: \"m-441\"\n      }\n    }\n    responseSchema: {\n      status: \"202\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-review-queue\": \"fraud-worker\"\n      }\n      body: {\n        status: \"pending_review\"\n        paymentId: \"pay_2048\"\n        reason: \"fraud-score-threshold\"\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/wiremock/stripe/create-charge.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/wiremock/stripe/create-charge.metadata.yaml\n    operationId: create-payment\n    sourceArtifact: mock/wiremock/stripe/create-charge.cue\n    suite: payment-suite\nspec:\n    adapter: rest\n    delayMillis: 80\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"422\"\n        mediatype: application/json\n        body: |-\n            {\n              \"code\": \"UNKNOWN_PAYMENT_SCENARIO\",\n              \"message\": \"No payment mock matched the incoming scenario.\"\n            }\n        headers:\n            - name: x-mock-fallback\n              value: payment-create\n    parameterConstraints:\n        - name: status\n          source: query\n          required: true\n          forward: false\n          pattern: ^(approved|review)$\n        - name: content-type\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)^application/json\n        - name: x-suite-profile\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/payment-suite/payment-gateway/create-payment\n    runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments?status=approved\n    state:\n        lookupkeytemplate: \"\"\n        mutationkeytemplate: payment:{{ response.body.paymentId }}\n        defaults:\n            ledgerState: pending\n            status: created\n        transitions:\n            - onexample: approved-card\n              mutationkeytemplate: \"\"\n              set:\n                ledgerState: posted\n                profile: '{{ request.headers.x-suite-profile }}'\n                status: authorized\n              delete: []\n              increment: {}\n            - onexample: fraud-review\n              mutationkeytemplate: \"\"\n              set:\n                fraudScore: '{{ request.headers.x-fraud-score }}'\n                ledgerState: held\n                profile: '{{ request.headers.x-suite-profile }}'\n                status: pending_review\n              delete: []\n              increment: {}\n"
+      },
+      {
+        "path": "mock/wiremock/stripe/get-payment.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/wiremock/stripe/get-payment.metadata.yaml\n    operationId: get-payment\n    sourceArtifact: mock/wiremock/stripe/get-payment.cue\n    suite: payment-suite\nspec:\n    adapter: rest\n    delayMillis: 0\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"404\"\n        mediatype: application/json\n        body: |-\n            {\n              \"code\": \"PAYMENT_NOT_FOUND\",\n              \"message\": \"No payment state exists for {{ request.path.paymentId }}.\"\n            }\n        headers: []\n    parameterConstraints:\n        - name: paymentId\n          source: path\n          required: true\n          forward: false\n          pattern: ^pay_[A-Za-z0-9]+$\n        - name: x-request-id\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/payment-suite/payment-gateway/get-payment\n    runtimeUrl: /mocks/rest/payment-suite/payment-gateway/payments/pay_1043\n    state:\n        lookupkeytemplate: payment:{{ request.path.paymentId }}\n        mutationkeytemplate: \"\"\n        defaults:\n            ledgerState: posted\n            profile: local.yaml\n            status: authorized\n        transitions: []\n"
+      },
+      {
+        "path": "mock/wiremock/stripe/refund.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\nsuite: \"payment-suite\"\nartifact: \"mock/wiremock/stripe/refund.cue\"\nmessage: \"No seeded exchanges matched this mock file, so BabelSuite generated a placeholder preview.\"\n"
+      },
+      {
+        "path": "policies/ledger.rego",
+        "language": "rego",
+        "content": "package babelsuite.ledger\n\ndefault allow := false\n\nallow if {\n  input.suite == \"payment-suite\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "policies/pci.rego",
+        "language": "rego",
+        "content": "package babelsuite.pci\n\ndefault allow := false\n\nallow if {\n  input.suite == \"payment-suite\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "profiles/local.yaml",
+        "language": "yaml",
+        "content": "name: Local Debug\ndescription: Verbose logs, local secrets, and relaxed timeouts.\ndefault: true\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: local.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/staging.yaml",
+        "language": "yaml",
+        "content": "name: Staging\ndescription: Production-like service topology with Vault-backed references.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: staging.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/year.yaml",
+        "language": "yaml",
+        "content": "name: Year-End\ndescription: Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: year.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "scenarios/checkout_smoke.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
+      },
+      {
+        "path": "scenarios/refund_regression.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
+      },
+      {
+        "path": "scripts/bootstrap_topics.sh",
+        "language": "bash",
+        "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping bootstrap_topics.sh for Payment Suite\"\necho \"resolved modules: postgres, kafka\"\n"
+      },
+      {
+        "path": "scripts/migrate.py",
+        "language": "python",
+        "content": "from pathlib import Path\n\nSUITE_ID = \"payment-suite\"\nSCRIPT_NAME = \"migrate.py\"\n\ndef main() -\u003e None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
+      }
+    ],
+    "contracts": [
+      "Use load(\"@babelsuite/postgres\", \"pg\") to provision the database and read db.url from the returned struct.",
+      "Kafka topics are exposed through a strict address contract so scenario containers never hand-craft broker URLs.",
+      "Mocks live under mock/ and are selected through dispatch criteria rather than ad-hoc conditionals inside suite.star."
+    ],
+    "apiSurfaces": [
+      {
+        "id": "payment-gateway",
+        "title": "Payment Gateway",
+        "protocol": "REST",
+        "mockHost": "https://payment-suite.mock.internal",
+        "description": "Public checkout APIs backed by Wiremock-friendly examples and deterministic fraud scores.",
+        "operations": [
+          {
+            "id": "create-payment",
+            "method": "POST",
+            "name": "/payments",
+            "summary": "Create a payment authorization and fan out to Stripe.",
+            "contractPath": "api/openapi/payments.yaml#/paths/~1payments/post",
+            "mockPath": "mock/wiremock/stripe/create-charge.cue",
+            "mockUrl": "https://payment-suite.mock.internal/payments?status=approved",
+            "curlCommand": "curl -X POST https://payment-suite.mock.internal/payments?status=approved -H 'content-type: application/json' -d '{\"amount\":1299,\"currency\":\"USD\",\"merchantId\":\"m-117\"}'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches POST /payments and calls /internal/mock-data/payment-suite/payment-gateway/create-payment to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "delayMillis": 80,
+              "parameterConstraints": [
+                {
+                  "name": "status",
+                  "source": "query",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^(approved|review)$"
+                },
+                {
+                  "name": "content-type",
+                  "source": "header",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "(?i)^application/json"
+                },
+                {
+                  "name": "x-suite-profile",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "422",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"UNKNOWN_PAYMENT_SCENARIO\",\n  \"message\": \"No payment mock matched the incoming scenario.\"\n}",
+                "headers": [
+                  {
+                    "name": "x-mock-fallback",
+                    "value": "payment-create"
+                  }
+                ]
+              },
+              "state": {
+                "mutationKeyTemplate": "payment:{{ response.body.paymentId }}",
+                "defaults": {
+                  "ledgerState": "pending",
+                  "status": "created"
+                },
+                "transitions": [
+                  {
+                    "onExample": "approved-card",
+                    "set": {
+                      "ledgerState": "posted",
+                      "profile": "{{ request.headers.x-suite-profile }}",
+                      "status": "authorized"
+                    }
+                  },
+                  {
+                    "onExample": "fraud-review",
+                    "set": {
+                      "fraudScore": "{{ request.headers.x-fraud-score }}",
+                      "ledgerState": "held",
+                      "profile": "{{ request.headers.x-suite-profile }}",
+                      "status": "pending_review"
+                    }
+                  }
+                ]
+              },
+              "metadataPath": "mock/wiremock/stripe/create-charge.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/payment-suite/payment-gateway/create-payment",
+              "runtimeUrl": "/mocks/rest/payment-suite/payment-gateway/payments?status=approved"
+            },
+            "exchanges": [
+              {
+                "name": "approved-card",
+                "sourceArtifact": "wiremock/stripe/create-charge.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "status",
+                    "value": "approved"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "x-suite-profile",
+                    "value": "local.yaml"
+                  }
+                ],
+                "requestBody": "{\n  \"amount\": 1299,\n  \"currency\": \"USD\",\n  \"merchantId\": \"m-117\",\n  \"cardToken\": \"tok_visa\"\n}",
+                "responseStatus": "201",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "stripe-approved"
+                  },
+                  {
+                    "name": "cache-control",
+                    "value": "no-store"
+                  }
+                ],
+                "responseBody": "{\n  \"paymentId\": \"pay_1043\",\n  \"status\": \"authorized\",\n  \"processor\": \"stripe-mock\"\n}"
+              },
+              {
+                "name": "fraud-review",
+                "sourceArtifact": "wiremock/stripe/create-charge.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "status",
+                    "value": "review"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "x-fraud-score",
+                    "value": "87"
+                  }
+                ],
+                "requestBody": "{\n  \"amount\": 9900,\n  \"currency\": \"USD\",\n  \"merchantId\": \"m-441\",\n  \"cardToken\": \"tok_risky\"\n}",
+                "responseStatus": "202",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-review-queue",
+                    "value": "fraud-worker"
+                  }
+                ],
+                "responseBody": "{\n  \"paymentId\": \"pay_2048\",\n  \"status\": \"pending_review\",\n  \"reason\": \"fraud-score-threshold\"\n}"
+              }
+            ]
+          },
+          {
+            "id": "get-payment",
+            "method": "GET",
+            "name": "/payments/{paymentId}",
+            "summary": "Retrieve a previously authorized payment and ledger status.",
+            "contractPath": "api/openapi/payments.yaml#/paths/~1payments~1{paymentId}/get",
+            "mockPath": "mock/wiremock/stripe/get-payment.cue",
+            "mockUrl": "https://payment-suite.mock.internal/payments/pay_1043",
+            "curlCommand": "curl https://payment-suite.mock.internal/payments/pay_1043 -H 'accept: application/json'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches GET /payments/{paymentId} and calls /internal/mock-data/payment-suite/payment-gateway/get-payment to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "parameterConstraints": [
+                {
+                  "name": "paymentId",
+                  "source": "path",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^pay_[A-Za-z0-9]+$"
+                },
+                {
+                  "name": "x-request-id",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "404",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"PAYMENT_NOT_FOUND\",\n  \"message\": \"No payment state exists for {{ request.path.paymentId }}.\"\n}"
+              },
+              "state": {
+                "lookupKeyTemplate": "payment:{{ request.path.paymentId }}",
+                "defaults": {
+                  "ledgerState": "posted",
+                  "profile": "local.yaml",
+                  "status": "authorized"
+                }
+              },
+              "metadataPath": "mock/wiremock/stripe/get-payment.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/payment-suite/payment-gateway/get-payment",
+              "runtimeUrl": "/mocks/rest/payment-suite/payment-gateway/payments/pay_1043"
+            },
+            "exchanges": [
+              {
+                "name": "authorized",
+                "sourceArtifact": "wiremock/stripe/get-payment.cue",
+                "when": [
+                  {
+                    "from": "path",
+                    "param": "paymentId",
+                    "value": "pay_1043"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "accept",
+                    "value": "application/json"
+                  }
+                ],
+                "requestBody": "",
+                "responseStatus": "200",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "etag",
+                    "value": "W/\"pay_1043\""
+                  }
+                ],
+                "responseBody": "{\n  \"paymentId\": \"{{ request.path.paymentId }}\",\n  \"status\": \"{{ state.status }}\",\n  \"ledgerState\": \"{{ state.ledgerState }}\",\n  \"profile\": \"{{ state.profile }}\"\n}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "returns-control-plane",
+    "title": "Returns Control Plane",
+    "repository": "localhost:5000/qa/returns-control-plane",
+    "owner": "Commerce QA",
+    "provider": "Zot",
+    "version": "v1.0.0",
+    "tags": [
+      "latest",
+      "v1.0.0",
+      "v0.9.2"
+    ],
+    "description": "Reverse-logistics suite that shows BabelSuite's richer mock runtime with split metadata, templating, constraints, fallback, state, and multi-protocol surfaces.",
+    "modules": [
+      "postgres",
+      "kafka",
+      "grpc"
+    ],
+    "status": "Verified",
+    "score": 92,
+    "pullCommand": "babelctl run localhost:5000/qa/returns-control-plane:v1.0.0",
+    "forkCommand": "babelctl fork localhost:5000/qa/returns-control-plane:v1.0.0 ./returns-control-plane-local",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nreturns_db = container.run(name=\"returns-db\")\nbroker = container.run(name=\"kafka\")\nrefunds_mock = mock(name=\"refunds-mock\", after=[\"returns-db\"])\npricing_mock = mock(name=\"pricing-mock\", after=[\"returns-db\"])\nevents_mock = mock(name=\"events-mock\", after=[\"kafka\"])\nseed_topics = script(name=\"seed-topics\", after=[\"kafka\"])\nseed_routes = script(name=\"seed-routes\", after=[\"returns-db\", \"refunds-mock\", \"pricing-mock\"])\nreturns_api = container.run(name=\"returns-api\", after=[\"returns-db\", \"refunds-mock\", \"pricing-mock\", \"seed-routes\"])\nrefund_worker = container.run(name=\"refund-worker\", after=[\"kafka\", \"returns-api\", \"events-mock\", \"seed-topics\"])\nreturns_smoke = scenario(name=\"returns-smoke\", after=[\"returns-api\", \"refund-worker\"])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local Debug",
+        "description": "Verbose logs, seeded return ids, and open worker traces.",
+        "default": true
+      },
+      {
+        "fileName": "canary.yaml",
+        "label": "Canary Routing",
+        "description": "Canary refund rules with manual-review escalation and delayed callbacks.",
+        "default": false
+      },
+      {
+        "fileName": "peak.yaml",
+        "label": "Peak Season",
+        "description": "High-volume return traffic with fraud screening and worker backpressure.",
+        "default": false
+      }
+    ],
+    "folders": [
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Launch profiles for local, canary, and peak-season refund traffic.",
+        "files": [
+          "local.yaml",
+          "canary.yaml",
+          "peak.yaml"
+        ]
+      },
+      {
+        "name": "api",
+        "role": "Core",
+        "description": "OpenAPI and protobuf contracts for returns and refund pricing.",
+        "files": [
+          "openapi/returns.yaml",
+          "proto/refund_pricing.proto"
+        ]
+      },
+      {
+        "name": "mock",
+        "role": "Core",
+        "description": "Mock payloads plus metadata that control dispatch, fallback, and state.",
+        "files": [
+          "events/refund-authorized.cue",
+          "events/refund-authorized.metadata.yaml",
+          "pricing/quote-refund.cue",
+          "pricing/quote-refund.metadata.yaml",
+          "returns/create-return.cue",
+          "returns/create-return.metadata.yaml",
+          "returns/get-return.cue",
+          "returns/get-return.metadata.yaml"
+        ]
+      },
+      {
+        "name": "scripts",
+        "role": "Core",
+        "description": "Bootstrap hooks for Kafka topics and refund routing tables.",
+        "files": [
+          "seed_topics.sh",
+          "seed_routes.ts"
+        ]
+      },
+      {
+        "name": "scenarios",
+        "role": "Core",
+        "description": "Smoke and manual-review scenarios for reverse logistics flows.",
+        "files": [
+          "returns_smoke.py",
+          "manual_review.spec.ts"
+        ]
+      },
+      {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Seeded return cases and customer profiles.",
+        "files": [
+          "customers.json",
+          "returns.json"
+        ]
+      },
+      {
+        "name": "policies",
+        "role": "Core",
+        "description": "Refund-limit and event-schema validation policies.",
+        "files": [
+          "refund_limits.rego",
+          "event_schema.rego"
+        ]
+      },
+      {
+        "name": "gateway",
+        "role": "Extension",
+        "description": "Runtime-managed APISIX sidecar routes that front suite APIs and forward traffic into the BabelSuite mock engine.",
+        "files": [
+          "apisix.yaml"
+        ]
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "api/openapi/returns.yaml",
+        "language": "yaml",
+        "content": "openapi: 3.1.0\ninfo:\n  title: Returns Control Plane\n  version: v1.0.0\nservers:\n  - url: https://returns-control-plane.mock.internal\npaths:\n  /returns:\n    post:\n      operationId: create_return\n      summary: Create a return request and decide whether it is auto-approved or escalated to manual review.\n      responses:\n        \"200\":\n          description: Successful mock response\n  /returns/{returnId}:\n    get:\n      operationId: get_return\n      summary: Fetch the current return state after creation has mutated mock runtime state.\n      responses:\n        \"200\":\n          description: Successful mock response\n"
+      },
+      {
+        "path": "api/proto/refund_pricing.proto",
+        "language": "protobuf",
+        "content": "syntax = \"proto3\";\n\npackage returns_control_plane.v1;\n\nservice refund_pricingService {\n  rpc QuoteRefund (QuoteRefundRequest) returns (QuoteRefundResponse);\n}\n\nmessage PingRequest {}\n\nmessage PingResponse {\n  string status = 1;\n}\n"
+      },
+      {
+        "path": "fixtures/customers.json",
+        "language": "json",
+        "content": "{\n  \"fixture\": \"customers.json\",\n  \"modules\": [\n    \"postgres\",\n    \"kafka\",\n    \"grpc\"\n  ],\n  \"suite\": \"returns-control-plane\"\n}\n"
+      },
+      {
+        "path": "fixtures/returns.json",
+        "language": "json",
+        "content": "{\n  \"fixture\": \"returns.json\",\n  \"modules\": [\n    \"postgres\",\n    \"kafka\",\n    \"grpc\"\n  ],\n  \"suite\": \"returns-control-plane\"\n}\n"
+      },
+      {
+        "path": "gateway/apisix.yaml",
+        "language": "yaml",
+        "content": "deployment:\n    role: data_plane\n    role_data_plane:\n        config_provider: yaml\nplugins:\n    - name: ext-plugin-pre-req\n    - name: grpc-transcode\n    - name: kafka-proxy\n    - name: proxy-rewrite\nprotos:\n    - id: returns-control-plane.quote-refund\n      desc: api/proto/refund_pricing.proto\n      content: |\n        syntax = \"proto3\";\n\n        package returns_control_plane.v1;\n\n        service refund_pricingService {\n          rpc QuoteRefund (QuoteRefundRequest) returns (QuoteRefundResponse);\n        }\n\n        message PingRequest {}\n\n        message PingResponse {\n          string status = 1;\n        }\nroutes:\n    - id: returns-control-plane.create-return\n      name: create-return\n      desc: Create a return request and decide whether it is auto-approved or escalated to manual review.\n      uri: /returns\n      methods:\n        - POST\n      hosts:\n        - returns-control-plane.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/returns-control-plane/returns-api/returns\",\"operation_id\":\"create-return\",\"protocol\":\"REST\",\"public_path\":\"/returns\",\"resolver_url\":\"/internal/mock-data/returns-control-plane/returns-api/create-return\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: create-return\n            uri: /mocks/rest/returns-control-plane/returns-api/returns\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n    - id: returns-control-plane.get-return\n      name: get-return\n      desc: Fetch the current return state after creation has mutated mock runtime state.\n      uri: /returns/*\n      methods:\n        - GET\n      hosts:\n        - returns-control-plane.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/returns-control-plane/returns-api/returns/ret_1001\",\"operation_id\":\"get-return\",\"protocol\":\"REST\",\"public_path\":\"/returns/{returnId}\",\"resolver_url\":\"/internal/mock-data/returns-control-plane/returns-api/get-return\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: get-return\n            regex_uri:\n                - ^/returns/([^/]+)$\n                - /mocks/rest/returns-control-plane/returns-api/returns/$1\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n    - id: returns-control-plane.publish-refund-authorized.kafka\n      name: publish-refund-authorized\n      desc: Publish a refund-authorized event into the worker lane.\n      uri: /returns.refund.authorized\n      methods:\n        - POST\n      hosts:\n        - returns-control-plane.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/async/returns-control-plane/refund-events/publish-refund-authorized\",\"operation_id\":\"publish-refund-authorized\",\"protocol\":\"KAFKA\",\"public_path\":\"/returns.refund.authorized\",\"resolver_url\":\"/internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized\"}'\n        kafka-proxy:\n            sasl:\n                password: ${{BABELSUITE_KAFKA_PASSWORD}}\n                username: ${{BABELSUITE_KAFKA_USERNAME}}\n      upstream:\n        type: roundrobin\n        scheme: kafka\n        nodes:\n            ${{APISIX_KAFKA_UPSTREAM_ADDR}}: 1\n    - id: returns-control-plane.quote-refund.grpc\n      name: quote-refund\n      desc: Quote the refund amount and decide whether the request is low-risk or needs manual review.\n      uri: /returns.v1.RefundPricing/QuoteRefund\n      methods:\n        - POST\n      hosts:\n        - returns-control-plane.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/grpc/returns-control-plane/pricing-service/quote-refund\",\"operation_id\":\"quote-refund\",\"protocol\":\"GRPC\",\"public_path\":\"/returns.v1.RefundPricing/QuoteRefund\",\"resolver_url\":\"/internal/mock-data/returns-control-plane/pricing-service/quote-refund\"}'\n        grpc-transcode:\n            method: QuoteRefund\n            proto_id: returns-control-plane.quote-refund\n            service: returns.v1.RefundPricing\n      upstream:\n        type: roundrobin\n        scheme: grpc\n        nodes:\n            ${{APISIX_GRPC_UPSTREAM_ADDR}}: 1\n\n# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.\n# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.\n# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.\n# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.\n#\n# Resolver contracts below describe the internal BabelSuite endpoint APISIX should call to fetch normalized mock data:\n# - returns-control-plane.create-return (REST) public=/returns resolver=/internal/mock-data/returns-control-plane/returns-api/create-return compatibility=/mocks/rest/returns-control-plane/returns-api/returns\n# - returns-control-plane.get-return (REST) public=/returns/{returnId} resolver=/internal/mock-data/returns-control-plane/returns-api/get-return compatibility=/mocks/rest/returns-control-plane/returns-api/returns/ret_1001\n# - returns-control-plane.publish-refund-authorized (Kafka) public=/returns.refund.authorized resolver=/internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized compatibility=/mocks/async/returns-control-plane/refund-events/publish-refund-authorized\n# - returns-control-plane.quote-refund (gRPC) public=/returns.v1.RefundPricing/QuoteRefund resolver=/internal/mock-data/returns-control-plane/pricing-service/quote-refund compatibility=/mocks/grpc/returns-control-plane/pricing-service/quote-refund\n#END\n"
+      },
+      {
+        "path": "mock/events/refund-authorized.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"returns-control-plane\"\nartifact: \"mock/events/refund-authorized.cue\"\noperationId: \"publish-refund-authorized\"\nadapter: \"async\"\ndispatcher: \"apisix\"\ncontractPath: \"api/proto/refund_pricing.proto#RefundPricing\"\nresolverUrl: \"/internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized\"\nruntimeUrl: \"/mocks/async/returns-control-plane/refund-events/publish-refund-authorized\"\nexamples: {\n  \"authorized-event\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"type\",\"value\":\"returns.refund.authorized\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n      }\n      body: {\n        returnId: \"ret_1001\"\n      }\n    }\n    responseSchema: {\n      status: \"202\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-event-stream\": \"refunds.authorized\"\n      }\n      body: {\n        status: \"published\"\n        eventId: \"evt_7001\"\n        returnId: \"ret_1001\"\n        type: \"returns.refund.authorized\"\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/events/refund-authorized.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/events/refund-authorized.metadata.yaml\n    operationId: publish-refund-authorized\n    sourceArtifact: mock/events/refund-authorized.cue\n    suite: returns-control-plane\nspec:\n    adapter: async\n    delayMillis: 0\n    fallback:\n        mode: example\n        examplename: authorized-event\n        proxyurl: \"\"\n        status: \"\"\n        mediatype: \"\"\n        body: \"\"\n        headers: []\n    parameterConstraints: []\n    resolverUrl: /internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized\n    runtimeUrl: /mocks/async/returns-control-plane/refund-events/publish-refund-authorized\n    state: null\n"
+      },
+      {
+        "path": "mock/pricing/quote-refund.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"returns-control-plane\"\nartifact: \"mock/pricing/quote-refund.cue\"\noperationId: \"quote-refund\"\nadapter: \"grpc\"\ndispatcher: \"apisix\"\ncontractPath: \"api/proto/refund_pricing.proto#QuoteRefund\"\nresolverUrl: \"/internal/mock-data/returns-control-plane/pricing-service/quote-refund\"\nruntimeUrl: \"/mocks/grpc/returns-control-plane/pricing-service/quote-refund\"\nexamples: {\n  \"fraud-screen\": {\n    dispatch: [{\"from\":\"body\",\"param\":\"returnReason\",\"value\":\"suspicious_activity\"}]\n    requestSchema: {\n      headers: {\n        \"x-risk-tier\": \"high\"\n      }\n      body: {\n        amountCents: 15900\n        currency: \"USD\"\n        returnReason: \"suspicious_activity\"\n      }\n    }\n    responseSchema: {\n      status: \"0\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-pricing-path\": \"manual_review\"\n      }\n      body: {\n        decision: \"manual_review\"\n        quoteId: \"quote_911\"\n        refundCents: 0\n      }\n    }\n  }\n  \"low-risk\": {\n    dispatch: [{\"from\":\"body\",\"param\":\"returnReason\",\"value\":\"damaged\"}]\n    requestSchema: {\n      headers: {\n        \"x-risk-tier\": \"low\"\n      }\n      body: {\n        amountCents: 4200\n        currency: \"USD\"\n        returnReason: \"damaged\"\n      }\n    }\n    responseSchema: {\n      status: \"0\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-pricing-path\": \"instant\"\n      }\n      body: {\n        decision: \"instant\"\n        quoteId: \"quote_301\"\n        refundCents: 4200\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/pricing/quote-refund.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/pricing/quote-refund.metadata.yaml\n    operationId: quote-refund\n    sourceArtifact: mock/pricing/quote-refund.cue\n    suite: returns-control-plane\nspec:\n    adapter: grpc\n    delayMillis: 0\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"5\"\n        mediatype: application/json\n        body: |-\n            {\n              \"code\": \"QUOTE_NOT_AVAILABLE\",\n              \"message\": \"No refund quote mock matched the request.\"\n            }\n        headers: []\n    parameterConstraints:\n        - name: x-risk-tier\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/returns-control-plane/pricing-service/quote-refund\n    runtimeUrl: /mocks/grpc/returns-control-plane/pricing-service/quote-refund\n    state: null\n"
+      },
+      {
+        "path": "mock/returns/create-return.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"returns-control-plane\"\nartifact: \"mock/returns/create-return.cue\"\noperationId: \"create-return\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/returns.yaml#/paths/~1returns/post\"\nresolverUrl: \"/internal/mock-data/returns-control-plane/returns-api/create-return\"\nruntimeUrl: \"/mocks/rest/returns-control-plane/returns-api/returns?scenario=approved\"\nexamples: {\n  \"approved-standard\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"scenario\",\"value\":\"approved\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n        \"x-suite-profile\": \"canary.yaml\"\n      }\n      body: {\n        amountCents: 4200\n        orderId: \"ord_1001\"\n        returnReason: \"damaged\"\n      }\n    }\n    responseSchema: {\n      status: \"201\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-mock-source\": \"returns-approved\"\n      }\n      body: {\n        status: \"approved\"\n        queue: \"auto\"\n        refundMode: \"instant_credit\"\n        returnId: string @gen(kind=\"int\", prefix=\"ret_\", min=1001, max=9999)\n        servedAt: string @gen(kind=\"timestamp\")\n        traceId: string @gen(kind=\"uuid\")\n      }\n    }\n  }\n  \"manual-review\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"scenario\",\"value\":\"manual-review\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n        \"x-suite-profile\": \"peak.yaml\"\n      }\n      body: {\n        amountCents: 15900\n        orderId: \"ord_2042\"\n        returnReason: \"suspicious_activity\"\n      }\n    }\n    responseSchema: {\n      status: \"202\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-review-queue\": \"manual\"\n      }\n      body: {\n        status: \"manual_review\"\n        queue: \"manual\"\n        refundMode: \"agent_review\"\n        returnId: string @gen(kind=\"int\", prefix=\"ret_\", min=2000, max=9999)\n        servedAt: string @gen(kind=\"timestamp\")\n        traceId: string @gen(kind=\"uuid\")\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/returns/create-return.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/returns/create-return.metadata.yaml\n    operationId: create-return\n    sourceArtifact: mock/returns/create-return.cue\n    suite: returns-control-plane\nspec:\n    adapter: rest\n    delayMillis: 120\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"422\"\n        mediatype: application/json\n        body: |-\n            {\n              \"code\": \"UNKNOWN_RETURN_SCENARIO\",\n              \"message\": \"No return mock matched the incoming scenario.\"\n            }\n        headers: []\n    parameterConstraints:\n        - name: scenario\n          source: query\n          required: true\n          forward: false\n          pattern: ^(approved|manual-review)$\n        - name: content-type\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)^application/json\n        - name: x-suite-profile\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/returns-control-plane/returns-api/create-return\n    runtimeUrl: /mocks/rest/returns-control-plane/returns-api/returns?scenario=approved\n    state:\n        lookupkeytemplate: \"\"\n        mutationkeytemplate: return:{{ response.body.returnId }}\n        defaults:\n            refundMode: pending\n            reviewQueue: triage\n            status: created\n        transitions:\n            - onexample: approved-standard\n              mutationkeytemplate: \"\"\n              set:\n                profile: '{{ request.headers.x-suite-profile }}'\n                refundMode: instant_credit\n                reviewQueue: auto\n                status: approved\n              delete: []\n              increment: {}\n            - onexample: manual-review\n              mutationkeytemplate: \"\"\n              set:\n                profile: '{{ request.headers.x-suite-profile }}'\n                refundMode: agent_review\n                reviewQueue: manual\n                status: manual_review\n              delete: []\n              increment: {}\n"
+      },
+      {
+        "path": "mock/returns/get-return.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"returns-control-plane\"\nartifact: \"mock/returns/get-return.cue\"\noperationId: \"get-return\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/returns.yaml#/paths/~1returns~1{returnId}/get\"\nresolverUrl: \"/internal/mock-data/returns-control-plane/returns-api/get-return\"\nruntimeUrl: \"/mocks/rest/returns-control-plane/returns-api/returns/ret_1001\"\nexamples: {\n  \"return-state\": {\n    dispatch: []\n    requestSchema: {\n      headers: {\n        \"x-request-id\": \"req-100\"\n      }\n      body: null\n    }\n    responseSchema: {\n      status: \"200\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-mock-source\": \"returns-state\"\n      }\n      body: {\n        status: string @resolve(path=\"state.status\")\n        profile: string @resolve(path=\"state.profile\")\n        refundMode: string @resolve(path=\"state.refundMode\")\n        returnId: string @resolve(path=\"request.path.returnId\")\n        reviewQueue: string @resolve(path=\"state.reviewQueue\")\n        servedAt: string @gen(kind=\"timestamp\")\n        servedBy: string @resolve(path=\"request.headers.x-mock-node\", fallback=\"apisix-sidecar\")\n        traceId: string @gen(kind=\"uuid\")\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/returns/get-return.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/returns/get-return.metadata.yaml\n    operationId: get-return\n    sourceArtifact: mock/returns/get-return.cue\n    suite: returns-control-plane\nspec:\n    adapter: rest\n    delayMillis: 0\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"404\"\n        mediatype: application/json\n        body: |-\n            {\n              \"code\": \"RETURN_NOT_FOUND\",\n              \"message\": \"No persisted state exists for {{ request.path.returnId }}.\"\n            }\n        headers: []\n    parameterConstraints:\n        - name: returnId\n          source: path\n          required: true\n          forward: false\n          pattern: ^ret_[0-9]+$\n        - name: x-request-id\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/returns-control-plane/returns-api/get-return\n    runtimeUrl: /mocks/rest/returns-control-plane/returns-api/returns/ret_1001\n    state:\n        lookupkeytemplate: return:{{ request.path.returnId }}\n        mutationkeytemplate: \"\"\n        defaults:\n            profile: local.yaml\n            refundMode: instant_credit\n            reviewQueue: auto\n            status: approved\n        transitions: []\n"
+      },
+      {
+        "path": "policies/event_schema.rego",
+        "language": "rego",
+        "content": "package babelsuite.event_schema\n\ndefault allow := false\n\nallow if {\n  input.suite == \"returns-control-plane\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "policies/refund_limits.rego",
+        "language": "rego",
+        "content": "package babelsuite.refund_limits\n\ndefault allow := false\n\nallow if {\n  input.suite == \"returns-control-plane\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "profiles/canary.yaml",
+        "language": "yaml",
+        "content": "name: Canary Routing\ndescription: Canary refund rules with manual-review escalation and delayed callbacks.\ndefault: false\nruntime:\n  suite: returns-control-plane\n  repository: localhost:5000/qa/returns-control-plane\n  profileFile: canary.yaml\nmodules:\n    - postgres\n    - kafka\n    - grpc\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/local.yaml",
+        "language": "yaml",
+        "content": "name: Local Debug\ndescription: Verbose logs, seeded return ids, and open worker traces.\ndefault: true\nruntime:\n  suite: returns-control-plane\n  repository: localhost:5000/qa/returns-control-plane\n  profileFile: local.yaml\nmodules:\n    - postgres\n    - kafka\n    - grpc\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/peak.yaml",
+        "language": "yaml",
+        "content": "name: Peak Season\ndescription: High-volume return traffic with fraud screening and worker backpressure.\ndefault: false\nruntime:\n  suite: returns-control-plane\n  repository: localhost:5000/qa/returns-control-plane\n  profileFile: peak.yaml\nmodules:\n    - postgres\n    - kafka\n    - grpc\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "scenarios/manual_review.spec.ts",
+        "language": "typescript",
+        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"manual review.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Returns Control Plane\")).toBeVisible()\n})\n"
+      },
+      {
+        "path": "scenarios/returns_smoke.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"Returns Control Plane\"\n    assert \"returns-control-plane\" in \"localhost:5000/qa/returns-control-plane\"\n"
+      },
+      {
+        "path": "scripts/seed_routes.ts",
+        "language": "typescript",
+        "content": "const suiteId = \"returns-control-plane\"\nconst scriptName = \"seed_routes.ts\"\n\nconsole.log(`running ${scriptName} for ${suiteId}`)\n"
+      },
+      {
+        "path": "scripts/seed_topics.sh",
+        "language": "bash",
+        "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_topics.sh for Returns Control Plane\"\necho \"resolved modules: postgres, kafka, grpc\"\n"
+      }
+    ],
+    "contracts": [
+      "Examples live in mock/ while runtime behavior is split into adjacent metadata files so dispatch logic can evolve without rewriting payloads.",
+      "Return creation writes persisted mock state that the lookup operation renders later through templates.",
+      "REST, gRPC, and async surfaces share one mock engine while keeping protocol-specific runtime adapters at the edge."
+    ],
+    "apiSurfaces": [
+      {
+        "id": "returns-api",
+        "title": "Returns API",
+        "protocol": "REST",
+        "mockHost": "https://returns-control-plane.mock.internal",
+        "description": "REST surface for creating and reading returns with stateful decisions and strict parameter validation.",
+        "operations": [
+          {
+            "id": "create-return",
+            "method": "POST",
+            "name": "/returns",
+            "summary": "Create a return request and decide whether it is auto-approved or escalated to manual review.",
+            "contractPath": "api/openapi/returns.yaml#/paths/~1returns/post",
+            "mockPath": "mock/returns/create-return.cue",
+            "mockUrl": "https://returns-control-plane.mock.internal/returns?scenario=approved",
+            "curlCommand": "curl -X POST \"https://returns-control-plane.mock.internal/returns?scenario=approved\" -H \"content-type: application/json\" -H \"x-suite-profile: canary.yaml\" -d '{\"orderId\":\"ord_1001\",\"returnReason\":\"damaged\",\"amountCents\":4200}'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches POST /returns and calls /internal/mock-data/returns-control-plane/returns-api/create-return to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "delayMillis": 120,
+              "parameterConstraints": [
+                {
+                  "name": "scenario",
+                  "source": "query",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^(approved|manual-review)$"
+                },
+                {
+                  "name": "content-type",
+                  "source": "header",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "(?i)^application/json"
+                },
+                {
+                  "name": "x-suite-profile",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "422",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"UNKNOWN_RETURN_SCENARIO\",\n  \"message\": \"No return mock matched the incoming scenario.\"\n}"
+              },
+              "state": {
+                "mutationKeyTemplate": "return:{{ response.body.returnId }}",
+                "defaults": {
+                  "refundMode": "pending",
+                  "reviewQueue": "triage",
+                  "status": "created"
+                },
+                "transitions": [
+                  {
+                    "onExample": "approved-standard",
+                    "set": {
+                      "profile": "{{ request.headers.x-suite-profile }}",
+                      "refundMode": "instant_credit",
+                      "reviewQueue": "auto",
+                      "status": "approved"
+                    }
+                  },
+                  {
+                    "onExample": "manual-review",
+                    "set": {
+                      "profile": "{{ request.headers.x-suite-profile }}",
+                      "refundMode": "agent_review",
+                      "reviewQueue": "manual",
+                      "status": "manual_review"
+                    }
+                  }
+                ]
+              },
+              "metadataPath": "mock/returns/create-return.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/returns-control-plane/returns-api/create-return",
+              "runtimeUrl": "/mocks/rest/returns-control-plane/returns-api/returns?scenario=approved"
+            },
+            "exchanges": [
+              {
+                "name": "approved-standard",
+                "sourceArtifact": "mock/returns/create-return.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "scenario",
+                    "value": "approved"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "x-suite-profile",
+                    "value": "canary.yaml"
+                  }
+                ],
+                "requestBody": "{\n  \"orderId\": \"ord_1001\",\n  \"returnReason\": \"damaged\",\n  \"amountCents\": 4200\n}",
+                "responseStatus": "201",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "returns-approved"
+                  }
+                ],
+                "responseBody": "{\n  \"returnId\": \"ret_1001\",\n  \"status\": \"approved\",\n  \"refundMode\": \"instant_credit\",\n  \"queue\": \"auto\",\n  \"traceId\": \"00000000-0000-0000-0000-000000000001\",\n  \"servedAt\": \"2026-01-01T00:00:00Z\"\n}"
+              },
+              {
+                "name": "manual-review",
+                "sourceArtifact": "mock/returns/create-return.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "scenario",
+                    "value": "manual-review"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "x-suite-profile",
+                    "value": "peak.yaml"
+                  }
+                ],
+                "requestBody": "{\n  \"orderId\": \"ord_2042\",\n  \"returnReason\": \"suspicious_activity\",\n  \"amountCents\": 15900\n}",
+                "responseStatus": "202",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-review-queue",
+                    "value": "manual"
+                  }
+                ],
+                "responseBody": "{\n  \"returnId\": \"ret_2042\",\n  \"status\": \"manual_review\",\n  \"refundMode\": \"agent_review\",\n  \"queue\": \"manual\",\n  \"traceId\": \"00000000-0000-0000-0000-000000000002\",\n  \"servedAt\": \"2026-01-01T00:05:00Z\"\n}"
+              }
+            ]
+          },
+          {
+            "id": "get-return",
+            "method": "GET",
+            "name": "/returns/{returnId}",
+            "summary": "Fetch the current return state after creation has mutated mock runtime state.",
+            "contractPath": "api/openapi/returns.yaml#/paths/~1returns~1{returnId}/get",
+            "mockPath": "mock/returns/get-return.cue",
+            "mockUrl": "https://returns-control-plane.mock.internal/returns/ret_1001",
+            "curlCommand": "curl \"https://returns-control-plane.mock.internal/returns/ret_1001\" -H \"x-request-id: req-100\"",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches GET /returns/{returnId} and calls /internal/mock-data/returns-control-plane/returns-api/get-return to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "parameterConstraints": [
+                {
+                  "name": "returnId",
+                  "source": "path",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^ret_[0-9]+$"
+                },
+                {
+                  "name": "x-request-id",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "404",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"RETURN_NOT_FOUND\",\n  \"message\": \"No persisted state exists for {{ request.path.returnId }}.\"\n}"
+              },
+              "state": {
+                "lookupKeyTemplate": "return:{{ request.path.returnId }}",
+                "defaults": {
+                  "profile": "local.yaml",
+                  "refundMode": "instant_credit",
+                  "reviewQueue": "auto",
+                  "status": "approved"
+                }
+              },
+              "metadataPath": "mock/returns/get-return.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/returns-control-plane/returns-api/get-return",
+              "runtimeUrl": "/mocks/rest/returns-control-plane/returns-api/returns/ret_1001"
+            },
+            "exchanges": [
+              {
+                "name": "return-state",
+                "sourceArtifact": "mock/returns/get-return.cue",
+                "requestHeaders": [
+                  {
+                    "name": "x-request-id",
+                    "value": "req-100"
+                  }
+                ],
+                "requestBody": "",
+                "responseStatus": "200",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "returns-state"
+                  }
+                ],
+                "responseBody": "{\n  \"returnId\": \"ret_1001\",\n  \"status\": \"approved\",\n  \"refundMode\": \"instant_credit\",\n  \"reviewQueue\": \"auto\",\n  \"profile\": \"local.yaml\",\n  \"servedBy\": \"apisix-sidecar\",\n  \"traceId\": \"00000000-0000-0000-0000-000000000003\",\n  \"servedAt\": \"2026-01-01T00:10:00Z\"\n}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pricing-service",
+        "title": "Refund Pricing",
+        "protocol": "gRPC",
+        "mockHost": "grpc://returns-control-plane.mock.internal",
+        "description": "gRPC refund-quote surface that reuses the shared mock engine through a thin protocol adapter.",
+        "operations": [
+          {
+            "id": "quote-refund",
+            "method": "RPC",
+            "name": "returns.v1.RefundPricing/QuoteRefund",
+            "summary": "Quote the refund amount and decide whether the request is low-risk or needs manual review.",
+            "contractPath": "api/proto/refund_pricing.proto#QuoteRefund",
+            "mockPath": "mock/pricing/quote-refund.cue",
+            "mockUrl": "grpc://returns-control-plane.mock.internal/returns.v1.RefundPricing/QuoteRefund",
+            "curlCommand": "grpcurl -plaintext -d '{\"returnReason\":\"damaged\",\"amountCents\":4200,\"currency\":\"USD\"}' returns-control-plane.mock.internal returns.v1.RefundPricing/QuoteRefund",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "grpc",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar should terminate or normalize gRPC traffic for /returns.v1.RefundPricing/QuoteRefund and call /internal/mock-data/returns-control-plane/pricing-service/quote-refund to fetch normalized status, headers, and body so APISIX remains the visible responder while BabelSuite only resolves the matched exchange.",
+              "parameterConstraints": [
+                {
+                  "name": "x-risk-tier",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "5",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"QUOTE_NOT_AVAILABLE\",\n  \"message\": \"No refund quote mock matched the request.\"\n}"
+              },
+              "metadataPath": "mock/pricing/quote-refund.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/returns-control-plane/pricing-service/quote-refund",
+              "runtimeUrl": "/mocks/grpc/returns-control-plane/pricing-service/quote-refund"
+            },
+            "exchanges": [
+              {
+                "name": "low-risk",
+                "sourceArtifact": "mock/pricing/quote-refund.cue",
+                "when": [
+                  {
+                    "from": "body",
+                    "param": "returnReason",
+                    "value": "damaged"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "x-risk-tier",
+                    "value": "low"
+                  }
+                ],
+                "requestBody": "{\n  \"returnReason\": \"damaged\",\n  \"amountCents\": 4200,\n  \"currency\": \"USD\"\n}",
+                "responseStatus": "0",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-pricing-path",
+                    "value": "instant"
+                  }
+                ],
+                "responseBody": "{\n  \"quoteId\": \"quote_301\",\n  \"decision\": \"instant\",\n  \"refundCents\": 4200\n}"
+              },
+              {
+                "name": "fraud-screen",
+                "sourceArtifact": "mock/pricing/quote-refund.cue",
+                "when": [
+                  {
+                    "from": "body",
+                    "param": "returnReason",
+                    "value": "suspicious_activity"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "x-risk-tier",
+                    "value": "high"
+                  }
+                ],
+                "requestBody": "{\n  \"returnReason\": \"suspicious_activity\",\n  \"amountCents\": 15900,\n  \"currency\": \"USD\"\n}",
+                "responseStatus": "0",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-pricing-path",
+                    "value": "manual_review"
+                  }
+                ],
+                "responseBody": "{\n  \"quoteId\": \"quote_911\",\n  \"decision\": \"manual_review\",\n  \"refundCents\": 0\n}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "refund-events",
+        "title": "Refund Events",
+        "protocol": "Async",
+        "mockHost": "kafka://returns-control-plane.mock.internal",
+        "description": "Async event surface for refund authorization callbacks and worker validation flows.",
+        "operations": [
+          {
+            "id": "publish-refund-authorized",
+            "method": "EVENT",
+            "name": "returns.refund.authorized",
+            "summary": "Publish a refund-authorized event into the worker lane.",
+            "contractPath": "api/proto/refund_pricing.proto#RefundPricing",
+            "mockPath": "mock/events/refund-authorized.cue",
+            "mockUrl": "kafka://returns-control-plane.mock.internal/returns.refund.authorized",
+            "curlCommand": "curl -X POST \"http://localhost:8090/mocks/async/returns-control-plane/refund-events/publish-refund-authorized?type=returns.refund.authorized\" -H \"content-type: application/json\" -d '{\"returnId\":\"ret_1001\"}'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "async",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar should use a plugin-backed event adapter for /returns.refund.authorized and call /internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized to fetch normalized payload data so APISIX owns the broker-facing response flow while BabelSuite only generates the mock payload.",
+              "fallback": {
+                "mode": "example",
+                "exampleName": "authorized-event"
+              },
+              "metadataPath": "mock/events/refund-authorized.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/returns-control-plane/refund-events/publish-refund-authorized",
+              "runtimeUrl": "/mocks/async/returns-control-plane/refund-events/publish-refund-authorized"
+            },
+            "exchanges": [
+              {
+                "name": "authorized-event",
+                "sourceArtifact": "mock/events/refund-authorized.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "type",
+                    "value": "returns.refund.authorized"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  }
+                ],
+                "requestBody": "{\n  \"returnId\": \"ret_1001\"\n}",
+                "responseStatus": "202",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-event-stream",
+                    "value": "refunds.authorized"
+                  }
+                ],
+                "responseBody": "{\n  \"eventId\": \"evt_7001\",\n  \"type\": \"returns.refund.authorized\",\n  \"returnId\": \"ret_1001\",\n  \"status\": \"published\"\n}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "soap-claims-hub",
+    "title": "SOAP Claims Hub",
+    "repository": "localhost:5000/enterprise-integration/soap-claims-hub",
+    "owner": "Enterprise Integration",
+    "provider": "Zot",
+    "version": "v0.9.0",
+    "tags": [
+      "latest",
+      "v0.9.0",
+      "v0.8.3"
+    ],
+    "description": "Legacy claims sandbox with a SOAP intake surface, XML envelopes, and APISIX-fronted dispatch into the BabelSuite mock engine.",
+    "modules": [],
+    "status": "Verified",
+    "score": 87,
+    "pullCommand": "babelctl run localhost:5000/enterprise-integration/soap-claims-hub:v0.9.0",
+    "forkCommand": "babelctl fork localhost:5000/enterprise-integration/soap-claims-hub:v0.9.0 ./soap-claims-hub-local",
+    "suiteStar": "load(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nclaims_mock = mock(name=\"claims-mock\")\nseed_reference_data = script(name=\"seed-reference-data\", after=[\"claims-mock\"])\nclaims_bridge = container.run(name=\"claims-bridge\", after=[\"claims-mock\", \"seed-reference-data\"])\nclaims_smoke = scenario(name=\"claims-smoke\", after=[\"claims-bridge\"])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local Debug",
+        "description": "Relaxed SOAP timeouts with verbose envelope logging.",
+        "default": true
+      },
+      {
+        "fileName": "canary.yaml",
+        "label": "Canary Partner",
+        "description": "Partner-like SOAP headers and stricter claim review toggles.",
+        "default": false
+      }
+    ],
+    "folders": [
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "SOAP endpoint runtime knobs and partner header defaults.",
+        "files": [
+          "local.yaml",
+          "canary.yaml"
+        ]
+      },
+      {
+        "name": "api",
+        "role": "Core",
+        "description": "WSDL contract published to legacy claim submitters.",
+        "files": [
+          "wsdl/claims.wsdl"
+        ]
+      },
+      {
+        "name": "mock",
+        "role": "Core",
+        "description": "Schema-driven SOAP mock definitions that render XML envelopes at runtime.",
+        "files": [
+          "claims/claim-service.cue",
+          "claims/claim-service.metadata.yaml"
+        ]
+      },
+      {
+        "name": "scripts",
+        "role": "Core",
+        "description": "Bootstrap hooks for claim code tables and partner fixtures.",
+        "files": [
+          "seed_reference_data.sh"
+        ]
+      },
+      {
+        "name": "scenarios",
+        "role": "Core",
+        "description": "Smoke coverage for submit and lookup SOAP exchanges.",
+        "files": [
+          "claims_smoke.py"
+        ]
+      },
+      {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Seeded partner claims and policy fixtures.",
+        "files": [
+          "claims.json"
+        ]
+      },
+      {
+        "name": "policies",
+        "role": "Core",
+        "description": "SOAP fault and envelope validation policies.",
+        "files": [
+          "soap_faults.rego"
+        ]
+      },
+      {
+        "name": "gateway",
+        "role": "Extension",
+        "description": "Runtime-managed APISIX sidecar routes that front suite APIs and forward traffic into the BabelSuite mock engine.",
+        "files": [
+          "apisix.yaml"
+        ]
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "api/wsdl/claims.wsdl",
+        "language": "xml",
+        "content": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cdefinitions xmlns=\"http://schemas.xmlsoap.org/wsdl/\" xmlns:soap=\"http://schemas.xmlsoap.org/wsdl/soap/\" xmlns:tns=\"urn:babelsuite:soap-claims-hub\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" name=\"claimsService\" targetNamespace=\"urn:babelsuite:soap-claims-hub\"\u003e\n  \u003ctypes\u003e\n    \u003cxsd:schema targetNamespace=\"urn:babelsuite:soap-claims-hub\"\u003e\n      \u003cxsd:element name=\"SubmitClaimRequest\" type=\"xsd:string\"/\u003e\n      \u003cxsd:element name=\"SubmitClaimResponse\" type=\"xsd:string\"/\u003e\n      \u003cxsd:element name=\"GetClaimStatusRequest\" type=\"xsd:string\"/\u003e\n      \u003cxsd:element name=\"GetClaimStatusResponse\" type=\"xsd:string\"/\u003e\n    \u003c/xsd:schema\u003e\n  \u003c/types\u003e\n\n  \u003cmessage name=\"SubmitClaimInput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:SubmitClaimRequest\"/\u003e\n  \u003c/message\u003e\n  \u003cmessage name=\"SubmitClaimOutput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:SubmitClaimResponse\"/\u003e\n  \u003c/message\u003e\n\n  \u003cmessage name=\"GetClaimStatusInput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:GetClaimStatusRequest\"/\u003e\n  \u003c/message\u003e\n  \u003cmessage name=\"GetClaimStatusOutput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:GetClaimStatusResponse\"/\u003e\n  \u003c/message\u003e\n\n  \u003cportType name=\"claimsPortType\"\u003e\n    \u003coperation name=\"SubmitClaim\"\u003e\n      \u003cinput message=\"tns:SubmitClaimInput\"/\u003e\n      \u003coutput message=\"tns:SubmitClaimOutput\"/\u003e\n    \u003c/operation\u003e\n    \u003coperation name=\"GetClaimStatus\"\u003e\n      \u003cinput message=\"tns:GetClaimStatusInput\"/\u003e\n      \u003coutput message=\"tns:GetClaimStatusOutput\"/\u003e\n    \u003c/operation\u003e\n  \u003c/portType\u003e\n  \u003cbinding name=\"claimsBinding\" type=\"tns:claimsPortType\"\u003e\n    \u003csoap:binding transport=\"http://schemas.xmlsoap.org/soap/http\" style=\"document\"/\u003e\n    \u003coperation name=\"SubmitClaim\"\u003e\n      \u003csoap:operation soapAction=\"urn:SubmitClaim\"/\u003e\n      \u003cinput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/input\u003e\n      \u003coutput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/output\u003e\n    \u003c/operation\u003e\n    \u003coperation name=\"GetClaimStatus\"\u003e\n      \u003csoap:operation soapAction=\"urn:GetClaimStatus\"/\u003e\n      \u003cinput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/input\u003e\n      \u003coutput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/output\u003e\n    \u003c/operation\u003e\n  \u003c/binding\u003e\n  \u003cservice name=\"claimsService\"\u003e\n    \u003cport name=\"claimsPort\" binding=\"tns:claimsBinding\"\u003e\n      \u003csoap:address location=\"https://soap-claims-hub.mock.internal/ClaimService\"/\u003e\n    \u003c/port\u003e\n  \u003c/service\u003e\n\u003c/definitions\u003e\n"
+      },
+      {
+        "path": "fixtures/claims.json",
+        "language": "json",
+        "content": "[\n  {\n    \"email\": \"admin@babelsuite.test\",\n    \"role\": \"admin\"\n  },\n  {\n    \"email\": \"shopper@demo.test\",\n    \"role\": \"demo\"\n  }\n]\n"
+      },
+      {
+        "path": "gateway/apisix.yaml",
+        "language": "yaml",
+        "content": "deployment:\n    role: data_plane\n    role_data_plane:\n        config_provider: yaml\nplugins:\n    - name: ext-plugin-pre-req\n    - name: proxy-rewrite\nroutes:\n    - id: soap-claims-hub.claim-service\n      name: claim-service\n      desc: Accept SubmitClaim and GetClaimStatus SOAP actions on the shared claims endpoint.\n      uri: /ClaimService\n      methods:\n        - POST\n      hosts:\n        - soap-claims-hub.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/soap-claims-hub/claims-soap/ClaimService\",\"operation_id\":\"claim-service\",\"protocol\":\"SOAP\",\"public_path\":\"/ClaimService\",\"resolver_url\":\"/internal/mock-data/soap-claims-hub/claims-soap/claim-service\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: claim-service\n            uri: /mocks/rest/soap-claims-hub/claims-soap/ClaimService\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n\n# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.\n# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.\n# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.\n# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.\n#\n# Resolver contracts below describe the internal BabelSuite endpoint APISIX should call to fetch normalized mock data:\n# - soap-claims-hub.claim-service (SOAP) public=/ClaimService resolver=/internal/mock-data/soap-claims-hub/claims-soap/claim-service compatibility=/mocks/rest/soap-claims-hub/claims-soap/ClaimService\n#END\n"
+      },
+      {
+        "path": "mock/claims/claim-service.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"soap-claims-hub\"\nartifact: \"mock/claims/claim-service.cue\"\noperationId: \"claim-service\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/wsdl/claims.wsdl#ClaimService\"\nresolverUrl: \"/internal/mock-data/soap-claims-hub/claims-soap/claim-service\"\nruntimeUrl: \"/mocks/rest/soap-claims-hub/claims-soap/ClaimService\"\nexamples: {\n  GetClaimStatus: {\n    dispatch: [{\"from\":\"header\",\"param\":\"soapaction\",\"value\":\"urn:GetClaimStatus\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"text/xml; charset=utf-8\"\n        soapaction: \"urn:GetClaimStatus\"\n      }\n      body: \"\\u003c?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?\\u003e\\n\\u003csoapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:clm=\\\"urn:claims:v1\\\"\\u003e\\n  \\u003csoapenv:Header/\\u003e\\n  \\u003csoapenv:Body\\u003e\\n    \\u003cclm:GetClaimStatusRequest\\u003e\\n      \\u003cclm:ClaimId\\u003eclm_2048\\u003c/clm:ClaimId\\u003e\\n    \\u003c/clm:GetClaimStatusRequest\\u003e\\n  \\u003c/soapenv:Body\\u003e\\n\\u003c/soapenv:Envelope\\u003e\"\n    }\n    responseSchema: {\n      status: \"200\"\n      mediaType: \"text/xml; charset=utf-8\"\n      headers: {\n        \"x-mock-source\": \"soap-claim-status\"\n      }\n      body: string @compose(\"\\u003c?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?\\u003e\\n\\u003csoapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:clm=\\\"urn:claims:v1\\\"\\u003e\\n  \\u003csoapenv:Body\\u003e\\n    \\u003cclm:GetClaimStatusResponse\\u003e\\n      \\u003cclm:ClaimId\\u003eclm_2048\\u003c/clm:ClaimId\\u003e\\n      \\u003cclm:Status\\u003eIN_REVIEW\\u003c/clm:Status\\u003e\\n      \\u003cclm:Owner\\u003emanual_queue\\u003c/clm:Owner\\u003e\\n      \\u003cclm:TraceId\\u003e\", gen(kind=\"uuid\"), \"\\u003c/clm:TraceId\\u003e\\n      \\u003cclm:ServedAt\\u003e\", gen(kind=\"timestamp\"), \"\\u003c/clm:ServedAt\\u003e\\n    \\u003c/clm:GetClaimStatusResponse\\u003e\\n  \\u003c/soapenv:Body\\u003e\\n\\u003c/soapenv:Envelope\\u003e\")\n    }\n  }\n  SubmitClaim: {\n    dispatch: [{\"from\":\"header\",\"param\":\"soapaction\",\"value\":\"urn:SubmitClaim\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"text/xml; charset=utf-8\"\n        soapaction: \"urn:SubmitClaim\"\n        \"x-suite-profile\": \"canary.yaml\"\n      }\n      body: \"\\u003c?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?\\u003e\\n\\u003csoapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:clm=\\\"urn:claims:v1\\\"\\u003e\\n  \\u003csoapenv:Header/\\u003e\\n  \\u003csoapenv:Body\\u003e\\n    \\u003cclm:SubmitClaimRequest\\u003e\\n      \\u003cclm:PolicyNumber\\u003ePL-1024\\u003c/clm:PolicyNumber\\u003e\\n      \\u003cclm:LossType\\u003ewater\\u003c/clm:LossType\\u003e\\n      \\u003cclm:Amount\\u003e4200\\u003c/clm:Amount\\u003e\\n    \\u003c/clm:SubmitClaimRequest\\u003e\\n  \\u003c/soapenv:Body\\u003e\\n\\u003c/soapenv:Envelope\\u003e\"\n    }\n    responseSchema: {\n      status: \"200\"\n      mediaType: \"text/xml; charset=utf-8\"\n      headers: {\n        \"x-mock-source\": \"soap-submit-claim\"\n      }\n      body: string @compose(\"\\u003c?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?\\u003e\\n\\u003csoapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:clm=\\\"urn:claims:v1\\\"\\u003e\\n  \\u003csoapenv:Body\\u003e\\n    \\u003cclm:SubmitClaimResponse\\u003e\\n      \\u003cclm:ClaimId\\u003eclm_\", gen(kind=\"int\", min=1001, max=9999), \"\\u003c/clm:ClaimId\\u003e\\n      \\u003cclm:Decision\\u003eAPPROVED\\u003c/clm:Decision\\u003e\\n      \\u003cclm:Profile\\u003e\", resolve(path=\"request.headers.x-suite-profile\", fallback=\"local.yaml\"), \"\\u003c/clm:Profile\\u003e\\n      \\u003cclm:TraceId\\u003e\", gen(kind=\"uuid\"), \"\\u003c/clm:TraceId\\u003e\\n      \\u003cclm:ServedAt\\u003e\", gen(kind=\"timestamp\"), \"\\u003c/clm:ServedAt\\u003e\\n    \\u003c/clm:SubmitClaimResponse\\u003e\\n  \\u003c/soapenv:Body\\u003e\\n\\u003c/soapenv:Envelope\\u003e\")\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/claims/claim-service.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/claims/claim-service.metadata.yaml\n    operationId: claim-service\n    sourceArtifact: mock/claims/claim-service.cue\n    suite: soap-claims-hub\nspec:\n    adapter: rest\n    delayMillis: 90\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"500\"\n        mediatype: text/xml; charset=utf-8\n        body: |-\n            \u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n            \u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\u003e\n              \u003csoapenv:Body\u003e\n                \u003csoapenv:Fault\u003e\n                  \u003cfaultcode\u003esoapenv:Client\u003c/faultcode\u003e\n                  \u003cfaultstring\u003eNo SOAPAction matched the incoming request.\u003c/faultstring\u003e\n                \u003c/soapenv:Fault\u003e\n              \u003c/soapenv:Body\u003e\n            \u003c/soapenv:Envelope\u003e\n        headers: []\n    parameterConstraints:\n        - name: content-type\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)^(text/xml|application/soap\\+xml)\n        - name: soapaction\n          source: header\n          required: true\n          forward: false\n          pattern: ^urn:(SubmitClaim|GetClaimStatus)$\n        - name: x-suite-profile\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/soap-claims-hub/claims-soap/claim-service\n    runtimeUrl: /mocks/rest/soap-claims-hub/claims-soap/ClaimService\n    state: null\n"
+      },
+      {
+        "path": "policies/soap_faults.rego",
+        "language": "rego",
+        "content": "package babelsuite.soap_faults\n\ndefault allow := false\n\nallow if {\n  input.suite == \"soap-claims-hub\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "profiles/canary.yaml",
+        "language": "yaml",
+        "content": "name: Canary Partner\ndescription: Partner-like SOAP headers and stricter claim review toggles.\ndefault: false\nruntime:\n  suite: soap-claims-hub\n  repository: localhost:5000/enterprise-integration/soap-claims-hub\n  profileFile: canary.yaml\nmodules:\n    - runtime\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/local.yaml",
+        "language": "yaml",
+        "content": "name: Local Debug\ndescription: Relaxed SOAP timeouts with verbose envelope logging.\ndefault: true\nruntime:\n  suite: soap-claims-hub\n  repository: localhost:5000/enterprise-integration/soap-claims-hub\n  profileFile: local.yaml\nmodules:\n    - runtime\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "scenarios/claims_smoke.py",
+        "language": "python",
+        "content": "def test_smoke() -\u003e None:\n    assert \"SOAP Claims Hub\"\n    assert \"soap-claims-hub\" in \"localhost:5000/enterprise-integration/soap-claims-hub\"\n"
+      },
+      {
+        "path": "scripts/seed_reference_data.sh",
+        "language": "bash",
+        "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_reference_data.sh for SOAP Claims Hub\"\necho \"resolved modules: \"\n"
+      }
+    ],
+    "contracts": [
+      "The SOAP endpoint is fronted by APISIX, but BabelSuite still owns the request/response mock generation behind the sidecar.",
+      "WSDL stays under api/ while schema-backed mock definitions in mock/ drive runtime XML envelopes.",
+      "SOAPAction is treated as the primary dispatch key so legacy XML clients do not need JSON-specific adapters."
+    ],
+    "apiSurfaces": [
+      {
+        "id": "claims-soap",
+        "title": "Claims SOAP Service",
+        "protocol": "SOAP",
+        "mockHost": "https://soap-claims-hub.mock.internal",
+        "description": "SOAP 1.1 claim intake and status lookup routed through APISIX into the shared BabelSuite mock engine.",
+        "operations": [
+          {
+            "id": "claim-service",
+            "method": "POST",
+            "name": "/ClaimService",
+            "summary": "Accept SubmitClaim and GetClaimStatus SOAP actions on the shared claims endpoint.",
+            "contractPath": "api/wsdl/claims.wsdl#ClaimService",
+            "mockPath": "mock/claims/claim-service.cue",
+            "mockUrl": "https://soap-claims-hub.mock.internal/ClaimService",
+            "curlCommand": "curl -X POST \"https://soap-claims-hub.mock.internal/ClaimService\" -H \"content-type: text/xml; charset=utf-8\" -H \"soapaction: urn:SubmitClaim\" -H \"x-suite-profile: canary.yaml\" -d '\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Header/\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:SubmitClaimRequest\u003e\n      \u003cclm:PolicyNumber\u003ePL-1024\u003c/clm:PolicyNumber\u003e\n      \u003cclm:LossType\u003ewater\u003c/clm:LossType\u003e\n      \u003cclm:Amount\u003e4200\u003c/clm:Amount\u003e\n    \u003c/clm:SubmitClaimRequest\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar should terminate SOAP envelopes on POST /ClaimService, preserve SOAPAction routing, and call /internal/mock-data/soap-claims-hub/claims-soap/claim-service to fetch the matched XML response while APISIX remains the public SOAP responder.",
+              "delayMillis": 90,
+              "parameterConstraints": [
+                {
+                  "name": "content-type",
+                  "source": "header",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "(?i)^(text/xml|application/soap\\+xml)"
+                },
+                {
+                  "name": "soapaction",
+                  "source": "header",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^urn:(SubmitClaim|GetClaimStatus)$"
+                },
+                {
+                  "name": "x-suite-profile",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "500",
+                "mediaType": "text/xml; charset=utf-8",
+                "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\u003e\n  \u003csoapenv:Body\u003e\n    \u003csoapenv:Fault\u003e\n      \u003cfaultcode\u003esoapenv:Client\u003c/faultcode\u003e\n      \u003cfaultstring\u003eNo SOAPAction matched the incoming request.\u003c/faultstring\u003e\n    \u003c/soapenv:Fault\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e"
+              },
+              "metadataPath": "mock/claims/claim-service.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/soap-claims-hub/claims-soap/claim-service",
+              "runtimeUrl": "/mocks/rest/soap-claims-hub/claims-soap/ClaimService"
+            },
+            "exchanges": [
+              {
+                "name": "SubmitClaim",
+                "sourceArtifact": "mock/claims/claim-service.cue",
+                "when": [
+                  {
+                    "from": "header",
+                    "param": "soapaction",
+                    "value": "urn:SubmitClaim"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "text/xml; charset=utf-8"
+                  },
+                  {
+                    "name": "soapaction",
+                    "value": "urn:SubmitClaim"
+                  },
+                  {
+                    "name": "x-suite-profile",
+                    "value": "canary.yaml"
+                  }
+                ],
+                "requestBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Header/\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:SubmitClaimRequest\u003e\n      \u003cclm:PolicyNumber\u003ePL-1024\u003c/clm:PolicyNumber\u003e\n      \u003cclm:LossType\u003ewater\u003c/clm:LossType\u003e\n      \u003cclm:Amount\u003e4200\u003c/clm:Amount\u003e\n    \u003c/clm:SubmitClaimRequest\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+                "responseStatus": "200",
+                "responseMediaType": "text/xml; charset=utf-8",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "soap-submit-claim"
+                  }
+                ],
+                "responseBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:SubmitClaimResponse\u003e\n      \u003cclm:ClaimId\u003eclm_2048\u003c/clm:ClaimId\u003e\n      \u003cclm:Decision\u003eAPPROVED\u003c/clm:Decision\u003e\n      \u003cclm:Profile\u003ecanary.yaml\u003c/clm:Profile\u003e\n      \u003cclm:TraceId\u003e00000000-0000-0000-0000-000000000010\u003c/clm:TraceId\u003e\n      \u003cclm:ServedAt\u003e2026-01-01T00:00:00Z\u003c/clm:ServedAt\u003e\n    \u003c/clm:SubmitClaimResponse\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e"
+              },
+              {
+                "name": "GetClaimStatus",
+                "sourceArtifact": "mock/claims/claim-service.cue",
+                "when": [
+                  {
+                    "from": "header",
+                    "param": "soapaction",
+                    "value": "urn:GetClaimStatus"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "text/xml; charset=utf-8"
+                  },
+                  {
+                    "name": "soapaction",
+                    "value": "urn:GetClaimStatus"
+                  }
+                ],
+                "requestBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Header/\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:GetClaimStatusRequest\u003e\n      \u003cclm:ClaimId\u003eclm_2048\u003c/clm:ClaimId\u003e\n    \u003c/clm:GetClaimStatusRequest\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+                "responseStatus": "200",
+                "responseMediaType": "text/xml; charset=utf-8",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "soap-claim-status"
+                  }
+                ],
+                "responseBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:GetClaimStatusResponse\u003e\n      \u003cclm:ClaimId\u003eclm_2048\u003c/clm:ClaimId\u003e\n      \u003cclm:Status\u003eIN_REVIEW\u003c/clm:Status\u003e\n      \u003cclm:Owner\u003emanual_queue\u003c/clm:Owner\u003e\n      \u003cclm:TraceId\u003e00000000-0000-0000-0000-000000000011\u003c/clm:TraceId\u003e\n      \u003cclm:ServedAt\u003e2026-01-01T00:05:00Z\u003c/clm:ServedAt\u003e\n    \u003c/clm:GetClaimStatusResponse\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "storefront-browser-lab",
+    "title": "Storefront Browser Lab",
+    "repository": "localhost:5000/qa/storefront-browser-lab",
+    "owner": "Release Engineering",
+    "provider": "Zot",
+    "version": "v1.3.0",
+    "tags": [
+      "latest",
+      "v1.3.0",
+      "v1.2.5"
+    ],
+    "description": "Browser-first commerce lab with Kafka event streams, Playwright checkout journeys, and mock APIs for promo traffic validation.",
+    "modules": [
+      "kafka",
+      "playwright"
+    ],
+    "status": "Verified",
+    "score": 90,
+    "pullCommand": "babelctl run localhost:5000/qa/storefront-browser-lab:v1.3.0",
+    "forkCommand": "babelctl fork localhost:5000/qa/storefront-browser-lab:v1.3.0 ./storefront-browser-lab",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/playwright\", \"playwright\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nbroker = container.run(name=\"kafka\")\ncatalog_mock = mock(name=\"catalog-mock\", after=[\"kafka\"])\norders_mock = mock(name=\"orders-mock\", after=[\"kafka\"])\nseed_topics = script(name=\"seed-topics\", after=[\"kafka\"])\nevent_consumer = container.run(name=\"event-consumer\", after=[\"kafka\", \"seed-topics\", \"orders-mock\"])\nstorefront_api = container.run(name=\"storefront-api\", after=[\"catalog-mock\", \"orders-mock\", \"seed-topics\"])\nstorefront_ui = container.run(name=\"storefront-ui\", after=[\"storefront-api\"])\nplaywright_checkout = scenario(name=\"playwright-checkout\", after=[\"storefront-ui\", \"event-consumer\"])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local Debug",
+        "description": "Opens browser traces, seeded demo users, and single-worker Kafka consumption.",
+        "default": true
+      },
+      {
+        "fileName": "ci.yaml",
+        "label": "CI Browser",
+        "description": "Headless Playwright suite with tighter timeouts and deterministic mocks.",
+        "default": false
+      },
+      {
+        "fileName": "promo.yaml",
+        "label": "Promo Burst",
+        "description": "High-throughput cart and checkout traffic with promotional catalog fixtures.",
+        "default": false
+      }
+    ],
+    "folders": [
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Browser, Kafka, and mock dispatch settings for local, CI, and campaign traffic.",
+        "files": [
+          "local.yaml",
+          "ci.yaml",
+          "promo.yaml"
+        ]
+      },
+      {
+        "name": "api",
+        "role": "Core",
+        "description": "Order and catalog contracts exposed to the UI and background consumer.",
+        "files": [
+          "openapi/orders.yaml",
+          "proto/storefront_events.proto"
+        ]
+      },
+      {
+        "name": "mock",
+        "role": "Core",
+        "description": "Mock API payloads for product catalog and order submission paths.",
+        "files": [
+          "catalog/list-products.cue",
+          "catalog/list-products.metadata.yaml",
+          "orders/create-order.cue",
+          "orders/create-order.metadata.yaml"
+        ]
+      },
+      {
+        "name": "scripts",
+        "role": "Core",
+        "description": "Kafka bootstrap and browser fixture warm-up hooks.",
+        "files": [
+          "seed_topics.sh",
+          "warm_cache.ts"
+        ]
+      },
+      {
+        "name": "scenarios",
+        "role": "Core",
+        "description": "Playwright coverage for checkout success and cart abandonment journeys.",
+        "files": [
+          "playwright_checkout.spec.ts",
+          "cart_abandonment.spec.ts"
+        ]
+      },
+      {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Seeded products, campaigns, and browser-side user sessions.",
+        "files": [
+          "products.json",
+          "users.json"
+        ]
+      },
+      {
+        "name": "policies",
+        "role": "Core",
+        "description": "Event schema and checkout latency validation rules.",
+        "files": [
+          "event_schema.rego",
+          "checkout_latency.rego"
+        ]
+      },
+      {
+        "name": "gateway",
+        "role": "Extension",
+        "description": "Runtime-managed APISIX sidecar routes that front suite APIs and forward traffic into the BabelSuite mock engine.",
+        "files": [
+          "apisix.yaml"
+        ]
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "api/openapi/orders.yaml",
+        "language": "yaml",
+        "content": "openapi: 3.1.0\ninfo:\n  title: Storefront Browser Lab\n  version: v1.3.0\nservers:\n  - url: https://storefront-browser-lab.mock.internal\npaths:\n  /catalog/products:\n    get:\n      operationId: list_products\n      summary: Return the product grid shown to the storefront browser before checkout begins.\n      responses:\n        \"200\":\n          description: Successful mock response\n  /orders:\n    post:\n      operationId: create_order\n      summary: Submit a checkout order and emit a Kafka event consumed by the browser verification lane.\n      responses:\n        \"200\":\n          description: Successful mock response\n"
+      },
+      {
+        "path": "api/proto/storefront_events.proto",
+        "language": "protobuf",
+        "content": "syntax = \"proto3\";\n\npackage storefront_browser_lab.v1;\n\nservice storefront_eventsService {\n  rpc Ping (PingRequest) returns (PingResponse);\n}\n\nmessage PingRequest {}\n\nmessage PingResponse {\n  string status = 1;\n}\n"
+      },
+      {
+        "path": "fixtures/products.json",
+        "language": "json",
+        "content": "[\n  {\n    \"name\": \"Starter Keyboard\",\n    \"price\": 4900,\n    \"sku\": \"sku_1001\"\n  },\n  {\n    \"name\": \"Launch Headset\",\n    \"price\": 12900,\n    \"sku\": \"sku_2024\"\n  }\n]\n"
+      },
+      {
+        "path": "fixtures/users.json",
+        "language": "json",
+        "content": "[\n  {\n    \"email\": \"admin@babelsuite.test\",\n    \"role\": \"admin\"\n  },\n  {\n    \"email\": \"shopper@demo.test\",\n    \"role\": \"demo\"\n  }\n]\n"
+      },
+      {
+        "path": "gateway/apisix.yaml",
+        "language": "yaml",
+        "content": "deployment:\n    role: data_plane\n    role_data_plane:\n        config_provider: yaml\nplugins:\n    - name: ext-plugin-pre-req\n    - name: proxy-rewrite\nroutes:\n    - id: storefront-browser-lab.create-order\n      name: create-order\n      desc: Submit a checkout order and emit a Kafka event consumed by the browser verification lane.\n      uri: /orders\n      methods:\n        - POST\n      hosts:\n        - storefront-browser-lab.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/storefront-browser-lab/storefront-api/orders\",\"operation_id\":\"create-order\",\"protocol\":\"REST\",\"public_path\":\"/orders\",\"resolver_url\":\"/internal/mock-data/storefront-browser-lab/storefront-api/create-order\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: create-order\n            uri: /mocks/rest/storefront-browser-lab/storefront-api/orders\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n    - id: storefront-browser-lab.list-products\n      name: list-products\n      desc: Return the product grid shown to the storefront browser before checkout begins.\n      uri: /catalog/products\n      methods:\n        - GET\n      hosts:\n        - storefront-browser-lab.mock.internal\n      plugins:\n        ext-plugin-pre-req:\n            allow_degradation: true\n            conf:\n                - name: babelsuite-resolver\n                  value: '{\"compatibility_url\":\"/mocks/rest/storefront-browser-lab/storefront-api/catalog/products\",\"operation_id\":\"list-products\",\"protocol\":\"REST\",\"public_path\":\"/catalog/products\",\"resolver_url\":\"/internal/mock-data/storefront-browser-lab/storefront-api/list-products\"}'\n        proxy-rewrite:\n            headers:\n                set:\n                    X-Babelsuite-Dispatcher: apisix\n                    X-Babelsuite-Operation: list-products\n            uri: /mocks/rest/storefront-browser-lab/storefront-api/catalog/products\n      upstream:\n        type: roundrobin\n        scheme: http\n        nodes:\n            ${{BABELSUITE_ENGINE_ADDR}}: 1\n\n# Set BABELSUITE_ENGINE_ADDR to the in-agent BabelSuite engine endpoint, for example babelsuite-engine:8090.\n# HTTP-family routes below keep a proxy-rewrite compatibility path so suites still run while the APISIX sidecar rolls out protocol-specific plugins.\n# gRPC and Kafka surfaces now render as live APISIX routes, while MQTT/TCP/UDP surfaces render as live APISIX stream routes and shared upstream objects.\n# Query parameters continue to flow to the engine unchanged so mock dispatch still happens in BabelSuite.\n#\n# Resolver contracts below describe the internal BabelSuite endpoint APISIX should call to fetch normalized mock data:\n# - storefront-browser-lab.create-order (REST) public=/orders resolver=/internal/mock-data/storefront-browser-lab/storefront-api/create-order compatibility=/mocks/rest/storefront-browser-lab/storefront-api/orders\n# - storefront-browser-lab.list-products (REST) public=/catalog/products resolver=/internal/mock-data/storefront-browser-lab/storefront-api/list-products compatibility=/mocks/rest/storefront-browser-lab/storefront-api/catalog/products\n#END\n"
+      },
+      {
+        "path": "mock/catalog/list-products.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"storefront-browser-lab\"\nartifact: \"mock/catalog/list-products.cue\"\noperationId: \"list-products\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/orders.yaml#/paths/~1catalog~1products/get\"\nresolverUrl: \"/internal/mock-data/storefront-browser-lab/storefront-api/list-products\"\nruntimeUrl: \"/mocks/rest/storefront-browser-lab/storefront-api/catalog/products?scenario=promo\"\nexamples: {\n  \"promo-grid\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"scenario\",\"value\":\"promo\"}]\n    requestSchema: {\n      headers: {\n        accept: \"application/json\"\n        \"x-suite-profile\": \"promo.yaml\"\n      }\n      body: null\n    }\n    responseSchema: {\n      status: \"200\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-mock-source\": \"catalog-promo\"\n      }\n      body: {\n        campaign: \"spring-promo\"\n        products: [\n          {\n            name: \"Starter Keyboard\"\n            price: 4900\n            sku: \"sku_1001\"\n          }\n        ]\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/catalog/list-products.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/catalog/list-products.metadata.yaml\n    operationId: list-products\n    sourceArtifact: mock/catalog/list-products.cue\n    suite: storefront-browser-lab\nspec:\n    adapter: rest\n    delayMillis: 0\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"200\"\n        mediatype: application/json\n        body: |-\n            {\n              \"products\": [],\n              \"campaign\": \"default\"\n            }\n        headers:\n            - name: x-mock-fallback\n              value: catalog-empty\n    parameterConstraints:\n        - name: scenario\n          source: query\n          required: true\n          forward: false\n          pattern: ^(promo)$\n        - name: accept\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)application/json\n    resolverUrl: /internal/mock-data/storefront-browser-lab/storefront-api/list-products\n    runtimeUrl: /mocks/rest/storefront-browser-lab/storefront-api/catalog/products?scenario=promo\n    state: null\n"
+      },
+      {
+        "path": "mock/orders/create-order.cue",
+        "language": "cue",
+        "content": "// Code generated by BabelSuite. DO NOT EDIT.\n\"$schema\": \"https://schemas.babelsuite.dev/mock-exchange-source-v1.json\"\nsuite: \"storefront-browser-lab\"\nartifact: \"mock/orders/create-order.cue\"\noperationId: \"create-order\"\nadapter: \"rest\"\ndispatcher: \"apisix\"\ncontractPath: \"api/openapi/orders.yaml#/paths/~1orders/post\"\nresolverUrl: \"/internal/mock-data/storefront-browser-lab/storefront-api/create-order\"\nruntimeUrl: \"/mocks/rest/storefront-browser-lab/storefront-api/orders?scenario=happy-path\"\nexamples: {\n  \"happy-path\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"scenario\",\"value\":\"happy-path\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n        \"x-browser-suite\": \"playwright\"\n      }\n      body: {\n        email: \"shopper@demo.test\"\n        quantity: 1\n        sku: \"sku_1001\"\n      }\n    }\n    responseSchema: {\n      status: \"201\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-kafka-topic\": \"checkout-events\"\n      }\n      body: {\n        status: \"accepted\"\n        eventPublished: true\n        orderId: \"ord_7001\"\n        previousAttempts: string @resolve(path=\"state.count\")\n      }\n    }\n  }\n  \"out-of-stock\": {\n    dispatch: [{\"from\":\"query\",\"param\":\"scenario\",\"value\":\"out-of-stock\"}]\n    requestSchema: {\n      headers: {\n        \"content-type\": \"application/json\"\n      }\n      body: {\n        email: \"shopper@demo.test\"\n        quantity: 1\n        sku: \"sku_4040\"\n      }\n    }\n    responseSchema: {\n      status: \"409\"\n      mediaType: \"application/json\"\n      headers: {\n        \"x-mock-source\": \"inventory-guard\"\n      }\n      body: {\n        code: \"OUT_OF_STOCK\"\n        message: \"Requested item is not available.\"\n        previousAttempts: string @resolve(path=\"state.count\")\n      }\n    }\n  }\n}\n"
+      },
+      {
+        "path": "mock/orders/create-order.metadata.yaml",
+        "language": "yaml",
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/orders/create-order.metadata.yaml\n    operationId: create-order\n    sourceArtifact: mock/orders/create-order.cue\n    suite: storefront-browser-lab\nspec:\n    adapter: rest\n    delayMillis: 0\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"422\"\n        mediatype: application/json\n        body: |-\n            {\n              \"code\": \"UNKNOWN_ORDER_SCENARIO\",\n              \"message\": \"No order mock matched the incoming scenario.\"\n            }\n        headers: []\n    parameterConstraints:\n        - name: scenario\n          source: query\n          required: true\n          forward: false\n          pattern: ^(happy-path|out-of-stock)$\n        - name: content-type\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)^application/json\n        - name: x-browser-suite\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/storefront-browser-lab/storefront-api/create-order\n    runtimeUrl: /mocks/rest/storefront-browser-lab/storefront-api/orders?scenario=happy-path\n    state:\n        lookupkeytemplate: checkout-attempt:{{ request.body.email }}\n        mutationkeytemplate: checkout-attempt:{{ request.body.email }}\n        defaults:\n            count: \"0\"\n        transitions:\n            - onexample: happy-path\n              mutationkeytemplate: \"\"\n              set:\n                lastOrderId: '{{ response.body.orderId }}'\n                lastStatus: accepted\n              delete: []\n              increment:\n                count: 1\n            - onexample: out-of-stock\n              mutationkeytemplate: \"\"\n              set:\n                lastStatus: rejected\n                reason: inventory\n              delete: []\n              increment:\n                count: 1\n"
+      },
+      {
+        "path": "policies/checkout_latency.rego",
+        "language": "rego",
+        "content": "package babelsuite.checkout_latency\n\ndefault allow := false\n\nallow if {\n  input.suite == \"storefront-browser-lab\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "policies/event_schema.rego",
+        "language": "rego",
+        "content": "package babelsuite.event_schema\n\ndefault allow := false\n\nallow if {\n  input.suite == \"storefront-browser-lab\"\n  count(input.modules) \u003e= 1\n}\n"
+      },
+      {
+        "path": "profiles/ci.yaml",
+        "language": "yaml",
+        "content": "name: CI Browser\ndescription: Headless Playwright suite with tighter timeouts and deterministic mocks.\ndefault: false\nruntime:\n  suite: storefront-browser-lab\n  repository: localhost:5000/qa/storefront-browser-lab\n  profileFile: ci.yaml\nmodules:\n    - kafka\n    - playwright\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/local.yaml",
+        "language": "yaml",
+        "content": "name: Local Debug\ndescription: Opens browser traces, seeded demo users, and single-worker Kafka consumption.\ndefault: true\nruntime:\n  suite: storefront-browser-lab\n  repository: localhost:5000/qa/storefront-browser-lab\n  profileFile: local.yaml\nmodules:\n    - kafka\n    - playwright\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "profiles/promo.yaml",
+        "language": "yaml",
+        "content": "name: Promo Burst\ndescription: High-throughput cart and checkout traffic with promotional catalog fixtures.\ndefault: false\nruntime:\n  suite: storefront-browser-lab\n  repository: localhost:5000/qa/storefront-browser-lab\n  profileFile: promo.yaml\nmodules:\n    - kafka\n    - playwright\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+      },
+      {
+        "path": "scenarios/cart_abandonment.spec.ts",
+        "language": "typescript",
+        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"cart abandonment.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
+      },
+      {
+        "path": "scenarios/playwright_checkout.spec.ts",
+        "language": "typescript",
+        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"playwright checkout.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
+      },
+      {
+        "path": "scripts/seed_topics.sh",
+        "language": "bash",
+        "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_topics.sh for Storefront Browser Lab\"\necho \"resolved modules: kafka, playwright\"\n"
+      },
+      {
+        "path": "scripts/warm_cache.ts",
+        "language": "typescript",
+        "content": "const suiteId = \"storefront-browser-lab\"\nconst scriptName = \"warm_cache.ts\"\n\nconsole.log(`running ${scriptName} for ${suiteId}`)\n"
+      }
+    ],
+    "contracts": [
+      "Playwright scenarios consume strict base URLs from suite outputs rather than hard-coded localhost ports.",
+      "Kafka publishes checkout and cart events through a fixed topic contract so browser assertions can wait on stable signals.",
+      "Mock APIs under mock/ provide deterministic catalog and order responses without changing the immutable api/ contracts."
+    ],
+    "apiSurfaces": [
+      {
+        "id": "storefront-api",
+        "title": "Storefront Orders API",
+        "protocol": "REST",
+        "mockHost": "https://storefront-browser-lab.mock.internal",
+        "description": "Catalog and order endpoints served through deterministic mock APIs so Playwright can validate browser flows without backend drift.",
+        "operations": [
+          {
+            "id": "list-products",
+            "method": "GET",
+            "name": "/catalog/products",
+            "summary": "Return the product grid shown to the storefront browser before checkout begins.",
+            "contractPath": "api/openapi/orders.yaml#/paths/~1catalog~1products/get",
+            "mockPath": "mock/catalog/list-products.cue",
+            "mockUrl": "https://storefront-browser-lab.mock.internal/catalog/products?scenario=promo",
+            "curlCommand": "curl \"https://storefront-browser-lab.mock.internal/catalog/products?scenario=promo\" -H \"accept: application/json\"",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches GET /catalog/products and calls /internal/mock-data/storefront-browser-lab/storefront-api/list-products to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "parameterConstraints": [
+                {
+                  "name": "scenario",
+                  "source": "query",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^(promo)$"
+                },
+                {
+                  "name": "accept",
+                  "source": "header",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "(?i)application/json"
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "200",
+                "mediaType": "application/json",
+                "body": "{\n  \"products\": [],\n  \"campaign\": \"default\"\n}",
+                "headers": [
+                  {
+                    "name": "x-mock-fallback",
+                    "value": "catalog-empty"
+                  }
+                ]
+              },
+              "metadataPath": "mock/catalog/list-products.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/storefront-browser-lab/storefront-api/list-products",
+              "runtimeUrl": "/mocks/rest/storefront-browser-lab/storefront-api/catalog/products?scenario=promo"
+            },
+            "exchanges": [
+              {
+                "name": "promo-grid",
+                "sourceArtifact": "mock/catalog/list-products.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "scenario",
+                    "value": "promo"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "x-suite-profile",
+                    "value": "promo.yaml"
+                  }
+                ],
+                "requestBody": "",
+                "responseStatus": "200",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "catalog-promo"
+                  }
+                ],
+                "responseBody": "{\n  \"products\": [\n    { \"sku\": \"sku_1001\", \"name\": \"Starter Keyboard\", \"price\": 4900 },\n    { \"sku\": \"sku_2024\", \"name\": \"Launch Headset\", \"price\": 12900 }\n  ],\n  \"campaign\": \"spring-promo\"\n}"
+              }
+            ]
+          },
+          {
+            "id": "create-order",
+            "method": "POST",
+            "name": "/orders",
+            "summary": "Submit a checkout order and emit a Kafka event consumed by the browser verification lane.",
+            "contractPath": "api/openapi/orders.yaml#/paths/~1orders/post",
+            "mockPath": "mock/orders/create-order.cue",
+            "mockUrl": "https://storefront-browser-lab.mock.internal/orders?scenario=happy-path",
+            "curlCommand": "curl -X POST \"https://storefront-browser-lab.mock.internal/orders?scenario=happy-path\" -H \"content-type: application/json\" -d '{\"sku\":\"sku_1001\",\"quantity\":1,\"email\":\"shopper@demo.test\"}'",
+            "dispatcher": "apisix",
+            "mockMetadata": {
+              "adapter": "rest",
+              "dispatcher": "apisix",
+              "dispatcherRules": "The APISIX sidecar matches POST /orders and calls /internal/mock-data/storefront-browser-lab/storefront-api/create-order to fetch normalized status, headers, and body while APISIX remains the public responder.",
+              "parameterConstraints": [
+                {
+                  "name": "scenario",
+                  "source": "query",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "^(happy-path|out-of-stock)$"
+                },
+                {
+                  "name": "content-type",
+                  "source": "header",
+                  "required": true,
+                  "forward": false,
+                  "pattern": "(?i)^application/json"
+                },
+                {
+                  "name": "x-browser-suite",
+                  "source": "header",
+                  "required": false,
+                  "forward": true
+                }
+              ],
+              "fallback": {
+                "mode": "static",
+                "status": "422",
+                "mediaType": "application/json",
+                "body": "{\n  \"code\": \"UNKNOWN_ORDER_SCENARIO\",\n  \"message\": \"No order mock matched the incoming scenario.\"\n}"
+              },
+              "state": {
+                "lookupKeyTemplate": "checkout-attempt:{{ request.body.email }}",
+                "mutationKeyTemplate": "checkout-attempt:{{ request.body.email }}",
+                "defaults": {
+                  "count": "0"
+                },
+                "transitions": [
+                  {
+                    "onExample": "happy-path",
+                    "set": {
+                      "lastOrderId": "{{ response.body.orderId }}",
+                      "lastStatus": "accepted"
+                    },
+                    "increment": {
+                      "count": 1
+                    }
+                  },
+                  {
+                    "onExample": "out-of-stock",
+                    "set": {
+                      "lastStatus": "rejected",
+                      "reason": "inventory"
+                    },
+                    "increment": {
+                      "count": 1
+                    }
+                  }
+                ]
+              },
+              "metadataPath": "mock/orders/create-order.metadata.yaml",
+              "resolverUrl": "/internal/mock-data/storefront-browser-lab/storefront-api/create-order",
+              "runtimeUrl": "/mocks/rest/storefront-browser-lab/storefront-api/orders?scenario=happy-path"
+            },
+            "exchanges": [
+              {
+                "name": "happy-path",
+                "sourceArtifact": "mock/orders/create-order.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "scenario",
+                    "value": "happy-path"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "x-browser-suite",
+                    "value": "playwright"
+                  }
+                ],
+                "requestBody": "{\n  \"sku\": \"sku_1001\",\n  \"quantity\": 1,\n  \"email\": \"shopper@demo.test\"\n}",
+                "responseStatus": "201",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-kafka-topic",
+                    "value": "checkout-events"
+                  }
+                ],
+                "responseBody": "{\n  \"orderId\": \"ord_7001\",\n  \"status\": \"accepted\",\n  \"eventPublished\": true,\n  \"previousAttempts\": \"{{ state.count }}\"\n}"
+              },
+              {
+                "name": "out-of-stock",
+                "sourceArtifact": "mock/orders/create-order.cue",
+                "when": [
+                  {
+                    "from": "query",
+                    "param": "scenario",
+                    "value": "out-of-stock"
+                  }
+                ],
+                "requestHeaders": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  }
+                ],
+                "requestBody": "{\n  \"sku\": \"sku_4040\",\n  \"quantity\": 1,\n  \"email\": \"shopper@demo.test\"\n}",
+                "responseStatus": "409",
+                "responseMediaType": "application/json",
+                "responseHeaders": [
+                  {
+                    "name": "x-mock-source",
+                    "value": "inventory-guard"
+                  }
+                ],
+                "responseBody": "{\n  \"code\": \"OUT_OF_STOCK\",\n  \"message\": \"Requested item is not available.\",\n  \"previousAttempts\": \"{{ state.count }}\"\n}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/babelsuite/babelsuite/internal/demofs"
 	"github.com/babelsuite/babelsuite/internal/examplefs"
 )
 
@@ -48,6 +49,28 @@ func TestListReturnsSortedSuites(t *testing.T) {
 	}
 	if items[len(items)-1].Title != "Storefront Browser Lab" {
 		t.Fatalf("expected storefront browser lab last, got %q", items[len(items)-1].Title)
+	}
+}
+
+func TestListLoadsWorkspaceSuitesWhenDemoDisabled(t *testing.T) {
+	configureExamplesRoot(t)
+	t.Setenv(demofs.EnableEnvVar, "false")
+
+	service := NewService()
+	items := service.List()
+	if len(items) == 0 {
+		t.Fatal("expected workspace suites when demo is disabled")
+	}
+
+	suite, err := service.Get("payment-suite")
+	if err != nil {
+		t.Fatalf("get workspace suite: %v", err)
+	}
+	if suite.Repository != "localhost:5000/core-platform/payment-suite" {
+		t.Fatalf("expected repository from workspace profile metadata, got %q", suite.Repository)
+	}
+	if suite.SuiteStar == "" {
+		t.Fatal("expected workspace suite.star content")
 	}
 }
 

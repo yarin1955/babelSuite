@@ -95,7 +95,11 @@ func main() {
 	var profileStore profiles.Store = profiles.NewFileStore(resolveWorkspacePath(envOr("PROFILES_FILE", "babelsuite-profiles.yaml")))
 	profileStore = profiles.WithRedis(profileStore, cacheLayer, durationOr("CACHE_TTL_PROFILES", 2*time.Minute))
 	profileService := profiles.NewService(suiteService, profileStore)
-	var platformStore platform.Store = platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
+	platformSettingsPath := resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "configuration.yaml"))
+	var platformStore platform.Store = platform.NewFileStore(platformSettingsPath)
+	if _, err := platformStore.Load(); err != nil {
+		log.Fatalf("platform settings: %v", err)
+	}
 	platformStore = platform.WithRedis(platformStore, cacheLayer, durationOr("CACHE_TTL_PLATFORM", 2*time.Minute))
 	var agentRuntimeStore agent.RuntimeStore = agent.NewFileRuntimeStore(resolveWorkspacePath(envOr("AGENT_RUNTIME_FILE", "babelsuite-agents.yaml")))
 	if repository, ok := primaryStore.(agent.RuntimeRepository); ok {

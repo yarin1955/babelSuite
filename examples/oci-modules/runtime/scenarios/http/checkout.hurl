@@ -1,0 +1,2 @@
+GET {{BASE_URL}}/health
+HTTP 200

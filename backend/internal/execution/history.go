@@ -1,11 +1,38 @@
 package execution
 
-import "time"
+import (
+	"time"
+
+	"github.com/babelsuite/babelsuite/internal/demofs"
+)
+
+type demoExecutionDocument struct {
+	Metadata map[string]suiteRuntimeMeta `json:"metadata"`
+	History  []demoExecutionSeed         `json:"history"`
+}
+
+type demoExecutionSeed struct {
+	ID         string        `json:"id"`
+	SuiteID    string        `json:"suiteId"`
+	Profile    string        `json:"profile"`
+	Trigger    string        `json:"trigger"`
+	Status     string        `json:"status"`
+	StartedAgo time.Duration `json:"startedAgo"`
+}
 
 func (s *Service) seedHistory() {
-	s.seedHistoricalExecution("run-1043", "payment-suite", "staging.yaml", "Manual", "Healthy", 2*time.Minute)
-	s.seedHistoricalExecution("run-1042", "fleet-control-room", "perf.yaml", "CI", "Healthy", 7*time.Minute)
-	s.seedHistoricalExecution("run-1041", "identity-broker", "ci.yaml", "CI", "Failed", 24*time.Minute)
+	if !demofs.Enabled() {
+		return
+	}
+
+	document, err := loadExecutionDemoDocument()
+	if err != nil {
+		return
+	}
+
+	for _, item := range document.History {
+		s.seedHistoricalExecution(item.ID, item.SuiteID, item.Profile, item.Trigger, item.Status, item.StartedAgo)
+	}
 }
 
 func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger, status string, startedAgo time.Duration) {
@@ -54,41 +81,25 @@ func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger
 }
 
 func seedExecutionMetadata() map[string]suiteRuntimeMeta {
-	return map[string]suiteRuntimeMeta{
-		"payment-suite": {
-			Author:         "Nora Chen",
-			Branch:         "release/payments-v2",
-			Message:        "Promote the payment environment with deterministic fraud routing and wiremock-backed checkout paths.",
-			FailureTarget:  "checkout-smoke",
-			DefaultTrigger: "Manual",
-		},
-		"fleet-control-room": {
-			Author:         "Ari Levin",
-			Branch:         "feature/planner-observability",
-			Message:        "Run the fleet control topology against mocked telemetry bursts before planner rollout.",
-			FailureTarget:  "fleet-smoke",
-			DefaultTrigger: "Manual",
-		},
-		"identity-broker": {
-			Author:         "Sam Okafor",
-			Branch:         "canary/session-cache",
-			Message:        "Validate multi-provider login behavior with strict mock assertions and seeded realms.",
-			FailureTarget:  "login-smoke",
-			DefaultTrigger: "CI",
-		},
-		"storefront-browser-lab": {
-			Author:         "Lena Hart",
-			Branch:         "feature/browser-checkout-lab",
-			Message:        "Exercise the storefront browser lane with Playwright, mock APIs, and Kafka-backed checkout events.",
-			FailureTarget:  "playwright-checkout",
-			DefaultTrigger: "Manual",
-		},
-		"soap-claims-hub": {
-			Author:         "Maya Ortiz",
-			Branch:         "feature/soap-bridge-modernization",
-			Message:        "Validate SOAP envelopes through the APISIX sidecar before exposing the partner claims bridge.",
-			FailureTarget:  "claims-smoke",
-			DefaultTrigger: "Manual",
-		},
+	if !demofs.Enabled() {
+		return map[string]suiteRuntimeMeta{}
 	}
+
+	document, err := loadExecutionDemoDocument()
+	if err != nil || document.Metadata == nil {
+		return map[string]suiteRuntimeMeta{}
+	}
+
+	return document.Metadata
+}
+
+func loadExecutionDemoDocument() (demoExecutionDocument, error) {
+	var document demoExecutionDocument
+
+	manifest, err := demofs.LoadManifest()
+	if err != nil {
+		return document, err
+	}
+
+	return demofs.LoadJSON[demoExecutionDocument](manifest.ExecutionsFile)
 }

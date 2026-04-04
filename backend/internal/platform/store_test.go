@@ -1,6 +1,11 @@
 package platform
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/babelsuite/babelsuite/internal/demofs"
+)
 
 func TestDefaultSettingsIncludeAPISIXSidecarOnAgents(t *testing.T) {
 	settings := DefaultSettings()
@@ -61,5 +66,27 @@ func TestNormalizeBackfillsAPISIXSidecarDefaults(t *testing.T) {
 	}
 	if len(sidecar.Capabilities) == 0 {
 		t.Fatal("expected normalize to backfill APISIX capabilities")
+	}
+}
+
+func TestFileStoreLoadReturnsDefaultsWhenDemoEnabledAndFileMissing(t *testing.T) {
+	t.Setenv(demofs.EnableEnvVar, "true")
+
+	store := NewFileStore(filepath.Join(t.TempDir(), "missing-platform.yaml"))
+	settings, err := store.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	if settings == nil || len(settings.Agents) == 0 {
+		t.Fatal("expected default settings when demo is enabled")
+	}
+}
+
+func TestFileStoreLoadRequiresConfigWhenDemoDisabledAndFileMissing(t *testing.T) {
+	t.Setenv(demofs.EnableEnvVar, "false")
+
+	store := NewFileStore(filepath.Join(t.TempDir(), "missing-platform.yaml"))
+	if _, err := store.Load(); err == nil {
+		t.Fatal("expected missing platform settings file to fail when demo is disabled")
 	}
 }

@@ -1,0 +1,411 @@
+{
+  "suites": {
+    "fleet-control-room": {
+      "profiles": [
+        {
+          "id": "base",
+          "name": "Base Runtime",
+          "fileName": "base.yaml",
+          "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
+          "scope": "Base",
+          "yaml": "env:\n  LOG_LEVEL: info\n  TELEMETRY_PROFILE: balanced\n  DISPATCHER_BASE_URL: http://dispatcher-api.internal\nservices:\n  redisAddress: redis-cache:6379\n  plannerRefreshInterval: 5s",
+          "secretRefs": [
+            {
+              "key": "MAPBOX_TOKEN",
+              "provider": "Vault",
+              "ref": "kv/fleet-control-room/mapbox-token"
+            }
+          ],
+          "default": false,
+          "launchable": false,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "local",
+          "name": "Local Debug",
+          "fileName": "local.yaml",
+          "description": "Browser-forwarded ports and verbose telemetry payloads.",
+          "scope": "Local",
+          "yaml": "env:\n  LOG_LEVEL: debug\n  TELEMETRY_PROFILE: verbose\nservices:\n  uiPort: 13000\n  dispatcherPort: 18081",
+          "secretRefs": [
+            {
+              "key": "TELEMETRY_TOKEN",
+              "provider": "Local Secret",
+              "ref": "secrets://developer/telemetry-token"
+            }
+          ],
+          "default": true,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "perf",
+          "name": "Performance",
+          "fileName": "perf.yaml",
+          "description": "Synthetic bursts for planner saturation tests.",
+          "scope": "Performance",
+          "yaml": "env:\n  TELEMETRY_PROFILE: burst\n  ENABLE_ROUTE_HEATMAP: true\nservices:\n  plannerWorkers: 6\n  ingestBatchSize: 500",
+          "secretRefs": [],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "staging",
+          "name": "Staging",
+          "fileName": "staging.yaml",
+          "description": "Shared staging identities and realistic routing backends.",
+          "scope": "Staging",
+          "yaml": "env:\n  DISPATCHER_BASE_URL: https://dispatcher.staging.company.test\n  TELEMETRY_PROFILE: realistic\nservices:\n  plannerWorkers: 3\n  uiPort: 8080",
+          "secretRefs": [
+            {
+              "key": "ROUTING_API_KEY",
+              "provider": "Vault",
+              "ref": "kv/fleet-control-room/staging-routing-key"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        }
+      ]
+    },
+    "identity-broker": {
+      "profiles": [
+        {
+          "id": "base",
+          "name": "Base Runtime",
+          "fileName": "base.yaml",
+          "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
+          "scope": "Base",
+          "yaml": "env:\n  LOG_LEVEL: info\n  SESSION_STORE: postgres\n  OIDC_DISCOVERY_URL: http://oidc-mock.internal/.well-known/openid-configuration\nservices:\n  postgresURL: postgres://test:test@broker-db:5432/identity\n  sessionQueue: session-worker",
+          "secretRefs": [
+            {
+              "key": "BROKER_SIGNING_KEY",
+              "provider": "Vault",
+              "ref": "kv/identity-broker/signing-key"
+            }
+          ],
+          "default": false,
+          "launchable": false,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "local",
+          "name": "Local Debug",
+          "fileName": "local.yaml",
+          "description": "Relaxed certificates and hot-reloadable providers.",
+          "scope": "Local",
+          "yaml": "env:\n  LOG_LEVEL: debug\n  COOKIE_SECURE: false\nservices:\n  brokerPort: 18082\n  sessionWorkerConcurrency: 1",
+          "secretRefs": [
+            {
+              "key": "OIDC_CLIENT_SECRET",
+              "provider": "Local Secret",
+              "ref": "secrets://developer/oidc-client-secret"
+            }
+          ],
+          "default": true,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "canary",
+          "name": "Canary",
+          "fileName": "canary.yaml",
+          "description": "New session persistence behavior and stricter cookie policies.",
+          "scope": "Canary",
+          "yaml": "env:\n  SESSION_STORE: redis\n  ENABLE_NEW_COOKIE_POLICY: true\nservices:\n  sessionWorkerConcurrency: 4\n  tokenRotationWindow: 15m",
+          "secretRefs": [
+            {
+              "key": "SESSION_REDIS_PASSWORD",
+              "provider": "Vault",
+              "ref": "kv/identity-broker/canary-redis-password"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "ci",
+          "name": "CI Smoke",
+          "fileName": "ci.yaml",
+          "description": "Fast login assertions with deterministic realms.",
+          "scope": "CI",
+          "yaml": "env:\n  LOG_LEVEL: warn\n  ENABLE_NEW_COOKIE_POLICY: true\nservices:\n  brokerPort: 8080\n  sessionWorkerConcurrency: 2",
+          "secretRefs": [
+            {
+              "key": "BROKER_TEST_CERT",
+              "provider": "Vault",
+              "ref": "kv/identity-broker/ci-test-cert"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        }
+      ]
+    },
+    "payment-suite": {
+      "profiles": [
+        {
+          "id": "base",
+          "name": "Base Runtime",
+          "fileName": "base.yaml",
+          "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
+          "scope": "Base",
+          "yaml": "env:\n  LOG_LEVEL: info\n  PAYMENTS_API_BASE_URL: http://payment-gateway.internal\n  FRAUD_STRATEGY: standard\nservices:\n  postgresURL: postgres://test:test@db:5432/payments\n  kafkaBroker: kafka:9092",
+          "secretRefs": [
+            {
+              "key": "JWT_PRIVATE_KEY",
+              "provider": "Vault",
+              "ref": "kv/payment-suite/jwt-private-key"
+            }
+          ],
+          "default": false,
+          "launchable": false,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "local",
+          "name": "Local Debug",
+          "fileName": "local.yaml",
+          "description": "Verbose logs, local secrets, and relaxed timeouts.",
+          "scope": "Local",
+          "yaml": "env:\n  LOG_LEVEL: debug\n  FRAUD_STRATEGY: permissive\nservices:\n  apiPort: 18080\n  workerReplicaCount: 1",
+          "secretRefs": [
+            {
+              "key": "STRIPE_API_KEY",
+              "provider": "Local Secret",
+              "ref": "secrets://developer/stripe-api-key"
+            }
+          ],
+          "default": true,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "staging",
+          "name": "Staging",
+          "fileName": "staging.yaml",
+          "description": "Production-like service topology with Vault-backed references.",
+          "scope": "Staging",
+          "yaml": "env:\n  PAYMENTS_API_BASE_URL: https://payments.staging.company.test\n  FRAUD_STRATEGY: strict\nservices:\n  workerReplicaCount: 3\n  apiPort: 8080",
+          "secretRefs": [
+            {
+              "key": "DB_PASSWORD",
+              "provider": "Vault",
+              "ref": "kv/payment-suite/staging-db-password"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "year",
+          "name": "Year-End",
+          "fileName": "year.yaml",
+          "description": "Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.",
+          "scope": "Year End",
+          "yaml": "env:\n  LEDGER_PERIOD: year_end\n  FRAUD_STRATEGY: settlement_review\nservices:\n  settlementBatchSize: 500\n  replayHistoricalCharges: true",
+          "secretRefs": [
+            {
+              "key": "SETTLEMENT_SFTP_KEY",
+              "provider": "Vault",
+              "ref": "kv/payment-suite/year-end-sftp-key"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        }
+      ]
+    },
+    "returns-control-plane": {
+      "profiles": [
+        {
+          "id": "base",
+          "name": "Base Runtime",
+          "fileName": "base.yaml",
+          "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
+          "scope": "Base",
+          "yaml": "env:\n  LOG_LEVEL: info\nservices:\n  endpoint: http://service.internal",
+          "secretRefs": [],
+          "default": false,
+          "launchable": false,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "local",
+          "name": "Local Debug",
+          "fileName": "local.yaml",
+          "description": "Verbose logs, seeded return ids, and open worker traces.",
+          "scope": "Local",
+          "yaml": "env:\n  LOG_LEVEL: info",
+          "secretRefs": [],
+          "default": true,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "canary",
+          "name": "Canary Routing",
+          "fileName": "canary.yaml",
+          "description": "Canary refund rules with manual-review escalation and delayed callbacks.",
+          "scope": "Canary",
+          "yaml": "env:\n  LOG_LEVEL: info",
+          "secretRefs": [],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "peak",
+          "name": "Peak Season",
+          "fileName": "peak.yaml",
+          "description": "High-volume return traffic with fraud screening and worker backpressure.",
+          "scope": "Peak",
+          "yaml": "env:\n  LOG_LEVEL: info",
+          "secretRefs": [],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        }
+      ]
+    },
+    "soap-claims-hub": {
+      "profiles": [
+        {
+          "id": "base",
+          "name": "Base Runtime",
+          "fileName": "base.yaml",
+          "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
+          "scope": "Base",
+          "yaml": "env:\n  LOG_LEVEL: info\nservices:\n  endpoint: http://service.internal",
+          "secretRefs": [],
+          "default": false,
+          "launchable": false,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "local",
+          "name": "Local Debug",
+          "fileName": "local.yaml",
+          "description": "Relaxed SOAP timeouts with verbose envelope logging.",
+          "scope": "Local",
+          "yaml": "env:\n  LOG_LEVEL: info",
+          "secretRefs": [],
+          "default": true,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "canary",
+          "name": "Canary Partner",
+          "fileName": "canary.yaml",
+          "description": "Partner-like SOAP headers and stricter claim review toggles.",
+          "scope": "Canary",
+          "yaml": "env:\n  LOG_LEVEL: info",
+          "secretRefs": [],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        }
+      ]
+    },
+    "storefront-browser-lab": {
+      "profiles": [
+        {
+          "id": "base",
+          "name": "Base Runtime",
+          "fileName": "base.yaml",
+          "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
+          "scope": "Base",
+          "yaml": "env:\n  LOG_LEVEL: info\n  STOREFRONT_BASE_URL: http://storefront-ui.internal\n  PLAYWRIGHT_BROWSER: chromium\nservices:\n  kafkaBroker: kafka:9092\n  mockApiBaseUrl: http://storefront-api.internal",
+          "secretRefs": [
+            {
+              "key": "PLAYWRIGHT_STORAGE_STATE",
+              "provider": "Vault",
+              "ref": "kv/storefront-browser-lab/playwright-storage-state"
+            }
+          ],
+          "default": false,
+          "launchable": false,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "local",
+          "name": "Local Debug",
+          "fileName": "local.yaml",
+          "description": "Opens browser traces, seeded demo users, and single-worker Kafka consumption.",
+          "scope": "Local",
+          "yaml": "env:\n  LOG_LEVEL: debug\n  PLAYWRIGHT_TRACE: on\n  MOCK_SCENARIO: local\nservices:\n  uiPort: 14010\n  consumerWorkers: 1",
+          "secretRefs": [
+            {
+              "key": "SHOPPER_SESSION_COOKIE",
+              "provider": "Local Secret",
+              "ref": "secrets://developer/shopper-session-cookie"
+            }
+          ],
+          "default": true,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "ci",
+          "name": "CI Browser",
+          "fileName": "ci.yaml",
+          "description": "Headless Playwright suite with tighter timeouts and deterministic mocks.",
+          "scope": "CI",
+          "yaml": "env:\n  PLAYWRIGHT_HEADLESS: true\n  PLAYWRIGHT_TRACE: retain-on-failure\n  MOCK_SCENARIO: ci\nservices:\n  uiPort: 8080\n  consumerWorkers: 2",
+          "secretRefs": [
+            {
+              "key": "PLAYWRIGHT_RECORD_KEY",
+              "provider": "Vault",
+              "ref": "kv/storefront-browser-lab/ci-record-key"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        },
+        {
+          "id": "promo",
+          "name": "Promo Burst",
+          "fileName": "promo.yaml",
+          "description": "High-throughput cart and checkout traffic with promotional catalog fixtures.",
+          "scope": "Promo",
+          "yaml": "env:\n  CAMPAIGN_MODE: spring_promo\n  PLAYWRIGHT_HEADLESS: true\n  MOCK_SCENARIO: promo\nservices:\n  consumerWorkers: 4\n  productSeedSet: promo-heavy",
+          "secretRefs": [
+            {
+              "key": "CAMPAIGN_SIGNING_KEY",
+              "provider": "Vault",
+              "ref": "kv/storefront-browser-lab/promo-signing-key"
+            }
+          ],
+          "default": false,
+          "extendsId": "base",
+          "launchable": true,
+          "updatedAt": "2026-04-04T07:10:46.683172Z"
+        }
+      ]
+    }
+  }
+}

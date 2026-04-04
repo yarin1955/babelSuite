@@ -1,11 +1,13 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/babelsuite/babelsuite/internal/demofs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -55,7 +57,14 @@ func (s *FileStore) loadUnlocked() (*PlatformSettings, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if !demofs.Enabled() {
+				return nil, fmt.Errorf("platform settings file not found: %s", s.path)
+			}
 			settings := DefaultSettings()
+			normalize(&settings)
+			if err := validate(&settings); err != nil {
+				return nil, err
+			}
 			return &settings, nil
 		}
 		return nil, err
@@ -67,6 +76,9 @@ func (s *FileStore) loadUnlocked() (*PlatformSettings, error) {
 	}
 
 	normalize(&settings)
+	if err := validate(&settings); err != nil {
+		return nil, err
+	}
 	return &settings, nil
 }
 
