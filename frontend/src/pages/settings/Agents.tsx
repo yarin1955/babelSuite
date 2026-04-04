@@ -38,6 +38,7 @@ export default function Agents() {
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [panelAgent, setPanelAgent] = useState<ExecutionAgent | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [isNewAgent, setIsNewAgent] = useState(false)
   const [runtimeAgents, setRuntimeAgents] = useState<RuntimeAgent[]>([])
 
   useEffect(() => {
@@ -95,15 +96,16 @@ export default function Agents() {
   const updatePanelAgent = <K extends keyof ExecutionAgent>(field: K, value: ExecutionAgent[K]) => {
     if (!panelAgent) return
     const updated = { ...panelAgent, [field]: value }
-    // If setting default = true, unset others
     setPanelAgent(updated)
-    patchDraft((next) => {
-      next.agents = next.agents.map((a) => {
-        if (a.agentId === panelAgent.agentId) return updated
-        if (field === 'default' && value === true) return { ...a, default: false }
-        return a
+    if (!isNewAgent) {
+      patchDraft((next) => {
+        next.agents = next.agents.map((a) => {
+          if (a.agentId === panelAgent.agentId) return updated
+          if (field === 'default' && value === true) return { ...a, default: false }
+          return a
+        })
       })
-    })
+    }
   }
 
   const updatePanelSidecar = <K extends keyof APISIXSidecarConfig>(field: K, value: APISIXSidecarConfig[K]) => {
@@ -116,30 +118,35 @@ export default function Agents() {
       },
     }
     setPanelAgent(updated)
-    patchDraft((next) => {
-      next.agents = next.agents.map((agent) => agent.agentId === panelAgent.agentId ? updated : agent)
-    })
+    if (!isNewAgent) {
+      patchDraft((next) => {
+        next.agents = next.agents.map((agent) => agent.agentId === panelAgent.agentId ? updated : agent)
+      })
+    }
   }
 
   const openPanel = (agent: ExecutionAgent) => {
     setPanelAgent(structuredClone(agent))
+    setIsNewAgent(false)
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
+    setIsNewAgent(false)
     setTimeout(() => setPanelAgent(null), 300)
   }
 
   const addAgent = () => {
     if (!draft) return
     const agent = emptyAgent(draft.agents.length + 1)
-    patchDraft((next) => { next.agents.push(agent) })
     setPanelAgent(agent)
+    setIsNewAgent(true)
     setPanelOpen(true)
   }
 
   const removeAgent = (agentId: string) => {
+    if (isNewAgent) { closePanel(); return }
     if (!draft || draft.agents.length === 1) return
     patchDraft((next) => { next.agents = next.agents.filter((a) => a.agentId !== agentId) })
     closePanel()
@@ -150,10 +157,14 @@ export default function Agents() {
     setSaving(true)
     setMessage(null)
     try {
-      const updated = await updatePlatformSettings(draft)
+      const payload = (isNewAgent && panelAgent)
+        ? { ...draft, agents: [...draft.agents, panelAgent] }
+        : draft
+      const updated = await updatePlatformSettings(payload)
       startTransition(() => {
         setDraft(updated)
         setSavedSettings(updated)
+        setIsNewAgent(false)
         setMessage({ tone: 'success', text: 'Execution agents saved.' })
       })
     } catch (reason) {
@@ -176,7 +187,7 @@ export default function Agents() {
     )
   }
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(savedSettings)
+  const dirty = isNewAgent || JSON.stringify(draft) !== JSON.stringify(savedSettings)
   const runtimeById = new Map(runtimeAgents.map((agent) => [agent.agentId, agent]))
 
   return (
