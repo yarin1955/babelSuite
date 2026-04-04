@@ -127,7 +127,11 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 		},
 	}
 
-	topology := parseSuiteTopology(suite.SuiteStar)
+	topology, err := parseSuiteTopology(suite.SuiteStar)
+	if err != nil {
+		s.noteRejectedLaunch(ctx, suite.ID, "invalid_topology")
+		return nil, err
+	}
 	state.total = len(topology)
 
 	s.mu.Lock()
@@ -211,7 +215,7 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		BackendLabel:    s.executionBackendLabel(executionID),
 		BackendKind:     backend.Kind(),
 		StepIndex:       node.Order,
-		TotalSteps:      len(parseSuiteTopology(suite.SuiteStar)),
+		TotalSteps:      len(parseSuiteTopologyOrEmpty(suite.SuiteStar)),
 		LeaseTTL:        8 * time.Second,
 		Node: runner.StepNode{
 			ID:        node.ID,

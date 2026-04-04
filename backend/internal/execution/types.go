@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,9 +21,14 @@ var (
 	ErrExecutionNotFound  = errors.New("execution not found")
 	ErrBackendNotFound    = errors.New("backend not found")
 	ErrBackendUnavailable = errors.New("backend unavailable")
+	ErrInvalidTopology    = errors.New("invalid suite topology")
 )
 
-var topologyPattern = regexp.MustCompile(`^([a-zA-Z_][\w]*)\s*=\s*(container|mock|script|load|scenario)\(\s*name\s*=\s*"([^"]+)"(?:,\s*after=\[([^\]]*)\])?.*\)$`)
+var (
+	topologyAssignmentPattern = regexp.MustCompile(`^([a-zA-Z_][\w]*)\s*=\s*([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)?)\((.*)\)$`)
+	topologyNamePattern       = regexp.MustCompile(`(?:^|,)\s*(?:name|name_or_id|id)\s*=\s*"([^"]+)"`)
+	topologyAfterPattern      = regexp.MustCompile(`(?:^|,)\s*after\s*=\s*\[([^\]]*)\]`)
+)
 
 type ProfileOption struct {
 	FileName    string `json:"fileName"`
@@ -188,6 +194,43 @@ type topologyNode struct {
 	DependsOn []string
 	Level     int
 	Order     int
+}
+
+type topologyDuplicateNodeError struct {
+	Node string
+}
+
+func (e *topologyDuplicateNodeError) Error() string {
+	return "invalid suite topology: duplicate step " + `"` + e.Node + `"`
+}
+
+func (e *topologyDuplicateNodeError) Is(target error) bool {
+	return target == ErrInvalidTopology
+}
+
+type topologyMissingDependencyError struct {
+	Node       string
+	Dependency string
+}
+
+func (e *topologyMissingDependencyError) Error() string {
+	return "invalid suite topology: " + `"` + e.Node + `"` + " depends on missing step " + `"` + e.Dependency + `"`
+}
+
+func (e *topologyMissingDependencyError) Is(target error) bool {
+	return target == ErrInvalidTopology
+}
+
+type topologyCycleError struct {
+	Path []string
+}
+
+func (e *topologyCycleError) Error() string {
+	return "invalid suite topology: dependency cycle detected: " + strings.Join(e.Path, " -> ")
+}
+
+func (e *topologyCycleError) Is(target error) bool {
+	return target == ErrInvalidTopology
 }
 
 type executionState struct {

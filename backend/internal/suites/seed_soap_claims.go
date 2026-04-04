@@ -18,7 +18,7 @@ func seedSOAPClaimsHubSuite() Definition {
 
 claims_mock = mock(name="claims-mock")
 seed_reference_data = script(name="seed-reference-data", after=["claims-mock"])
-claims_bridge = container(name="claims-bridge", after=["claims-mock", "seed-reference-data"])
+claims_bridge = container.run(name="claims-bridge", after=["claims-mock", "seed-reference-data"])
 claims_smoke = scenario(name="claims-smoke", after=["claims-bridge"])`,
 		Profiles: []ProfileOption{
 			{FileName: "local.yaml", Label: "Local Debug", Description: "Relaxed SOAP timeouts with verbose envelope logging.", Default: true},
