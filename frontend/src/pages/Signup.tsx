@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import AuthField from '../components/AuthField'
 import AuthLayout from '../components/AuthLayout'
 import SSOButtons from '../components/SSOButtons'
-import { ApiError, fallbackSSOProviders, listSSOProviders, saveSession, signUp, type SSOProvider } from '../lib/api'
+import { ApiError, fallbackAuthConfig, getAuthConfig, saveSession, signUp, type AuthConfig, type SSOProvider } from '../lib/api'
 import { evaluatePasswordStrength } from '../lib/password'
 
 export default function SignUp() {
@@ -15,17 +15,19 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [providers, setProviders] = useState<SSOProvider[]>(fallbackSSOProviders)
+  const [authConfig, setAuthConfig] = useState<AuthConfig>(fallbackAuthConfig)
+  const [providers, setProviders] = useState<SSOProvider[]>(fallbackAuthConfig.providers)
   const deferredPassword = useDeferredValue(form.password)
   const strength = evaluatePasswordStrength(deferredPassword)
 
   useEffect(() => {
     let cancelled = false
 
-    listSSOProviders()
-      .then((items) => {
-        if (!cancelled && items.length > 0) {
-          setProviders(items)
+    getAuthConfig()
+      .then((config) => {
+        if (!cancelled) {
+          setAuthConfig(config)
+          setProviders(config.providers)
         }
       })
       .catch(() => {})
@@ -61,15 +63,18 @@ export default function SignUp() {
     setNotice(provider.hint ?? `${provider.name} SSO is not configured yet.`)
   }
 
+  const showLocalForm = authConfig.signUpEnabled
+  const showSSO = providers.length > 0
+
   return (
     <AuthLayout
       title='Create your account'
       subtitle='Provision your workspace and step into the dashboard in seconds.'
       footer={<>Already have an account? <Link to='/sign-in'>Sign in</Link></>}
     >
-      <SSOButtons providers={providers} onUnavailable={showProviderHint} />
+      {showSSO && <SSOButtons providers={providers} onUnavailable={showProviderHint} />}
 
-      <div className='auth-divider'><span>OR</span></div>
+      {showSSO && showLocalForm && <div className='auth-divider'><span>OR</span></div>}
 
       {(error || notice) && (
         <div className={`auth-message ${error ? 'auth-message--error' : 'auth-message--info'}`}>
@@ -77,57 +82,63 @@ export default function SignUp() {
         </div>
       )}
 
-      <form className='auth-form' onSubmit={submit}>
-        <AuthField
-          label='Full Name'
-          value={form.fullName}
-          autoComplete='name'
-          onChange={update('fullName')}
-        />
+      {showLocalForm ? (
+        <form className='auth-form' onSubmit={submit}>
+          <AuthField
+            label='Full Name'
+            value={form.fullName}
+            autoComplete='name'
+            onChange={update('fullName')}
+          />
 
-        <AuthField
-          label='Email Address'
-          type='email'
-          value={form.email}
-          autoComplete='email'
-          onChange={update('email')}
-        />
+          <AuthField
+            label='Email Address'
+            type='email'
+            value={form.email}
+            autoComplete='email'
+            onChange={update('email')}
+          />
 
-        <AuthField
-          label='Password'
-          type={showPassword ? 'text' : 'password'}
-          value={form.password}
-          autoComplete='new-password'
-          onChange={update('password')}
-          trailing={(
-            <button
-              type='button'
-              className='auth-field__toggle'
-              onClick={() => setShowPassword((current) => !current)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <FaEyeSlash /> : <FaEye />}
-            </button>
-          )}
-        />
+          <AuthField
+            label='Password'
+            type={showPassword ? 'text' : 'password'}
+            value={form.password}
+            autoComplete='new-password'
+            onChange={update('password')}
+            trailing={(
+              <button
+                type='button'
+                className='auth-field__toggle'
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            )}
+          />
 
-        <div className='password-strength'>
-          <div className='password-strength__meter' aria-hidden='true'>
-            {Array.from({ length: 4 }, (_, index) => (
-              <span
-                key={index}
-                className={index < strength.score ? 'password-strength__segment password-strength__segment--active' : 'password-strength__segment'}
-              />
-            ))}
+          <div className='password-strength'>
+            <div className='password-strength__meter' aria-hidden='true'>
+              {Array.from({ length: 4 }, (_, index) => (
+                <span
+                  key={index}
+                  className={index < strength.score ? 'password-strength__segment password-strength__segment--active' : 'password-strength__segment'}
+                />
+              ))}
+            </div>
+            <p className='password-strength__label'>{strength.label}</p>
+            <p className='password-strength__hint'>{strength.hint}</p>
           </div>
-          <p className='password-strength__label'>{strength.label}</p>
-          <p className='password-strength__hint'>{strength.hint}</p>
-        </div>
 
-        <button className='auth-submit' type='submit' disabled={loading}>
-          {loading ? 'Creating account...' : 'Create Account'}
-        </button>
-      </form>
+          <button className='auth-submit' type='submit' disabled={loading}>
+            {loading ? 'Creating account...' : 'Create Account'}
+          </button>
+        </form>
+      ) : (
+        <div className='auth-message auth-message--info'>
+          Local sign-up is disabled for this environment. Continue with the configured identity provider.
+        </div>
+      )}
     </AuthLayout>
   )
 }

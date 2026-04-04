@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { FaGithub, FaGitlab } from 'react-icons/fa6'
+import { FaArrowRightToBracket, FaGithub, FaGitlab } from 'react-icons/fa6'
 import type { SSOProvider } from '../lib/api'
 
 interface SSOButtonsProps {
@@ -10,6 +10,7 @@ interface SSOButtonsProps {
 const icons: Record<string, ReactElement> = {
   github: <FaGithub />,
   gitlab: <FaGitlab />,
+  oidc: <FaArrowRightToBracket />,
 }
 
 export default function SSOButtons({ providers, onUnavailable }: SSOButtonsProps) {
@@ -24,11 +25,14 @@ export default function SSOButtons({ providers, onUnavailable }: SSOButtonsProps
         )
 
         if (provider.enabled && provider.startUrl) {
+          const loginUrl = new URL(provider.startUrl)
+          loginUrl.searchParams.set('return_url', resolveReturnURL())
+
           return (
             <a
               key={provider.providerId}
               className={`auth-sso__button auth-sso__button--${provider.providerId}`}
-              href={provider.startUrl}
+              href={loginUrl.toString()}
             >
               {content}
             </a>
@@ -48,4 +52,13 @@ export default function SSOButtons({ providers, onUnavailable }: SSOButtonsProps
       })}
     </div>
   )
+}
+
+function resolveReturnURL() {
+  const currentUrl = new URL(window.location.href)
+  const explicit = currentUrl.searchParams.get('returnTo')?.trim()
+  if (explicit && explicit.startsWith('/') && !explicit.startsWith('//')) {
+    return explicit
+  }
+  return '/'
 }

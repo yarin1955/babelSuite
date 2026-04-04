@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { getSession } from './lib/api'
+import AuthCallback from './pages/AuthCallback'
 import Catalog from './pages/Catalog'
 import ForgotPassword from './pages/ForgotPassword'
 import Home from './pages/Home'
@@ -50,6 +51,7 @@ export default function App() {
         <Route path='/settings/agents' element={<AdminGuard><Agents /></AdminGuard>} />
         <Route path='/settings/registries' element={<AdminGuard><Registries /></AdminGuard>} />
         <Route path='/settings/secrets' element={<AdminGuard><Secrets /></AdminGuard>} />
+        <Route path='/auth/callback' element={<AuthCallback />} />
         <Route path='/sign-in' element={<GuestOnly><SignIn /></GuestOnly>} />
         <Route path='/sign-up' element={<GuestOnly><SignUp /></GuestOnly>} />
         <Route path='/forgot-password' element={<GuestOnly><ForgotPassword /></GuestOnly>} />

@@ -10,9 +10,11 @@ import (
 const TokenTTL = 72 * time.Hour
 
 type Claims struct {
-	UserID      string `json:"userId"`
-	WorkspaceID string `json:"workspaceId"`
-	IsAdmin     bool   `json:"isAdmin"`
+	UserID      string   `json:"userId"`
+	WorkspaceID string   `json:"workspaceId"`
+	IsAdmin     bool     `json:"isAdmin"`
+	Groups      []string `json:"groups,omitempty"`
+	Provider    string   `json:"provider,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -24,12 +26,14 @@ func NewJWT(secret string) *JWTService {
 	return &JWTService{secret: []byte(secret)}
 }
 
-func (j *JWTService) Sign(userID, workspaceID string, isAdmin bool) (string, time.Time, error) {
+func (j *JWTService) Sign(userID, workspaceID string, isAdmin bool, groups []string, provider string) (string, time.Time, error) {
 	expiresAt := time.Now().UTC().Add(TokenTTL)
 	claims := Claims{
 		UserID:      userID,
 		WorkspaceID: workspaceID,
 		IsAdmin:     isAdmin,
+		Groups:      groups,
+		Provider:    provider,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
@@ -60,4 +64,3 @@ func (j *JWTService) Verify(token string) (*Claims, error) {
 	}
 	return claims, nil
 }
-

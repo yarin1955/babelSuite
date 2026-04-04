@@ -110,7 +110,7 @@ func mustSignCatalogToken(t *testing.T, userID string) string {
 	t.Helper()
 
 	jwt := auth.NewJWT("test-secret")
-	token, _, err := jwt.Sign(userID, "workspace-1", false)
+	token, _, err := jwt.Sign(userID, "workspace-1", false, nil, "")
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}

@@ -18,7 +18,7 @@ func TestSignUpCreatesWorkspaceAndUser(t *testing.T) {
 	t.Parallel()
 
 	stub := newStubStore()
-	handler := NewHandler(stub, NewJWT("test-secret"), DefaultSSOProviders("", ""))
+	handler := NewHandler(stub, NewJWT("test-secret"), testAuthConfig())
 
 	body := bytes.NewBufferString(`{"fullName":"Ada Lovelace","email":"ada@example.com","password":"Sup3rStrong!"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/sign-up", body)
@@ -77,7 +77,7 @@ func TestSignInRejectsWrongPassword(t *testing.T) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	handler := NewHandler(stub, NewJWT("test-secret"), DefaultSSOProviders("", ""))
+	handler := NewHandler(stub, NewJWT("test-secret"), testAuthConfig())
 	body := bytes.NewBufferString(`{"email":"ada@example.com","password":"wrong-password"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/sign-in", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -87,6 +87,128 @@ func TestSignInRejectsWrongPassword(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+}
+
+func TestSignInRejectsWhenPasswordAuthDisabled(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(newStubStore(), NewJWT("test-secret"), Config{
+		PasswordAuthEnabled: false,
+		SignUpEnabled:       true,
+	})
+
+	body := bytes.NewBufferString(`{"email":"ada@example.com","password":"right-password"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/sign-in", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.signIn(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, rec.Code)
+	}
+}
+
+func TestMeUsesAdminClaimFromToken(t *testing.T) {
+	t.Parallel()
+
+	stub := newStubStore()
+	workspace := &domain.Workspace{
+		WorkspaceID: "workspace-1",
+		Slug:        "ada-workspace",
+		Name:        "Ada's workspace",
+		CreatedAt:   time.Now().UTC(),
+	}
+	user := &domain.User{
+		UserID:      "user-1",
+		WorkspaceID: workspace.WorkspaceID,
+		Username:    "ada",
+		Email:       "ada@example.com",
+		FullName:    "Ada Lovelace",
+		IsAdmin:     false,
+		CreatedAt:   time.Now().UTC(),
+	}
+	if err := stub.CreateWorkspace(context.Background(), workspace); err != nil {
+		t.Fatalf("seed workspace: %v", err)
+	}
+	if err := stub.CreateUser(context.Background(), user); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	jwtSvc := NewJWT("test-secret")
+	token, _, err := jwtSvc.Sign(user.UserID, user.WorkspaceID, true, []string{"admins"}, "oidc")
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	handler := NewHandler(stub, jwtSvc, testAuthConfig())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	handler.me(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var response authResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.User == nil || !response.User.IsAdmin {
+		t.Fatalf("expected admin user view, got %+v", response.User)
+	}
+}
+
+func TestAuthConfigReturnsOIDCProvider(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(newStubStore(), NewJWT("test-secret"), Config{
+		FrontendURL:         "http://localhost:5173",
+		PasswordAuthEnabled: true,
+		SignUpEnabled:       true,
+		OIDC: OIDCConfig{
+			Enabled:             true,
+			ProviderID:          "oidc",
+			ProviderName:        "Company SSO",
+			IssuerURL:           "https://issuer.example.com",
+			ClientID:            "client-id",
+			RedirectURL:         "http://localhost:8090/api/v1/auth/oidc/callback",
+			FrontendCallbackURL: "http://localhost:5173/auth/callback",
+			StateSecret:         []byte("test-secret"),
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8090/api/v1/auth/config", nil)
+	rec := httptest.NewRecorder()
+
+	handler.getAuthConfig(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var response authConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Providers) != 1 {
+		t.Fatalf("expected one provider, got %d", len(response.Providers))
+	}
+	if response.Providers[0].ProviderID != "oidc" {
+		t.Fatalf("unexpected provider: %+v", response.Providers[0])
+	}
+	if !response.Providers[0].Enabled {
+		t.Fatalf("expected provider to be enabled: %+v", response.Providers[0])
+	}
+}
+
+func testAuthConfig() Config {
+	return Config{
+		PasswordAuthEnabled: true,
+		SignUpEnabled:       true,
 	}
 }
 

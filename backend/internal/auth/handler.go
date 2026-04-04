@@ -30,9 +30,10 @@ type SSOProvider struct {
 }
 
 type Handler struct {
-	store        store.Store
-	jwt          *JWTService
-	ssoProviders []SSOProvider
+	store  store.Store
+	jwt    *JWTService
+	config Config
+	oidc   *OIDCService
 }
 
 type signUpRequest struct {
@@ -46,6 +47,12 @@ type signInRequest struct {
 	Password string `json:"password"`
 }
 
+type authConfigResponse struct {
+	PasswordAuthEnabled bool          `json:"passwordAuthEnabled"`
+	SignUpEnabled       bool          `json:"signUpEnabled"`
+	Providers           []SSOProvider `json:"providers"`
+}
+
 type authResponse struct {
 	Token     string            `json:"token"`
 	User      *domain.User      `json:"user"`
@@ -53,48 +60,47 @@ type authResponse struct {
 	ExpiresAt time.Time         `json:"expiresAt"`
 }
 
-func NewHandler(st store.Store, jwt *JWTService, ssoProviders []SSOProvider) *Handler {
-	return &Handler{store: st, jwt: jwt, ssoProviders: ssoProviders}
-}
-
-func DefaultSSOProviders(githubURL, gitlabURL string) []SSOProvider {
-	return []SSOProvider{
-		buildProvider("github", "GitHub", githubURL),
-		buildProvider("gitlab", "GitLab", gitlabURL),
+func NewHandler(st store.Store, jwt *JWTService, config Config) *Handler {
+	return &Handler{
+		store:  st,
+		jwt:    jwt,
+		config: config,
+		oidc:   NewOIDCService(config.OIDC),
 	}
-}
-
-func buildProvider(providerID, name, startURL string) SSOProvider {
-	provider := SSOProvider{
-		ProviderID:  providerID,
-		Name:        name,
-		ButtonLabel: "Continue with " + name,
-		StartURL:    strings.TrimSpace(startURL),
-		Enabled:     strings.TrimSpace(startURL) != "",
-	}
-	if !provider.Enabled {
-		provider.Hint = "Set " + strings.ToUpper(providerID) + "_OAUTH_URL on the backend to enable this SSO path."
-	}
-	return provider
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/auth/config", h.getAuthConfig)
 	mux.HandleFunc("POST /api/v1/auth/sign-up", h.signUp)
 	mux.HandleFunc("POST /api/v1/auth/sign-in", h.signIn)
 	mux.HandleFunc("GET /api/v1/auth/me", h.me)
 	mux.HandleFunc("GET /api/v1/auth/sso/providers", h.listSSOProviders)
+	mux.HandleFunc("GET /api/v1/auth/oidc/login", h.oidcLogin)
+	mux.HandleFunc("GET /api/v1/auth/oidc/callback", h.oidcCallback)
 
+	mux.HandleFunc("GET /auth/config", h.getAuthConfig)
 	mux.HandleFunc("POST /auth/register", h.signUp)
 	mux.HandleFunc("POST /auth/login", h.signIn)
 	mux.HandleFunc("GET /auth/me", h.me)
 	mux.HandleFunc("GET /auth/sso/providers", h.listSSOProviders)
+	mux.HandleFunc("GET /auth/oidc/login", h.oidcLogin)
+	mux.HandleFunc("GET /auth/oidc/callback", h.oidcCallback)
 }
 
-func (h *Handler) listSSOProviders(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"providers": h.ssoProviders})
+func (h *Handler) getAuthConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.authConfigResponse(r))
+}
+
+func (h *Handler) listSSOProviders(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"providers": h.authConfigResponse(r).Providers})
 }
 
 func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
+	if !h.config.SignUpEnabled {
+		writeError(w, http.StatusForbidden, "Local sign-up is disabled.")
+		return
+	}
+
 	var req signUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body.")
@@ -136,7 +142,7 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.createUser(r, req.FullName, req.Email, string(passHash), workspace.WorkspaceID)
+	user, err := h.createUser(r, req.FullName, req.Email, string(passHash), workspace.WorkspaceID, false)
 	if err != nil {
 		_ = h.store.DeleteWorkspace(r.Context(), workspace.WorkspaceID)
 		if errors.Is(err, store.ErrDuplicate) {
@@ -147,7 +153,7 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, expiresAt, err := h.jwt.Sign(user.UserID, user.WorkspaceID, user.IsAdmin)
+	token, expiresAt, err := h.jwt.Sign(user.UserID, user.WorkspaceID, user.IsAdmin, nil, "password")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Could not create your session right now.")
 		return
@@ -162,6 +168,11 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
+	if !h.config.PasswordAuthEnabled {
+		writeError(w, http.StatusForbidden, "Local password sign-in is disabled.")
+		return
+	}
+
 	var req signInRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body.")
@@ -194,7 +205,7 @@ func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, expiresAt, err := h.jwt.Sign(user.UserID, user.WorkspaceID, user.IsAdmin)
+	token, expiresAt, err := h.jwt.Sign(user.UserID, user.WorkspaceID, user.IsAdmin, nil, "password")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Could not create your session right now.")
 		return
@@ -206,6 +217,86 @@ func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
 		Workspace: workspace,
 		ExpiresAt: expiresAt,
 	})
+}
+
+func (h *Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
+	if !h.config.OIDCEnabled() {
+		writeError(w, http.StatusNotFound, "Single sign-on is not configured.")
+		return
+	}
+
+	returnURL := sanitizeReturnURL(h.config.FrontendURL, r.URL.Query().Get("return_url"))
+	redirectURL, stateCookie, err := h.oidc.BeginLogin(r.Context(), returnURL, requestIsSecure(r))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "Could not start single sign-on right now.")
+		return
+	}
+
+	http.SetCookie(w, stateCookie)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
+	if !h.config.OIDCEnabled() {
+		writeError(w, http.StatusNotFound, "Single sign-on is not configured.")
+		return
+	}
+
+	http.SetCookie(w, h.oidc.ClearStateCookie(requestIsSecure(r)))
+
+	if description := strings.TrimSpace(r.URL.Query().Get("error_description")); description != "" {
+		h.redirectOIDCError(w, r, http.StatusUnauthorized, description)
+		return
+	}
+	if errCode := strings.TrimSpace(r.URL.Query().Get("error")); errCode != "" {
+		h.redirectOIDCError(w, r, http.StatusUnauthorized, "Single sign-on failed: "+errCode)
+		return
+	}
+
+	cookie, err := r.Cookie(h.config.OIDC.NormalizedStateCookieName())
+	if err != nil {
+		h.redirectOIDCError(w, r, http.StatusUnauthorized, "Single sign-on state has expired. Please try again.")
+		return
+	}
+
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	stateValue := strings.TrimSpace(r.URL.Query().Get("state"))
+	if code == "" || stateValue == "" {
+		h.redirectOIDCError(w, r, http.StatusBadRequest, "Single sign-on response is missing the required state.")
+		return
+	}
+
+	identity, returnURL, err := h.oidc.Exchange(r.Context(), stateValue, code, cookie)
+	if err != nil {
+		h.redirectOIDCError(w, r, http.StatusUnauthorized, "Could not complete single sign-on right now.")
+		return
+	}
+
+	user, workspace, isAdmin, err := h.resolveOIDCUser(r, identity)
+	if err != nil {
+		h.redirectOIDCError(w, r, http.StatusInternalServerError, "Could not create your session right now.")
+		return
+	}
+
+	token, expiresAt, err := h.jwt.Sign(user.UserID, workspace.WorkspaceID, isAdmin, identity.Groups, h.config.OIDC.NormalizedProviderID())
+	if err != nil {
+		h.redirectOIDCError(w, r, http.StatusInternalServerError, "Could not create your session right now.")
+		return
+	}
+
+	callbackURL := appendFragmentParams(h.config.OIDC.FrontendCallbackURL, map[string]string{
+		"token":      token,
+		"expiresAt":  expiresAt.Format(time.RFC3339),
+		"return_url": returnURL,
+	})
+	http.Redirect(w, r, callbackURL, http.StatusFound)
+}
+
+func (h *Handler) redirectOIDCError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	callbackURL := appendFragmentParams(h.config.OIDC.FrontendCallbackURL, map[string]string{
+		"error": message,
+	})
+	http.Redirect(w, r, callbackURL, statusToRedirect(status))
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
@@ -233,12 +324,67 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userView := *user
+	userView.IsAdmin = claims.IsAdmin
+
 	writeJSON(w, http.StatusOK, authResponse{
 		Token:     token,
-		User:      user,
+		User:      &userView,
 		Workspace: workspace,
 		ExpiresAt: claims.ExpiresAt.Time,
 	})
+}
+
+func (h *Handler) authConfigResponse(r *http.Request) authConfigResponse {
+	providers := []SSOProvider{}
+	if h.config.OIDCEnabled() {
+		providers = append(providers, h.oidc.Provider(requestBaseURL(r)))
+	}
+
+	return authConfigResponse{
+		PasswordAuthEnabled: h.config.PasswordAuthEnabled,
+		SignUpEnabled:       h.config.SignUpEnabled,
+		Providers:           providers,
+	}
+}
+
+func (h *Handler) resolveOIDCUser(r *http.Request, identity *oidcIdentity) (*domain.User, *domain.Workspace, bool, error) {
+	email := strings.ToLower(strings.TrimSpace(identity.Email))
+	if email == "" {
+		return nil, nil, false, store.ErrNotFound
+	}
+
+	user, err := h.store.GetUserByEmail(r.Context(), email)
+	if err == nil {
+		workspace, workspaceErr := h.store.GetWorkspaceByID(r.Context(), user.WorkspaceID)
+		if workspaceErr != nil {
+			return nil, nil, false, workspaceErr
+		}
+		isAdmin := user.IsAdmin || h.oidc.MapsGroupsToAdmin(identity.Groups)
+		return user, workspace, isAdmin, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, nil, false, err
+	}
+
+	fullName := strings.TrimSpace(identity.FullName)
+	if fullName == "" {
+		fullName = emailPrefix(email)
+	}
+
+	workspace, err := h.createWorkspace(r, fullName, email)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	isAdmin := h.oidc.MapsGroupsToAdmin(identity.Groups)
+	user, err = h.createUser(r, fullName, email, "", workspace.WorkspaceID, isAdmin)
+	if err != nil {
+		_ = h.store.DeleteWorkspace(r.Context(), workspace.WorkspaceID)
+		return nil, nil, false, err
+	}
+
+	return user, workspace, isAdmin, nil
 }
 
 func (h *Handler) createWorkspace(r *http.Request, fullName, email string) (*domain.Workspace, error) {
@@ -271,7 +417,7 @@ func (h *Handler) createWorkspace(r *http.Request, fullName, email string) (*dom
 	return nil, store.ErrDuplicate
 }
 
-func (h *Handler) createUser(r *http.Request, fullName, email, passHash, workspaceID string) (*domain.User, error) {
+func (h *Handler) createUser(r *http.Request, fullName, email, passHash, workspaceID string, isAdmin bool) (*domain.User, error) {
 	baseUsername := usernameBase(fullName, email)
 	if baseUsername == "" {
 		baseUsername = "member"
@@ -289,7 +435,7 @@ func (h *Handler) createUser(r *http.Request, fullName, email, passHash, workspa
 			Username:    username,
 			Email:       email,
 			FullName:    fullName,
-			IsAdmin:     false,
+			IsAdmin:     isAdmin,
 			PassHash:    passHash,
 			CreatedAt:   time.Now().UTC(),
 		}
@@ -348,6 +494,31 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if requestIsSecure(r) {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func requestIsSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		return true
+	}
+	return false
+}
+
+func statusToRedirect(status int) int {
+	if status >= 400 {
+		return http.StatusFound
+	}
+	return status
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

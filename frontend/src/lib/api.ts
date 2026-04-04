@@ -497,22 +497,27 @@ export interface SSOProvider {
   hint?: string
 }
 
+export interface AuthConfig {
+  passwordAuthEnabled: boolean
+  signUpEnabled: boolean
+  providers: SSOProvider[]
+}
+
 export const fallbackSSOProviders: SSOProvider[] = [
   {
-    providerId: 'github',
-    name: 'GitHub',
-    buttonLabel: 'Continue with GitHub',
+    providerId: 'oidc',
+    name: 'Single Sign-On',
+    buttonLabel: 'Continue with Single Sign-On',
     enabled: false,
-    hint: 'Set GITHUB_OAUTH_URL on the backend to enable this SSO path.',
-  },
-  {
-    providerId: 'gitlab',
-    name: 'GitLab',
-    buttonLabel: 'Continue with GitLab',
-    enabled: false,
-    hint: 'Set GITLAB_OAUTH_URL on the backend to enable this SSO path.',
+    hint: 'Configure the backend OIDC settings to enable single sign-on.',
   },
 ]
+
+export const fallbackAuthConfig: AuthConfig = {
+  passwordAuthEnabled: true,
+  signUpEnabled: true,
+  providers: fallbackSSOProviders,
+}
 
 export async function signIn(payload: { email: string; password: string }) {
   return request<AuthResponse>('/api/v1/auth/sign-in', {
@@ -531,6 +536,18 @@ export async function signUp(payload: { fullName: string; email: string; passwor
 export async function listSSOProviders() {
   const response = await request<{ providers: SSOProvider[] }>('/api/v1/auth/sso/providers')
   return response.providers
+}
+
+export async function getAuthConfig() {
+  return request<AuthConfig>('/api/v1/auth/config')
+}
+
+export async function resolveSessionFromToken(token: string) {
+  return request<AuthResponse>('/api/v1/auth/me', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
 }
 
 export async function getPlatformSettings() {
