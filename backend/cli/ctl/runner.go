@@ -6,12 +6,12 @@ import (
 	"io"
 	"strings"
 
-	"github.com/babelsuite/babelsuite/cli/babelctl/authcmd"
-	"github.com/babelsuite/babelsuite/cli/babelctl/catalogcmd"
-	"github.com/babelsuite/babelsuite/cli/babelctl/envcmd"
-	"github.com/babelsuite/babelsuite/cli/babelctl/internal/support"
-	"github.com/babelsuite/babelsuite/cli/babelctl/profilescmd"
-	"github.com/babelsuite/babelsuite/cli/babelctl/runscmd"
+	"github.com/babelsuite/babelsuite/cli/ctl/authcmd"
+	"github.com/babelsuite/babelsuite/cli/ctl/catalogcmd"
+	"github.com/babelsuite/babelsuite/cli/ctl/envcmd"
+	"github.com/babelsuite/babelsuite/cli/ctl/internal/support"
+	"github.com/babelsuite/babelsuite/cli/ctl/profilescmd"
+	"github.com/babelsuite/babelsuite/cli/ctl/runscmd"
 	"github.com/babelsuite/babelsuite/pkg/localconfig"
 )
 

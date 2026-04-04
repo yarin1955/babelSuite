@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/babelsuite/babelsuite/cli/babelctl/internal/support"
+	"github.com/babelsuite/babelsuite/cli/ctl/internal/support"
 )
 
 func Run(ctx context.Context, rt *support.Runtime, opts support.GlobalOptions, args []string) int {

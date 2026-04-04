@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/babelsuite/babelsuite/internal/agent"
+	"github.com/babelsuite/babelsuite/internal/logstream"
+	"github.com/babelsuite/babelsuite/internal/platform"
 	"github.com/babelsuite/babelsuite/internal/profiles"
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
@@ -16,10 +20,192 @@ type captureObserver struct {
 	events chan Snapshot
 }
 
+type stubPlatformSource struct {
+	settings *platform.PlatformSettings
+	err      error
+}
+
+type stubRuntimeStore struct {
+	executions []PersistedExecution
+}
+
+func (s stubPlatformSource) Load() (*platform.PlatformSettings, error) {
+	return s.settings, s.err
+}
+
+func (s *stubRuntimeStore) LoadExecutionRuntime(_ context.Context) ([]PersistedExecution, error) {
+	return append([]PersistedExecution{}, s.executions...), nil
+}
+
+func (s *stubRuntimeStore) SaveExecutionRuntime(_ context.Context, executions []PersistedExecution) error {
+	s.executions = append([]PersistedExecution{}, executions...)
+	return nil
+}
+
 func (o *captureObserver) SyncExecution(snapshot Snapshot) {
 	select {
 	case o.events <- snapshot:
 	default:
+	}
+}
+
+func TestCreateExecutionUsesExplicitRemoteBackend(t *testing.T) {
+	service := NewServiceWithPlatform(suites.NewService(), stubPlatformSource{
+		settings: &platform.PlatformSettings{
+			Agents: []platform.ExecutionAgent{
+				{
+					AgentID:     "remote-agent",
+					Name:        "Remote Worker",
+					Type:        "remote-agent",
+					Description: "Dispatches steps to a worker process.",
+					Enabled:     true,
+					Default:     true,
+					HostURL:     "http://worker.example",
+				},
+			},
+		},
+	})
+	defer service.Close()
+
+	registry := agent.NewRegistry(nil)
+	coordinator := agent.NewCoordinator(registry, service)
+	service.ConfigureRemoteWorkers(registry, coordinator)
+
+	controlPlane := httptest.NewServer(agent.NewGateway(registry, coordinator))
+	defer controlPlane.Close()
+
+	client := agent.NewControlPlaneClient(controlPlane.URL, controlPlane.Client())
+	if err := client.Register(context.Background(), agent.RegisterRequest{
+		AgentID: "remote-agent",
+		Name:    "Remote Worker",
+		HostURL: "http://worker.example",
+	}); err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
+
+	workerService := agent.NewService(agent.Info{
+		AgentID: "remote-agent",
+		Name:    "Remote Worker",
+		Status:  "ready",
+	}, agent.ExecutorFunc(func(ctx context.Context, request agent.StepRequest, emit func(line logstream.Line)) error {
+		emit(logstream.Line{Source: request.Node.ID, Level: "info", Text: "remote worker running"})
+		return nil
+	}))
+	worker := agent.NewWorker("remote-agent", 20*time.Millisecond, client, workerService)
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	defer cancelWorker()
+	go func() { _ = worker.Run(workerCtx) }()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "payment-suite",
+		Profile: "local.yaml",
+		Backend: "remote-agent",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+	if execution.BackendID != "remote-agent" {
+		t.Fatalf("expected remote-agent backend id, got %q", execution.BackendID)
+	}
+	if execution.Backend != "Remote Worker" {
+		t.Fatalf("expected backend label to round-trip, got %q", execution.Backend)
+	}
+}
+
+func TestConfigureRuntimeStoreRestoresPersistedExecutions(t *testing.T) {
+	service := NewService(suites.NewService())
+	defer service.Close()
+
+	store := &stubRuntimeStore{
+		executions: []PersistedExecution{
+			{
+				Record: ExecutionRecord{
+					ID:        "run-persisted",
+					Suite:     ExecutionSuite{ID: "payment-suite", Title: "Payment Suite"},
+					Profile:   "local.yaml",
+					Backend:   "Remote Worker",
+					Status:    "Booting",
+					Trigger:   "Manual",
+					StartedAt: time.Now().UTC().Add(-time.Minute),
+					UpdatedAt: time.Now().UTC(),
+				},
+				Total:     3,
+				Completed: 1,
+				Logs: []logstream.Line{
+					{Source: "db", Level: "info", Text: "restored"},
+				},
+			},
+		},
+	}
+
+	service.ConfigureRuntimeStore(store)
+
+	executions := service.ListExecutions()
+	if len(executions) != 1 {
+		t.Fatalf("expected one restored execution, got %d", len(executions))
+	}
+	if executions[0].ID != "run-persisted" {
+		t.Fatalf("expected restored execution id, got %q", executions[0].ID)
+	}
+
+	record, err := service.GetExecution("run-persisted")
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+	if record.Backend != "Remote Worker" {
+		t.Fatalf("expected restored backend, got %q", record.Backend)
+	}
+}
+
+func TestCreateExecutionRejectsUnknownBackend(t *testing.T) {
+	service := NewServiceWithPlatform(suites.NewService(), stubPlatformSource{
+		settings: &platform.PlatformSettings{
+			Agents: []platform.ExecutionAgent{
+				{
+					AgentID: "local-docker",
+					Name:    "Local Docker",
+					Type:    "local",
+					Enabled: true,
+					Default: true,
+				},
+			},
+		},
+	})
+	defer service.Close()
+
+	_, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "payment-suite",
+		Profile: "local.yaml",
+		Backend: "missing-backend",
+	})
+	if !errors.Is(err, ErrBackendNotFound) {
+		t.Fatalf("expected ErrBackendNotFound, got %v", err)
+	}
+}
+
+func TestCreateExecutionRejectsUnavailableBackend(t *testing.T) {
+	service := NewServiceWithPlatform(suites.NewService(), stubPlatformSource{
+		settings: &platform.PlatformSettings{
+			Agents: []platform.ExecutionAgent{
+				{
+					AgentID: "remote-agent",
+					Name:    "Remote Worker",
+					Type:    "remote-agent",
+					Enabled: true,
+					Default: true,
+					HostURL: "http://127.0.0.1:1",
+				},
+			},
+		},
+	})
+	defer service.Close()
+
+	_, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "payment-suite",
+		Profile: "local.yaml",
+	})
+	if !errors.Is(err, ErrBackendUnavailable) {
+		t.Fatalf("expected ErrBackendUnavailable, got %v", err)
 	}
 }
 

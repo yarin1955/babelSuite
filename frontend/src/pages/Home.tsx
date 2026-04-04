@@ -43,6 +43,7 @@ export default function Home() {
   const [suiteModal, setSuiteModal] = useState<string | null>(null)
   const [suiteId, setSuiteId] = useState('')
   const [profile, setProfile] = useState('')
+  const [backend, setBackend] = useState('auto')
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -82,6 +83,11 @@ export default function Home() {
           defaultSuite.profiles.some((item) => item.fileName === current)
             ? current
             : defaultProfile
+        ))
+        setBackend((current) => (
+          current === 'auto' || defaultSuite.backends.some((item) => item.id === current)
+            ? current
+            : 'auto'
         ))
       } catch (loadError) {
         if (!active) {
@@ -139,6 +145,7 @@ export default function Home() {
       const execution = await createExecution({
         suiteId: selectedSuite.id,
         profile,
+        backend,
       })
 
       startTransition(() => {
@@ -152,6 +159,8 @@ export default function Home() {
             suiteId: execution.suiteId,
             suiteTitle: execution.suiteTitle,
             profile: execution.profile,
+            backendId: execution.backendId,
+            backend: execution.backend,
             trigger: execution.trigger,
             status: execution.status,
             duration: execution.duration,
@@ -289,8 +298,11 @@ export default function Home() {
             const next = launchSuites.find((item) => item.id === id)
             setSuiteId(id)
             setProfile(next?.profiles.find((item) => item.default)?.fileName ?? next?.profiles[0]?.fileName ?? '')
+            setBackend('auto')
           }}
           onChangeProfile={setProfile}
+          backend={backend}
+          onChangeBackend={setBackend}
           onClose={() => setShowModal(false)}
           onExecute={triggerRun}
         />
@@ -303,10 +315,12 @@ interface ExecutionModalProps {
   launchSuites: ExecutionLaunchSuite[]
   selectedSuite: ExecutionLaunchSuite
   profile: string
+  backend: string
   error: string
   creating: boolean
   onChangeSuite: (id: string) => void
   onChangeProfile: (fileName: string) => void
+  onChangeBackend: (backendId: string) => void
   onClose: () => void
   onExecute: () => void
 }
@@ -315,10 +329,12 @@ function ExecutionModal({
   launchSuites,
   selectedSuite,
   profile,
+  backend,
   error,
   creating,
   onChangeSuite,
   onChangeProfile,
+  onChangeBackend,
   onClose,
   onExecute,
 }: ExecutionModalProps) {
@@ -388,6 +404,34 @@ function ExecutionModal({
                   <strong>{item.label || item.fileName}</strong>
                   {item.description && <span>{item.description}</span>}
                   <code>{item.fileName}</code>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className='ex-section'>
+            <p className='ex-label'>Backend</p>
+            <div className='ex-profiles'>
+              <button
+                type='button'
+                className={`ex-profile-card${backend === 'auto' ? ' ex-profile-card--active' : ''}`}
+                onClick={() => onChangeBackend('auto')}
+              >
+                <strong>Auto</strong>
+                <span>Pick the default available backend when the run starts.</span>
+                <code>auto</code>
+              </button>
+              {selectedSuite.backends.map((item) => (
+                <button
+                  key={item.id}
+                  type='button'
+                  className={`ex-profile-card${item.id === backend ? ' ex-profile-card--active' : ''}`}
+                  onClick={() => onChangeBackend(item.id)}
+                  disabled={!item.available}
+                >
+                  <strong>{item.label}</strong>
+                  {(item.description || item.kind) && <span>{item.description || item.kind}</span>}
+                  <code>{item.available ? item.kind : 'unavailable'}</code>
                 </button>
               ))}
             </div>

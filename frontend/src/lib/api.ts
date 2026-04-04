@@ -15,12 +15,15 @@ export interface APISIXSidecarConfig {
 export interface ExecutionAgent {
   agentId: string
   name: string
-  type: 'local' | 'remote-docker' | 'kubernetes'
+  type: 'local' | 'remote-agent' | 'remote-docker' | 'kubernetes'
   description: string
   enabled: boolean
   default: boolean
   status: string
+  registeredAt?: string
+  lastHeartbeatAt?: string
   routingTags: string[]
+  runtimeCapabilities: string[]
   dockerSocket: string
   hostUrl: string
   tlsCert: string
@@ -29,6 +32,16 @@ export interface ExecutionAgent {
   targetNamespace: string
   serviceAccountToken: string
   apisixSidecar: APISIXSidecarConfig
+}
+
+export interface RuntimeAgent {
+  agentId: string
+  name: string
+  hostUrl: string
+  status: string
+  capabilities: string[]
+  registeredAt: string
+  lastHeartbeatAt: string
 }
 
 export interface OCIRegistry {
@@ -191,6 +204,16 @@ export interface ExecutionLaunchSuite {
   provider: string
   status: string
   profiles: ExecutionProfileOption[]
+  backends: ExecutionBackendOption[]
+}
+
+export interface ExecutionBackendOption {
+  id: string
+  label: string
+  kind: 'local' | 'kubernetes' | 'remote' | string
+  description: string
+  default: boolean
+  available: boolean
 }
 
 export interface ExecutionSummary {
@@ -198,6 +221,8 @@ export interface ExecutionSummary {
   suiteId: string
   suiteTitle: string
   profile: string
+  backendId: string
+  backend: string
   trigger: string
   status: 'Booting' | 'Healthy' | 'Failed'
   duration: string
@@ -217,6 +242,8 @@ export interface ExecutionOverviewItem {
   suiteId: string
   suiteTitle: string
   profile: string
+  backendId: string
+  backend: string
   trigger: string
   status: 'Booting' | 'Healthy' | 'Failed'
   duration: string
@@ -269,6 +296,8 @@ export interface ExecutionRecord {
     apiSurfaces: SuiteApiSurface[]
   }
   profile: string
+  backendId: string
+  backend: string
   trigger: string
   status: 'Booting' | 'Healthy' | 'Failed'
   duration: string
@@ -515,6 +544,11 @@ export async function updatePlatformSettings(settings: PlatformSettings) {
   })
 }
 
+export async function listAgents() {
+  const response = await request<{ agents: RuntimeAgent[] }>('/api/v1/agents')
+  return response.agents
+}
+
 export async function syncRegistry(registryId: string) {
   return request<PlatformSettings>(`/api/v1/platform-settings/registries/${encodeURIComponent(registryId)}/sync`, {
     method: 'POST',
@@ -619,7 +653,7 @@ export async function getExecutionOverview() {
   return request<ExecutionOverview>('/api/v1/executions/overview')
 }
 
-export async function createExecution(payload: { suiteId: string; profile: string }) {
+export async function createExecution(payload: { suiteId: string; profile: string; backend?: string }) {
   return request<ExecutionSummary>('/api/v1/executions', {
     method: 'POST',
     body: JSON.stringify(payload),

@@ -24,6 +24,8 @@ func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger
 			ID:        executionID,
 			Suite:     buildExecutionSuite(*suite),
 			Profile:   profile,
+			BackendID: "local-docker",
+			Backend:   "Local Docker",
 			Trigger:   trigger,
 			Status:    status,
 			StartedAt: startedAt,

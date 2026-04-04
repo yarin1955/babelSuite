@@ -28,6 +28,7 @@ func normalize(settings *PlatformSettings) {
 		settings.Agents[index].Type = strings.TrimSpace(settings.Agents[index].Type)
 		settings.Agents[index].Status = strings.TrimSpace(settings.Agents[index].Status)
 		settings.Agents[index].RoutingTags = compact(settings.Agents[index].RoutingTags)
+		settings.Agents[index].RuntimeCapabilities = compact(settings.Agents[index].RuntimeCapabilities)
 		normalizeAPISIXSidecar(&settings.Agents[index].APISIXSidecar)
 	}
 

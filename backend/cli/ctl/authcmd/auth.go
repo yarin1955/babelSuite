@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/babelsuite/babelsuite/cli/babelctl/internal/support"
+	"github.com/babelsuite/babelsuite/cli/ctl/internal/support"
 	"github.com/babelsuite/babelsuite/pkg/apiclient"
 )
 
