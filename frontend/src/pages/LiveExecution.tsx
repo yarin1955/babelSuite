@@ -205,7 +205,6 @@ export default function LiveExecution() {
             <ExecMeta label='Backend' value={execution.backend} />
             <ExecMeta label='Trigger' value={execution.trigger} />
             {execution.branch && <ExecMeta label='Branch' value={execution.branch} />}
-            {execution.commit && <ExecMeta label='Commit' value={execution.commit.slice(0, 7)} mono />}
             <ExecMeta label='Started' value={formatDateTime(execution.startedAt)} />
             {execution.duration && <ExecMeta label='Duration' value={execution.duration} />}
           </div>
