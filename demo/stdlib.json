@@ -12,11 +12,12 @@
       "0.8.3",
       "latest"
     ],
-    "description": "Core suite runtime module exposing container.run/create/get, mock.serve, service.wiremock/prism/custom, plus script and scenario entry points for topology orchestration.",
+    "description": "Core suite runtime module exposing container.run/create/get, mock.serve, service.wiremock/prism/custom, script, load, and scenario entry points for topology orchestration.",
     "modules": [
       "container lifecycle",
       "native mocks",
       "compat services",
+      "load plans",
       "topology steps",
       "debug helpers"
     ],
