@@ -9,7 +9,6 @@ import {
   FaPlus,
   FaTrash,
 } from 'react-icons/fa6'
-import { Link } from 'react-router-dom'
 import {
   ApiError,
   getPlatformSettings,
@@ -155,11 +154,11 @@ export default function Registries() {
   return (
     <AppShell
       section='Settings'
+      sectionTo='/settings'
       title='OCI Registries'
       description='Control where BabelSuite discovers suites and native modules.'
       actions={(
         <>
-          <Link to='/settings' className='platform-button platform-button--secondary'>← Settings</Link>
           <button className='platform-button platform-button--secondary' onClick={addRegistry}>
             <FaPlus /> <span>Add Registry</span>
           </button>

@@ -1,6 +1,5 @@
 import { startTransition, useEffect, useState } from 'react'
 import { FaEllipsisVertical, FaPlus, FaTrash } from 'react-icons/fa6'
-import { Link } from 'react-router-dom'
 import {
   ApiError,
   getPlatformSettings,
@@ -125,11 +124,11 @@ export default function Secrets() {
   return (
     <AppShell
       section='Settings'
+      sectionTo='/settings'
       title='Global Secrets'
       description='Configure an external secrets manager and define platform-wide overrides injected into every suite run.'
       actions={(
         <>
-          <Link to='/settings' className='platform-button platform-button--secondary'>← Settings</Link>
           <button className='platform-button' onClick={save} disabled={!dirty || saving}>
             {saving ? 'Saving…' : dirty ? 'Save Changes' : 'Saved'}
           </button>

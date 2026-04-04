@@ -9,7 +9,6 @@ import {
   FaServer,
   FaTrash,
 } from 'react-icons/fa6'
-import { Link } from 'react-router-dom'
 import {
   ApiError,
   getPlatformSettings,
@@ -183,11 +182,11 @@ export default function Agents() {
   return (
     <AppShell
       section='Settings'
+      sectionTo='/settings'
       title='Execution Agents'
       description='Configure the physical environments where suites execute and where the APISIX sidecar fronts API-facing suites.'
       actions={(
         <>
-          <Link to='/settings' className='platform-button platform-button--secondary'>← Settings</Link>
           <button className='platform-button platform-button--secondary' onClick={addAgent}>
             <FaPlus /> <span>Add Agent</span>
           </button>

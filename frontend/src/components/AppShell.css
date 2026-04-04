@@ -260,6 +260,15 @@
   color: #c4cfd7;
 }
 
+.app-shell__eyebrow--link {
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.app-shell__eyebrow--link:hover {
+  color: #4a9eff;
+}
+
 .app-shell__actions {
   display: flex;
   gap: 8px;

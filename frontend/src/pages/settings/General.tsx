@@ -1,6 +1,5 @@
 import { startTransition, useEffect, useState } from 'react'
 import { FaFloppyDisk } from 'react-icons/fa6'
-import { Link } from 'react-router-dom'
 import {
   ApiError,
   getPlatformSettings,
@@ -81,11 +80,11 @@ export default function General() {
   return (
     <AppShell
       section='Settings'
+      sectionTo='/settings'
       title='General'
       description='Platform-level identity and deployment mode for this BabelSuite instance.'
       actions={(
         <>
-          <Link to='/settings' className='platform-button platform-button--secondary'>← Settings</Link>
           <button className='platform-button' onClick={save} disabled={!dirty || saving}>
             <FaFloppyDisk />
             <span>{saving ? 'Saving…' : dirty ? 'Save Changes' : 'Saved'}</span>
