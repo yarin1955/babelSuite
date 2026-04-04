@@ -1,0 +1,65 @@
+{
+  "metadata": {
+    "fleet-control-room": {
+      "author": "Ari Levin",
+      "branch": "feature/planner-observability",
+      "message": "Run the fleet control topology against mocked telemetry bursts before planner rollout.",
+      "failureTarget": "fleet-smoke",
+      "defaultTrigger": "Manual"
+    },
+    "identity-broker": {
+      "author": "Sam Okafor",
+      "branch": "canary/session-cache",
+      "message": "Validate multi-provider login behavior with strict mock assertions and seeded realms.",
+      "failureTarget": "login-smoke",
+      "defaultTrigger": "CI"
+    },
+    "payment-suite": {
+      "author": "Nora Chen",
+      "branch": "release/payments-v2",
+      "message": "Promote the payment environment with deterministic fraud routing and wiremock-backed checkout paths.",
+      "failureTarget": "checkout-smoke",
+      "defaultTrigger": "Manual"
+    },
+    "soap-claims-hub": {
+      "author": "Maya Ortiz",
+      "branch": "feature/soap-bridge-modernization",
+      "message": "Validate SOAP envelopes through the APISIX sidecar before exposing the partner claims bridge.",
+      "failureTarget": "claims-smoke",
+      "defaultTrigger": "Manual"
+    },
+    "storefront-browser-lab": {
+      "author": "Lena Hart",
+      "branch": "feature/browser-checkout-lab",
+      "message": "Exercise the storefront browser lane with Playwright, mock APIs, and Kafka-backed checkout events.",
+      "failureTarget": "playwright-checkout",
+      "defaultTrigger": "Manual"
+    }
+  },
+  "history": [
+    {
+      "id": "run-1043",
+      "suiteId": "payment-suite",
+      "profile": "staging.yaml",
+      "trigger": "Manual",
+      "status": "Healthy",
+      "startedAgo": 120000000000
+    },
+    {
+      "id": "run-1042",
+      "suiteId": "fleet-control-room",
+      "profile": "perf.yaml",
+      "trigger": "CI",
+      "status": "Healthy",
+      "startedAgo": 420000000000
+    },
+    {
+      "id": "run-1041",
+      "suiteId": "identity-broker",
+      "profile": "ci.yaml",
+      "trigger": "CI",
+      "status": "Failed",
+      "startedAgo": 1440000000000
+    }
+  ]
+}

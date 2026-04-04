@@ -11,6 +11,7 @@ func hydrateSuites(input map[string]Definition) map[string]Definition {
 	for id, suite := range input {
 		suite = normalizeDefinition(suite)
 		suite.SourceFiles = buildSourceFiles(suite, readExampleSourceFile)
+		suite.SeedSources = cloneSourceFiles(suite.SourceFiles)
 		output[id] = suite
 	}
 	return output

@@ -1,0 +1,82 @@
+mode: local
+agents:
+  - agentId: local-docker
+    name: Local Docker
+    type: local
+    description: Uses the host machine's native Docker socket with zero extra configuration.
+    enabled: true
+    default: true
+    status: Ready
+    routingTags:
+      - default
+      - local
+    dockerSocket: /var/run/docker.sock
+    hostUrl: ""
+    tlsCert: ""
+    tlsKey: ""
+    kubeconfigPath: ""
+    targetNamespace: ""
+    serviceAccountToken: ""
+  - agentId: remote-agent
+    name: Remote Worker Pool
+    type: remote-agent
+    description: Dispatches suite work to a remote worker service for isolated or heavier workloads.
+    enabled: false
+    default: false
+    status: Disconnected
+    routingTags:
+      - high-memory
+    dockerSocket: ""
+    hostUrl: http://agent.internal.company.com:8091
+    tlsCert: vault://kv/platform/remote-agent/cert
+    tlsKey: vault://kv/platform/remote-agent/key
+    kubeconfigPath: ""
+    targetNamespace: ""
+    serviceAccountToken: ""
+  - agentId: kubernetes-burst
+    name: Kubernetes Burst Pool
+    type: kubernetes
+    description: Launches ephemeral pods in Kubernetes when suites need isolated or GPU-enabled compute.
+    enabled: false
+    default: false
+    status: Standby
+    routingTags:
+      - gpu-enabled
+      - ci-only
+    dockerSocket: ""
+    hostUrl: ""
+    tlsCert: ""
+    tlsKey: ""
+    kubeconfigPath: /etc/babelsuite/kubeconfig
+    targetNamespace: babelsuite-runs
+    serviceAccountToken: vault://kv/platform/k8s/token
+registries:
+  - registryId: catalog-primary
+    name: Zot Registry
+    provider: Zot
+    registryUrl: http://localhost:5000
+    username: ""
+    secret: ""
+    repositoryScope: "*"
+    region: ""
+    syncStatus: Indexed
+secrets:
+  provider: vault
+  vaultAddress: https://vault.internal.company.com
+  vaultNamespace: platform
+  vaultRole: babelsuite-runners
+  awsRegion: ""
+  secretPrefix: kv/platform
+  globalOverrides:
+    - key: HTTPS_PROXY
+      value: http://proxy.internal.company.com:8080
+      description: Corporate outbound proxy applied to every suite run.
+      sensitive: false
+    - key: INTERNAL_ROOT_CA
+      value: |-
+        -----BEGIN CERTIFICATE-----
+        MIIF...
+        -----END CERTIFICATE-----
+      description: Root certificate injected into suite containers for internal TLS trust.
+      sensitive: true
+description: Physical-layer configuration for BabelSuite execution agents, OCI catalog sources, and shared platform credentials.

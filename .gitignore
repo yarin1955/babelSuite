@@ -10,7 +10,6 @@ Thumbs.db
 # Local runtime files
 backend-start.log
 backend-start.err.log
-babelsuite-config.yaml
 
 # Frontend build outputs mirrored at repo root for safety
 frontend/node_modules/

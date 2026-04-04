@@ -1,0 +1,15 @@
+kind: OCIExampleModule
+metadata:
+  id: stdlib-runtime
+  title: @babelsuite/runtime
+spec:
+  repository: localhost:5000/babelsuite/runtime
+  provider: Stdlib
+  version: 0.9.0
+  tags:
+    - 0.9.0
+    - 0.8.3
+    - latest
+  description: Core suite runtime module exposing container.run/create/get, mock.serve, service.wiremock/prism/custom, plus script and scenario entry points for topology orchestration.
+  pullCommand: babelctl run localhost:5000/babelsuite/runtime:0.9.0
+  forkCommand: babelctl fork localhost:5000/babelsuite/runtime:0.9.0 ./stdlib-runtime

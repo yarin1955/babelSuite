@@ -1,0 +1,4 @@
+app:
+  name: payments-api
+  cacheUrl: redis://redis-cache:6379
+  logLevel: debug

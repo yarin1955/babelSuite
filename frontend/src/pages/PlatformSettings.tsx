@@ -105,7 +105,7 @@ export default function PlatformSettings() {
         setSavedSettings(updated)
         setSelectedAgentId(updated.agents[0]?.agentId ?? '')
         setSelectedRegistryId(updated.registries[0]?.registryId ?? '')
-        setMessage({ tone: 'success', text: 'Platform settings saved to babelsuite-config.yaml.' })
+        setMessage({ tone: 'success', text: 'Platform settings saved to configuration.yaml.' })
       })
     } catch (reason) {
       setMessage({

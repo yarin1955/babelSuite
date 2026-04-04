@@ -57,9 +57,17 @@ func validate(settings *PlatformSettings) error {
 		return errors.New("Add at least one OCI registry.")
 	}
 
+	enabledAgents := 0
+	defaultAgents := 0
 	for _, agent := range settings.Agents {
 		if agent.AgentID == "" || agent.Name == "" || agent.Type == "" {
 			return errors.New("Each execution agent needs an ID, name, and type.")
+		}
+		if agent.Enabled {
+			enabledAgents++
+		}
+		if agent.Enabled && agent.Default {
+			defaultAgents++
 		}
 		if strings.TrimSpace(agent.APISIXSidecar.Image) == "" {
 			return errors.New("Each execution agent needs an APISIX sidecar image.")
@@ -70,6 +78,12 @@ func validate(settings *PlatformSettings) error {
 		if agent.APISIXSidecar.ListenPort <= 0 || agent.APISIXSidecar.AdminPort <= 0 {
 			return errors.New("Each execution agent needs positive APISIX listen and admin ports.")
 		}
+	}
+	if enabledAgents == 0 {
+		return errors.New("Enable at least one execution agent.")
+	}
+	if defaultAgents > 1 {
+		return errors.New("Only one enabled execution agent can be the default.")
 	}
 
 	for _, registry := range settings.Registries {

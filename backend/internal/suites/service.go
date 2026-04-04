@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/babelsuite/babelsuite/internal/demofs"
 )
 
 type Service struct {
@@ -13,7 +15,7 @@ type Service struct {
 
 func NewService() *Service {
 	return &Service{
-		suites: hydrateSuites(seedSuites()),
+		suites: hydrateSuites(loadDemoSuites()),
 	}
 }
 
@@ -43,4 +45,26 @@ func (s *Service) Get(id string) (*Definition, error) {
 
 	clone := cloneDefinition(suite)
 	return &clone, nil
+}
+
+func loadDemoSuites() map[string]Definition {
+	if !demofs.Enabled() {
+		return loadWorkspaceSuites()
+	}
+
+	manifest, err := demofs.LoadManifest()
+	if err != nil {
+		return map[string]Definition{}
+	}
+
+	definitions, err := demofs.LoadJSON[[]Definition](manifest.SuitesFile)
+	if err != nil {
+		return map[string]Definition{}
+	}
+
+	result := make(map[string]Definition, len(definitions))
+	for _, definition := range definitions {
+		result[strings.TrimSpace(definition.ID)] = definition
+	}
+	return result
 }
