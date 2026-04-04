@@ -241,7 +241,10 @@ func topologyKind(call string) (string, bool) {
 		return "service", true
 	case "script", "script.file", "script.bash", "script.sql_migrate", "script.exec":
 		return "script", true
-	case "load", "scenario", "scenario.go", "scenario.python", "scenario.http":
+	case "load", "load.http", "load.grpc", "load.locust", "load.jmx", "load.k6", "scenario", "scenario.go", "scenario.python", "scenario.http":
+		if strings.HasPrefix(strings.TrimSpace(call), "load.") {
+			return "load", true
+		}
 		if strings.HasPrefix(strings.TrimSpace(call), "scenario.") {
 			return "scenario", true
 		}

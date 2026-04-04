@@ -1,4 +1,4 @@
-load("@babelsuite/runtime", "container", "mock", "service", "script", "scenario")
+load("@babelsuite/runtime", "container", "mock", "service", "script", "load", "scenario")
 
 # Container entry points with after= preserved.
 cache = container.run(
@@ -96,6 +96,27 @@ seed_exit_code = seed.exit_code
 seed_stdout = seed.stdout
 seed_stderr = seed.stderr
 
+# Load runs drive concurrency, throughput, staged ramps, and threshold budgets.
+checkout_load = load.http(
+    name="checkout-http-load",
+    plan="./load/http_checkout.star",
+    target="http://payments-api:8080",
+    env={"ORDERS_URL": orders_url},
+    after=["seed-data"],
+    tags=["perf", "checkout"],
+)
+checkout_load.assert_success()
+checkout_load_rps = checkout_load.rps_avg
+checkout_load_p95 = checkout_load.latency.p95_ms
+checkout_load_thresholds = checkout_load.thresholds
+storefront_k6 = load.k6(
+    name="storefront-k6",
+    file_path="./load/storefront_k6.js",
+    env={"BASE_URL": "http://payments-api:8080"},
+    after=["checkout-http-load"],
+)
+storefront_k6.assert_success()
+
 # Scenarios act as the attacker layer and compile the resulting test report.
 smoke = scenario.go(
     name="checkout-smoke",
@@ -103,7 +124,7 @@ smoke = scenario.go(
     objectives=["checkout", "payments"],
     tags=["smoke", "ci"],
     env={"BASE_URL": "http://payments-api:8080", "ORDERS_URL": orders_url},
-    after=["payments-api", "orders-mock", "catalog-compat", "legacy-compat", "seed-data"],
+    after=["payments-api", "orders-mock", "catalog-compat", "legacy-compat", "seed-data", "checkout-http-load", "storefront-k6"],
 )
 smoke_passed = smoke.passed
 smoke_exit_code = smoke.exit_code
