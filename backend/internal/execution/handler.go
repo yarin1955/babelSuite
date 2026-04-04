@@ -80,6 +80,8 @@ func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "Suite not found.")
 		case errors.Is(err, ErrProfileNotFound):
 			writeError(w, http.StatusBadRequest, "Selected profile does not belong to this suite.")
+		case errors.Is(err, ErrInvalidTopology):
+			writeError(w, http.StatusBadRequest, "Suite topology is invalid.")
 		default:
 			writeError(w, http.StatusInternalServerError, "Could not create execution.")
 		}

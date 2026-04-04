@@ -16,7 +16,7 @@ func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger
 	meta := s.suiteMeta[suiteID]
 
 	startedAt := time.Now().UTC().Add(-startedAgo)
-	topology := parseSuiteTopology(suite.SuiteStar)
+	topology := parseSuiteTopologyOrEmpty(suite.SuiteStar)
 	events := buildHistoricalEvents(suite, topology, status, profile, meta)
 
 	state := &executionState{

@@ -136,7 +136,11 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 		},
 	}
 
-	topology := parseSuiteTopology(suite.SuiteStar)
+	topology, err := parseSuiteTopology(suite.SuiteStar)
+	if err != nil {
+		s.noteRejectedLaunch(ctx, suite.ID, "invalid_topology")
+		return nil, err
+	}
 	state.total = len(topology)
 
 	s.mu.Lock()

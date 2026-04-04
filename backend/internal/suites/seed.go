@@ -21,13 +21,13 @@ load("@babelsuite/kafka", "kafka")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 
 # Pre-registered Starlark Modules return strict structs.
-db = container(name="db")
-kafka = container(name="kafka")
+db = container.run(name="db")
+kafka = container.run(name="kafka")
 stripe_mock = mock(name="stripe-mock", after=["db"])
 bootstrap_topics = script(name="bootstrap-topics", after=["kafka"])
 migrations = script(name="migrations", after=["db"])
-payment_gateway = container(name="payment-gateway", after=["db", "stripe-mock", "migrations"])
-fraud_worker = container(name="fraud-worker", after=["kafka", "bootstrap-topics", "payment-gateway"])
+payment_gateway = container.run(name="payment-gateway", after=["db", "stripe-mock", "migrations"])
+fraud_worker = container.run(name="fraud-worker", after=["kafka", "bootstrap-topics", "payment-gateway"])
 checkout_smoke = scenario(name="checkout-smoke", after=["payment-gateway", "fraud-worker"])`,
 			Profiles: []ProfileOption{
 				{FileName: "local.yaml", Label: "Local Debug", Description: "Verbose logs, local secrets, and relaxed timeouts.", Default: true},
@@ -237,12 +237,12 @@ checkout_smoke = scenario(name="checkout-smoke", after=["payment-gateway", "frau
 			SuiteStar: `load("@babelsuite/redis", "redis")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 
-redis_cache = container(name="redis-cache")
+redis_cache = container.run(name="redis-cache")
 telemetry_mock = mock(name="telemetry-mock", after=["redis-cache"])
 seed_routes = script(name="seed-routes", after=["redis-cache"])
-dispatcher_api = container(name="dispatcher-api", after=["redis-cache", "seed-routes"])
-planner = container(name="route-planner", after=["dispatcher-api"])
-control_room = container(name="control-room-ui", after=["dispatcher-api", "route-planner"])
+dispatcher_api = container.run(name="dispatcher-api", after=["redis-cache", "seed-routes"])
+planner = container.run(name="route-planner", after=["dispatcher-api"])
+control_room = container.run(name="control-room-ui", after=["dispatcher-api", "route-planner"])
 fleet_smoke = scenario(name="fleet-smoke", after=["control-room-ui", "telemetry-mock"])`,
 			Profiles: []ProfileOption{
 				{FileName: "local.yaml", Label: "Local Debug", Description: "Browser-forwarded ports and verbose telemetry payloads.", Default: true},
@@ -374,13 +374,13 @@ fleet_smoke = scenario(name="fleet-smoke", after=["control-room-ui", "telemetry-
 load("@babelsuite/playwright", "playwright")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 
-broker = container(name="kafka")
+broker = container.run(name="kafka")
 catalog_mock = mock(name="catalog-mock", after=["kafka"])
 orders_mock = mock(name="orders-mock", after=["kafka"])
 seed_topics = script(name="seed-topics", after=["kafka"])
-event_consumer = container(name="event-consumer", after=["kafka", "seed-topics", "orders-mock"])
-storefront_api = container(name="storefront-api", after=["catalog-mock", "orders-mock", "seed-topics"])
-storefront_ui = container(name="storefront-ui", after=["storefront-api"])
+event_consumer = container.run(name="event-consumer", after=["kafka", "seed-topics", "orders-mock"])
+storefront_api = container.run(name="storefront-api", after=["catalog-mock", "orders-mock", "seed-topics"])
+storefront_ui = container.run(name="storefront-ui", after=["storefront-api"])
 playwright_checkout = scenario(name="playwright-checkout", after=["storefront-ui", "event-consumer"])`,
 			Profiles: []ProfileOption{
 				{FileName: "local.yaml", Label: "Local Debug", Description: "Opens browser traces, seeded demo users, and single-worker Kafka consumption.", Default: true},
@@ -584,15 +584,15 @@ playwright_checkout = scenario(name="playwright-checkout", after=["storefront-ui
 load("@babelsuite/postgres", "pg")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 
-returns_db = container(name="returns-db")
-broker = container(name="kafka")
+returns_db = container.run(name="returns-db")
+broker = container.run(name="kafka")
 refunds_mock = mock(name="refunds-mock", after=["returns-db"])
 pricing_mock = mock(name="pricing-mock", after=["returns-db"])
 events_mock = mock(name="events-mock", after=["kafka"])
 seed_topics = script(name="seed-topics", after=["kafka"])
 seed_routes = script(name="seed-routes", after=["returns-db", "refunds-mock", "pricing-mock"])
-returns_api = container(name="returns-api", after=["returns-db", "refunds-mock", "pricing-mock", "seed-routes"])
-refund_worker = container(name="refund-worker", after=["kafka", "returns-api", "events-mock", "seed-topics"])
+returns_api = container.run(name="returns-api", after=["returns-db", "refunds-mock", "pricing-mock", "seed-routes"])
+refund_worker = container.run(name="refund-worker", after=["kafka", "returns-api", "events-mock", "seed-topics"])
 returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-worker"])`,
 			Profiles: []ProfileOption{
 				{FileName: "local.yaml", Label: "Local Debug", Description: "Verbose logs, seeded return ids, and open worker traces.", Default: true},
@@ -942,12 +942,12 @@ returns_smoke = scenario(name="returns-smoke", after=["returns-api", "refund-wor
 			SuiteStar: `load("@babelsuite/postgres", "pg")
 load("@babelsuite/runtime", "container", "mock", "script", "scenario")
 
-broker_db = container(name="broker-db")
+broker_db = container.run(name="broker-db")
 oidc_mock = mock(name="oidc-mock", after=["broker-db"])
 saml_mock = mock(name="saml-mock", after=["broker-db"])
 seed_realms = script(name="seed-realms", after=["broker-db"])
-broker_api = container(name="broker-api", after=["broker-db", "oidc-mock", "saml-mock", "seed-realms"])
-session_worker = container(name="session-worker", after=["broker-api"])
+broker_api = container.run(name="broker-api", after=["broker-db", "oidc-mock", "saml-mock", "seed-realms"])
+session_worker = container.run(name="session-worker", after=["broker-api"])
 login_smoke = scenario(name="login-smoke", after=["broker-api", "session-worker"])`,
 			Profiles: []ProfileOption{
 				{FileName: "local.yaml", Label: "Local Debug", Description: "Relaxed certificates and hot-reloadable providers.", Default: true},
