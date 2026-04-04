@@ -86,11 +86,31 @@ func main() {
 	auth.Seed(context.Background(), st, os.Getenv("ADMIN_EMAIL"), os.Getenv("ADMIN_PASSWORD"))
 
 	frontendURL := envOr("FRONTEND_URL", "http://localhost:5173")
+	apiBaseURL := envOr("PUBLIC_API_URL", envOr("VITE_API_URL", "http://localhost:"+envOr("PORT", "8090")))
 	jwtSvc := auth.NewJWT(envOr("JWT_SECRET", "change-me"))
-	handler := auth.NewHandler(st, jwtSvc, auth.DefaultSSOProviders(
-		os.Getenv("GITHUB_OAUTH_URL"),
-		os.Getenv("GITLAB_OAUTH_URL"),
-	))
+	handler := auth.NewHandler(st, jwtSvc, auth.Config{
+		FrontendURL:         frontendURL,
+		PasswordAuthEnabled: boolEnv("AUTH_PASSWORD_LOGIN_ENABLED", true),
+		SignUpEnabled:       boolEnv("AUTH_SIGNUP_ENABLED", true),
+		OIDC: auth.OIDCConfig{
+			Enabled:             boolEnv("OIDC_ENABLED", false),
+			ProviderID:          envOr("OIDC_PROVIDER_ID", "oidc"),
+			ProviderName:        envOr("OIDC_PROVIDER_NAME", "Single Sign-On"),
+			IssuerURL:           strings.TrimSpace(os.Getenv("OIDC_ISSUER_URL")),
+			ClientID:            strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")),
+			ClientSecret:        strings.TrimSpace(os.Getenv("OIDC_CLIENT_SECRET")),
+			RedirectURL:         envOr("OIDC_REDIRECT_URL", strings.TrimRight(apiBaseURL, "/")+"/api/v1/auth/oidc/callback"),
+			FrontendCallbackURL: envOr("OIDC_FRONTEND_CALLBACK_URL", strings.TrimRight(frontendURL, "/")+"/auth/callback"),
+			Scopes:              splitCSV(envOr("OIDC_SCOPES", "openid,profile,email,groups")),
+			PKCEEnabled:         boolEnv("OIDC_PKCE_ENABLED", true),
+			StateCookieName:     envOr("OIDC_STATE_COOKIE_NAME", "babelsuite_oidc_state"),
+			StateSecret:         []byte(envOr("AUTH_STATE_SECRET", envOr("JWT_SECRET", "change-me"))),
+			EmailClaim:          envOr("OIDC_EMAIL_CLAIM", "email"),
+			NameClaim:           envOr("OIDC_NAME_CLAIM", "name"),
+			GroupsClaim:         envOr("OIDC_GROUPS_CLAIM", "groups"),
+			AdminGroups:         splitCSV(os.Getenv("OIDC_ADMIN_GROUPS")),
+		},
+	})
 	suiteService := suites.NewService()
 	var profileStore profiles.Store = profiles.NewFileStore(resolveWorkspacePath(envOr("PROFILES_FILE", "babelsuite-profiles.yaml")))
 	profileStore = profiles.WithRedis(profileStore, cacheLayer, durationOr("CACHE_TTL_PROFILES", 2*time.Minute))
@@ -170,6 +190,39 @@ func envOr(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func boolEnv(key string, fallback bool) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if value == "" {
+		return fallback
+	}
+
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func splitCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		values = append(values, part)
+	}
+	return values
 }
 
 func durationOr(key string, fallback time.Duration) time.Duration {

@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import AuthField from '../components/AuthField'
 import AuthLayout from '../components/AuthLayout'
 import SSOButtons from '../components/SSOButtons'
-import { ApiError, fallbackSSOProviders, listSSOProviders, saveSession, signIn, type SSOProvider } from '../lib/api'
+import { ApiError, fallbackAuthConfig, getAuthConfig, saveSession, signIn, type AuthConfig, type SSOProvider } from '../lib/api'
 
 export default function SignIn() {
   const navigate = useNavigate()
@@ -14,15 +14,17 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [providers, setProviders] = useState<SSOProvider[]>(fallbackSSOProviders)
+  const [authConfig, setAuthConfig] = useState<AuthConfig>(fallbackAuthConfig)
+  const [providers, setProviders] = useState<SSOProvider[]>(fallbackAuthConfig.providers)
 
   useEffect(() => {
     let cancelled = false
 
-    listSSOProviders()
-      .then((items) => {
-        if (!cancelled && items.length > 0) {
-          setProviders(items)
+    getAuthConfig()
+      .then((config) => {
+        if (!cancelled) {
+          setAuthConfig(config)
+          setProviders(config.providers)
         }
       })
       .catch(() => {})
@@ -58,15 +60,18 @@ export default function SignIn() {
     setNotice(provider.hint ?? `${provider.name} SSO is not configured yet.`)
   }
 
+  const showLocalForm = authConfig.passwordAuthEnabled
+  const showSSO = providers.length > 0
+
   return (
     <AuthLayout
       title='Sign in'
       subtitle='Access your BabelSuite environment and execution history.'
       footer={<>Don't have an account? <Link to='/sign-up'>Sign up</Link></>}
     >
-      <SSOButtons providers={providers} onUnavailable={showProviderHint} />
+      {showSSO && <SSOButtons providers={providers} onUnavailable={showProviderHint} />}
 
-      <div className='auth-divider'><span>OR</span></div>
+      {showSSO && showLocalForm && <div className='auth-divider'><span>OR</span></div>}
 
       {(error || notice) && (
         <div className={`auth-message ${error ? 'auth-message--error' : 'auth-message--info'}`}>
@@ -74,43 +79,49 @@ export default function SignIn() {
         </div>
       )}
 
-      <form className='auth-form' onSubmit={submit}>
-        <AuthField
-          label='Email Address'
-          type='email'
-          value={form.email}
-          autoComplete='email'
-          onChange={update('email')}
-        />
+      {showLocalForm ? (
+        <form className='auth-form' onSubmit={submit}>
+          <AuthField
+            label='Email Address'
+            type='email'
+            value={form.email}
+            autoComplete='email'
+            onChange={update('email')}
+          />
 
-        <AuthField
-          label='Password'
-          type={showPassword ? 'text' : 'password'}
-          value={form.password}
-          autoComplete='current-password'
-          onChange={update('password')}
-          trailing={(
-            <button
-              type='button'
-              className='auth-field__toggle'
-              onClick={() => setShowPassword((current) => !current)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <FaEyeSlash /> : <FaEye />}
-            </button>
-          )}
-        />
+          <AuthField
+            label='Password'
+            type={showPassword ? 'text' : 'password'}
+            value={form.password}
+            autoComplete='current-password'
+            onChange={update('password')}
+            trailing={(
+              <button
+                type='button'
+                className='auth-field__toggle'
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            )}
+          />
 
-        <div className='auth-inline-row'>
-          <Link className='auth-link auth-link--subtle' to='/forgot-password'>
-            Forgot your password?
-          </Link>
+          <div className='auth-inline-row'>
+            <Link className='auth-link auth-link--subtle' to='/forgot-password'>
+              Forgot your password?
+            </Link>
+          </div>
+
+          <button className='auth-submit' type='submit' disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+      ) : (
+        <div className='auth-message auth-message--info'>
+          Local password sign-in is disabled for this environment. Continue with the configured identity provider.
         </div>
-
-        <button className='auth-submit' type='submit' disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
+      )}
     </AuthLayout>
   )
 }
