@@ -17,6 +17,7 @@ import './AppShell.css'
 
 interface AppShellProps {
   section: string
+  sectionTo?: string
   title: string
   description: string
   actions?: ReactNode
@@ -41,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const SIDEBAR_KEY = 'babelsuite.sidebar.collapsed'
 
-export default function AppShell({ section, title, description, actions, children }: AppShellProps) {
+export default function AppShell({ section, sectionTo, title, description, actions, children }: AppShellProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const session = getSession()
@@ -117,7 +118,10 @@ export default function AppShell({ section, title, description, actions, childre
       <div className='app-shell__content'>
         <header className='app-shell__topbar'>
           <div className='app-shell__heading'>
-            <p className='app-shell__eyebrow'>{section}</p>
+            {sectionTo
+              ? <Link to={sectionTo} className='app-shell__eyebrow app-shell__eyebrow--link'>{section}</Link>
+              : <p className='app-shell__eyebrow'>{section}</p>
+            }
             <h1>{title}</h1>
             <p>{description}</p>
           </div>
