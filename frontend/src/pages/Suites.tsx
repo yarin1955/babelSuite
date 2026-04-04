@@ -16,7 +16,7 @@ import {
 } from 'react-icons/fa6'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
-import { createExecution, getSuite, type SuiteDefinition } from '../lib/api'
+import { createExecution, getSuite, listExecutionLaunchSuites, type ExecutionLaunchSuite, type SuiteDefinition } from '../lib/api'
 import { groupTopologyByLevel, parseSuiteTopology } from '../lib/suites'
 import './Suites.css'
 
@@ -45,6 +45,8 @@ export default function Suites() {
   const [selectedOperationId, setSelectedOperationId] = useState('')
   const [selectedExchangeName, setSelectedExchangeName] = useState('')
   const [selectedProfile, setSelectedProfile] = useState('')
+  const [selectedBackend, setSelectedBackend] = useState('auto')
+  const [launchSuite, setLaunchSuite] = useState<ExecutionLaunchSuite | null>(null)
   const [notice, setNotice] = useState('')
   const [loadError, setLoadError] = useState('')
   const [showRunModal, setShowRunModal] = useState(false)
@@ -58,9 +60,13 @@ export default function Suites() {
 
     const load = async () => {
       try {
-        const nextSuite = await getSuite(suiteId)
+        const [nextSuite, launchSuites] = await Promise.all([
+          getSuite(suiteId),
+          listExecutionLaunchSuites(),
+        ])
         if (!active) return
         setSuite(nextSuite)
+        setLaunchSuite(launchSuites.find((item) => item.id === suiteId) ?? null)
       } catch (error) {
         if (!active) return
         setLoadError(error instanceof Error ? error.message : 'Could not load suite.')
@@ -94,6 +100,7 @@ export default function Suites() {
     setSelectedOperationId(defaultOperation?.id ?? '')
     setSelectedExchangeName(defaultOperation?.exchanges[0]?.name ?? '')
     setSelectedProfile(suite.profiles.find((p) => p.default)?.fileName ?? suite.profiles[0]?.fileName ?? '')
+    setSelectedBackend('auto')
     setNotice('')
     setShowRunModal(false)
   }, [suite])
@@ -122,7 +129,7 @@ export default function Suites() {
     if (!selectedProfile) return
     setLaunching(true)
     try {
-      const execution = await createExecution({ suiteId: suite!.id, profile: selectedProfile })
+      const execution = await createExecution({ suiteId: suite!.id, profile: selectedProfile, backend: selectedBackend })
       navigate(`/executions/${execution.id}`)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not create execution.')
@@ -711,6 +718,43 @@ export default function Suites() {
                 </button>
               ))}
             </div>
+
+            <label className='suite-field'>
+              <span>Backend</span>
+              <select value={selectedBackend} onChange={(e) => setSelectedBackend(e.target.value)}>
+                <option value='auto'>auto — pick the default available backend</option>
+                {(launchSuite?.backends ?? []).map((backend) => (
+                  <option key={backend.id} value={backend.id} disabled={!backend.available}>
+                    {backend.label} — {backend.available ? backend.kind : 'unavailable'}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {(launchSuite?.backends?.length ?? 0) > 0 && (
+              <div className='suite-profile-picker'>
+                <button
+                  type='button'
+                  className={`suite-profile-card${selectedBackend === 'auto' ? ' suite-profile-card--active' : ''}`}
+                  onClick={() => setSelectedBackend('auto')}
+                >
+                  <strong>Auto</strong>
+                  <span>Choose the default available backend when the run starts.</span>
+                </button>
+                {(launchSuite?.backends ?? []).map((backend) => (
+                  <button
+                    key={backend.id}
+                    type='button'
+                    className={`suite-profile-card${backend.id === selectedBackend ? ' suite-profile-card--active' : ''}`}
+                    onClick={() => setSelectedBackend(backend.id)}
+                    disabled={!backend.available}
+                  >
+                    <strong>{backend.label}</strong>
+                    <span>{backend.description || backend.kind}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className='suite-modal__footer'>
               <button type='button' className='suite-btn suite-btn--secondary' onClick={() => setShowRunModal(false)}>Cancel</button>

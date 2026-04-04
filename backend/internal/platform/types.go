@@ -36,7 +36,10 @@ type ExecutionAgent struct {
 	Enabled             bool                `json:"enabled" yaml:"enabled"`
 	Default             bool                `json:"default" yaml:"default"`
 	Status              string              `json:"status" yaml:"status"`
+	RegisteredAt        *time.Time          `json:"registeredAt,omitempty" yaml:"registeredAt,omitempty"`
+	LastHeartbeatAt     *time.Time          `json:"lastHeartbeatAt,omitempty" yaml:"lastHeartbeatAt,omitempty"`
 	RoutingTags         []string            `json:"routingTags" yaml:"routingTags"`
+	RuntimeCapabilities []string            `json:"runtimeCapabilities,omitempty" yaml:"runtimeCapabilities,omitempty"`
 	DockerSocket        string              `json:"dockerSocket" yaml:"dockerSocket"`
 	HostURL             string              `json:"hostUrl" yaml:"hostUrl"`
 	TLSCert             string              `json:"tlsCert" yaml:"tlsCert"`

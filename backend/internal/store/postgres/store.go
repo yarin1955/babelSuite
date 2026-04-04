@@ -2,10 +2,13 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
+	"github.com/babelsuite/babelsuite/internal/agent"
 	"github.com/babelsuite/babelsuite/internal/domain"
+	"github.com/babelsuite/babelsuite/internal/execution"
 	"github.com/babelsuite/babelsuite/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -65,6 +68,12 @@ CREATE TABLE IF NOT EXISTS favorite_packages (
   package_id TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, package_id)
+);
+
+CREATE TABLE IF NOT EXISTS runtime_documents (
+  key TEXT PRIMARY KEY,
+  payload JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `)
 	return err
@@ -193,5 +202,93 @@ func wrap(err error) error {
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return store.ErrDuplicate
 	}
+	return err
+}
+
+func (s *Store) LoadAgentRuntime(ctx context.Context) (*agent.RuntimeState, error) {
+	var state agent.RuntimeState
+	ok, err := s.loadRuntimeDocument(ctx, "agent-runtime", &state)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return &agent.RuntimeState{}, nil
+	}
+	return &state, nil
+}
+
+func (s *Store) SaveAgentRuntime(ctx context.Context, state *agent.RuntimeState) error {
+	if state == nil {
+		state = &agent.RuntimeState{}
+	}
+	return s.saveRuntimeDocument(ctx, "agent-runtime", state)
+}
+
+func (s *Store) LoadAssignmentRuntime(ctx context.Context) ([]agent.AssignmentSnapshot, error) {
+	var snapshots []agent.AssignmentSnapshot
+	ok, err := s.loadRuntimeDocument(ctx, "assignment-runtime", &snapshots)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return []agent.AssignmentSnapshot{}, nil
+	}
+	return snapshots, nil
+}
+
+func (s *Store) SaveAssignmentRuntime(ctx context.Context, snapshots []agent.AssignmentSnapshot) error {
+	if snapshots == nil {
+		snapshots = []agent.AssignmentSnapshot{}
+	}
+	return s.saveRuntimeDocument(ctx, "assignment-runtime", snapshots)
+}
+
+func (s *Store) LoadExecutionRuntime(ctx context.Context) ([]execution.PersistedExecution, error) {
+	var persisted []execution.PersistedExecution
+	ok, err := s.loadRuntimeDocument(ctx, "execution-runtime", &persisted)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return []execution.PersistedExecution{}, nil
+	}
+	return persisted, nil
+}
+
+func (s *Store) SaveExecutionRuntime(ctx context.Context, persisted []execution.PersistedExecution) error {
+	if persisted == nil {
+		persisted = []execution.PersistedExecution{}
+	}
+	return s.saveRuntimeDocument(ctx, "execution-runtime", persisted)
+}
+
+func (s *Store) loadRuntimeDocument(ctx context.Context, key string, target any) (bool, error) {
+	var payload []byte
+	err := s.pool.QueryRow(ctx, `SELECT payload FROM runtime_documents WHERE key = $1`, key).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if len(payload) == 0 {
+		return true, nil
+	}
+	if err := json.Unmarshal(payload, target); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) saveRuntimeDocument(ctx context.Context, key string, value any) error {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+INSERT INTO runtime_documents (key, payload, updated_at)
+VALUES ($1, $2::jsonb, now())
+ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+`, key, string(payload))
 	return err
 }

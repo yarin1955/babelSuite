@@ -359,6 +359,8 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 		SuiteID:       item.record.Suite.ID,
 		SuiteTitle:    item.record.Suite.Title,
 		Profile:       item.record.Profile,
+		BackendID:     item.record.BackendID,
+		Backend:       item.record.Backend,
 		Trigger:       item.record.Trigger,
 		Status:        item.record.Status,
 		Duration:      s.durationLocked(item),

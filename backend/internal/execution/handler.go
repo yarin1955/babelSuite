@@ -80,6 +80,10 @@ func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "Suite not found.")
 		case errors.Is(err, ErrProfileNotFound):
 			writeError(w, http.StatusBadRequest, "Selected profile does not belong to this suite.")
+		case errors.Is(err, ErrBackendNotFound):
+			writeError(w, http.StatusBadRequest, "Selected backend does not exist.")
+		case errors.Is(err, ErrBackendUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "Selected backend is unavailable.")
 		case errors.Is(err, ErrInvalidTopology):
 			writeError(w, http.StatusBadRequest, "Suite topology is invalid.")
 		default:

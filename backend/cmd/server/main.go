@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/babelsuite/babelsuite/internal/agent"
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/cachehub"
 	"github.com/babelsuite/babelsuite/internal/catalog"
@@ -57,6 +58,7 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 	defer st.Close(context.Background())
+	primaryStore := st
 
 	telemetryPipeline, err := telemetry.Start(context.Background())
 	if err != nil {
@@ -95,6 +97,10 @@ func main() {
 	profileService := profiles.NewService(suiteService, profileStore)
 	var platformStore platform.Store = platform.NewFileStore(resolveWorkspacePath(envOr("PLATFORM_SETTINGS_FILE", "babelsuite-config.yaml")))
 	platformStore = platform.WithRedis(platformStore, cacheLayer, durationOr("CACHE_TTL_PLATFORM", 2*time.Minute))
+	var agentRuntimeStore agent.RuntimeStore = agent.NewFileRuntimeStore(resolveWorkspacePath(envOr("AGENT_RUNTIME_FILE", "babelsuite-agents.yaml")))
+	if repository, ok := primaryStore.(agent.RuntimeRepository); ok {
+		agentRuntimeStore = agent.NewDBRuntimeStore(repository)
+	}
 	suiteHandler := suites.NewHandler(profileService, jwtSvc)
 	mockingHandler := mocking.NewHandler(mocking.NewService(suiteService))
 	profileHandler := profiles.NewHandler(profileService, jwtSvc)
@@ -106,8 +112,19 @@ func main() {
 	catalogHandler := catalog.NewHandler(catalogReader, st, jwtSvc)
 	engineStore := engine.NewStore()
 	engineHandler := engine.NewHandler(engineStore, jwtSvc)
+	agentRegistry := agent.NewRegistry(agentRuntimeStore)
 	executionWatcher := enginewatchers.NewExecutionWatcher(engineStore)
-	executionService := execution.NewService(profileService, executionWatcher)
+	executionService := execution.NewServiceWithPlatform(profileService, platformStore, executionWatcher)
+	if runtimeStore, ok := primaryStore.(execution.RuntimeStore); ok {
+		executionService.ConfigureRuntimeStore(runtimeStore)
+	}
+	executionService.ConfigureRuntimeCache(cacheLayer, durationOr("CACHE_TTL_EXECUTION_RUNTIME", 24*time.Hour))
+	assignmentCoordinator := agent.NewCoordinator(agentRegistry, executionService)
+	if assignmentStore, ok := primaryStore.(agent.AssignmentStore); ok {
+		assignmentCoordinator.ConfigureStore(assignmentStore)
+	}
+	assignmentCoordinator.ConfigureRuntimeCache(cacheLayer, durationOr("CACHE_TTL_EXECUTION_RUNTIME", 24*time.Hour))
+	executionService.ConfigureRemoteWorkers(agentRegistry, assignmentCoordinator)
 	defer executionService.Close()
 	executionHandler := execution.NewHandler(executionService, engineStore, jwtSvc)
 	platformHandler := platform.NewHandler(platformStore, jwtSvc)
@@ -124,6 +141,7 @@ func main() {
 	handler.Register(mux)
 	catalogHandler.Register(mux)
 	engineHandler.Register(mux)
+	agent.RegisterGateway(mux, agentRegistry, assignmentCoordinator)
 	profileHandler.Register(mux)
 	suiteHandler.Register(mux)
 	mockingHandler.Register(mux)

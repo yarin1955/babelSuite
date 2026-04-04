@@ -13,10 +13,12 @@ import { Link } from 'react-router-dom'
 import {
   ApiError,
   getPlatformSettings,
+  listAgents,
   updatePlatformSettings,
   type APISIXSidecarConfig,
   type ExecutionAgent,
   type PlatformSettings,
+  type RuntimeAgent,
 } from '../../lib/api'
 import AppShell from '../../components/AppShell'
 import SlidingPanel from '../../components/SlidingPanel'
@@ -24,6 +26,7 @@ import '../PlatformSettings.css'
 
 const AGENT_TYPES = [
   { value: 'local', label: 'Local (Default)' },
+  { value: 'remote-agent', label: 'Remote Worker' },
   { value: 'remote-docker', label: 'Remote Docker' },
   { value: 'kubernetes', label: 'Kubernetes' },
 ] as const
@@ -36,6 +39,7 @@ export default function Agents() {
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [panelAgent, setPanelAgent] = useState<ExecutionAgent | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [runtimeAgents, setRuntimeAgents] = useState<RuntimeAgent[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -57,6 +61,27 @@ export default function Agents() {
     }
     void load()
     return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadRuntime = async () => {
+      try {
+        const agents = await listAgents()
+        if (!cancelled) {
+          startTransition(() => setRuntimeAgents(agents))
+        }
+      } catch {
+      }
+    }
+
+    void loadRuntime()
+    const timer = window.setInterval(() => { void loadRuntime() }, 10000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [])
 
   const patchDraft = (mutator: (next: PlatformSettings) => void) => {
@@ -153,6 +178,7 @@ export default function Agents() {
   }
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedSettings)
+  const runtimeById = new Map(runtimeAgents.map((agent) => [agent.agentId, agent]))
 
   return (
     <AppShell
@@ -197,6 +223,11 @@ export default function Agents() {
 
           {draft.agents.map((agent) => (
             <div className='bs-table-list__row' key={agent.agentId} onClick={() => openPanel(agent)}>
+              {(() => {
+                const runtime = runtimeById.get(agent.agentId)
+                const displayStatus = runtime?.status ?? agent.status
+                const heartbeatAt = runtime?.lastHeartbeatAt ?? agent.lastHeartbeatAt
+                return (
               <div className='bs-table-row'>
                 <div className='bs-table-cell bs-table-cell--shrink'>
                   {agent.enabled
@@ -207,13 +238,14 @@ export default function Agents() {
                   <strong>{agent.name}</strong>
                   {agent.default && <span className='bs-tag bs-tag--default'>default</span>}
                   {agent.description && <p className='bs-table-cell__sub'>{agent.description}</p>}
+                  {heartbeatAt && <p className='bs-table-cell__sub'>Last heartbeat {new Date(heartbeatAt).toLocaleString()}</p>}
                 </div>
                 <div className='bs-table-cell'>
                   <span className='bs-tag'>{labelForAgentType(agent.type)}</span>
                 </div>
                 <div className='bs-table-cell'>
-                  <span className={`bs-status-badge bs-status-badge--${statusTone(agent.status)}`}>
-                    {agent.status}
+                  <span className={`bs-status-badge bs-status-badge--${statusTone(displayStatus)}`}>
+                    {displayStatus}
                   </span>
                 </div>
                 <div className='bs-table-cell'>
@@ -227,6 +259,8 @@ export default function Agents() {
                   ]} />
                 </div>
               </div>
+                )
+              })()}
             </div>
           ))}
         </div>
@@ -254,6 +288,13 @@ export default function Agents() {
         )}
       >
         {panelAgent && (
+          (() => {
+            const runtime = runtimeById.get(panelAgent.agentId)
+            const displayStatus = runtime?.status ?? panelAgent.status
+            const registeredAt = runtime?.registeredAt ?? panelAgent.registeredAt
+            const lastHeartbeatAt = runtime?.lastHeartbeatAt ?? panelAgent.lastHeartbeatAt
+            const runtimeCapabilities = runtime?.capabilities ?? panelAgent.runtimeCapabilities
+            return (
           <>
             <div className='white-box'>
               <p className='white-box__section-header'>Identity</p>
@@ -284,7 +325,17 @@ export default function Agents() {
                 </div>
                 <div>
                   <label>Status</label>
-                  <input value={panelAgent.status} onChange={(e) => updatePanelAgent('status', e.target.value)} />
+                  <input value={displayStatus} onChange={(e) => updatePanelAgent('status', e.target.value)} />
+                </div>
+              </div>
+              <div className='bs-form-row bs-form-row--two'>
+                <div>
+                  <label>Registered</label>
+                  <input value={registeredAt ? new Date(registeredAt).toLocaleString() : 'Never'} readOnly />
+                </div>
+                <div>
+                  <label>Last Heartbeat</label>
+                  <input value={lastHeartbeatAt ? new Date(lastHeartbeatAt).toLocaleString() : 'Never'} readOnly />
                 </div>
               </div>
               <div className='bs-form-row'>
@@ -293,6 +344,14 @@ export default function Agents() {
                   value={panelAgent.routingTags.join(', ')}
                   onChange={(e) => updatePanelAgent('routingTags', splitList(e.target.value))}
                   placeholder='gpu-enabled, high-memory, ci-only'
+                />
+              </div>
+              <div className='bs-form-row'>
+                <label>Runtime Capabilities <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(comma-separated)</span></label>
+                <input
+                  value={runtimeCapabilities.join(', ')}
+                  onChange={(e) => updatePanelAgent('runtimeCapabilities', splitList(e.target.value))}
+                  placeholder='container, mock, script, scenario'
                 />
               </div>
               <div className='bs-form-checks'>
@@ -313,6 +372,26 @@ export default function Agents() {
                 <div className='bs-form-row'>
                   <label>Docker Socket</label>
                   <input value={panelAgent.dockerSocket} onChange={(e) => updatePanelAgent('dockerSocket', e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            {panelAgent.type === 'remote-agent' && (
+              <div className='white-box'>
+                <p className='white-box__section-header'><FaCloudArrowUp style={{ marginRight: 6 }} />Remote Worker</p>
+                <div className='bs-form-row'>
+                  <label>Worker URL</label>
+                  <input value={panelAgent.hostUrl} onChange={(e) => updatePanelAgent('hostUrl', e.target.value)} />
+                </div>
+                <div className='bs-form-row bs-form-row--two'>
+                  <div>
+                    <label>TLS Cert</label>
+                    <input value={panelAgent.tlsCert} onChange={(e) => updatePanelAgent('tlsCert', e.target.value)} />
+                  </div>
+                  <div>
+                    <label>TLS Key</label>
+                    <input value={panelAgent.tlsKey} onChange={(e) => updatePanelAgent('tlsKey', e.target.value)} />
+                  </div>
                 </div>
               </div>
             )}
@@ -395,6 +474,8 @@ export default function Agents() {
               </div>
             </div>
           </>
+            )
+          })()
         )}
       </SlidingPanel>
     </AppShell>
@@ -404,6 +485,7 @@ export default function Agents() {
 function labelForAgentType(type: ExecutionAgent['type']) {
   switch (type) {
     case 'local': return 'Local Docker'
+    case 'remote-agent': return 'Remote Worker'
     case 'remote-docker': return 'Remote Docker'
     case 'kubernetes': return 'Kubernetes'
     default: return type
@@ -412,9 +494,10 @@ function labelForAgentType(type: ExecutionAgent['type']) {
 
 function statusTone(status: string) {
   const s = status.toLowerCase()
-  if (s.includes('ready') || s.includes('indexed')) return 'ok'
+  if (s.includes('ready') || s.includes('indexed') || s.includes('online')) return 'ok'
   if (s.includes('pending') || s.includes('standby')) return 'warn'
   if (s.includes('disconnect') || s.includes('error')) return 'err'
+  if (s.includes('offline')) return 'off'
   return 'off'
 }
 
@@ -491,6 +574,7 @@ function emptyAgent(index: number): ExecutionAgent {
     default: false,
     status: 'Ready',
     routingTags: [],
+    runtimeCapabilities: [],
     dockerSocket: '/var/run/docker.sock',
     hostUrl: '',
     tlsCert: '',

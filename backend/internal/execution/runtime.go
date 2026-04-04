@@ -17,26 +17,7 @@ import (
 )
 
 func NewService(source suiteSource, observers ...Observer) *Service {
-	if source == nil {
-		source = suites.NewService()
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	s := &Service{
-		ctx:         ctx,
-		cancel:      cancel,
-		queue:       queue.NewMemory(ctx, 3),
-		suiteSource: source,
-		observers:   observers,
-		logs:        logstream.NewHub(),
-		runner:      runner.NewLocal(),
-		suiteMeta:   seedExecutionMetadata(),
-		executions:  make(map[string]*executionState),
-		subs:        make(map[string]map[chan StreamEvent]struct{}),
-	}
-	s.signals = newTelemetrySet(s)
-	s.seedHistory()
-	return s
+	return NewServiceWithPlatform(source, nil, observers...)
 }
 
 func (s *Service) Close() {
@@ -48,6 +29,7 @@ func (s *Service) Close() {
 }
 
 func (s *Service) ListLaunchSuites() []LaunchSuite {
+	backends := s.backendOptions()
 	result := make([]LaunchSuite, 0, len(s.suiteSource.List()))
 	for _, suite := range s.suiteSource.List() {
 		result = append(result, LaunchSuite{
@@ -58,6 +40,7 @@ func (s *Service) ListLaunchSuites() []LaunchSuite {
 			Provider:    suite.Provider,
 			Status:      suite.Status,
 			Profiles:    toExecutionProfiles(suite.Profiles),
+			Backends:    append([]BackendOption{}, backends...),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -117,6 +100,12 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 		return nil, ErrProfileNotFound
 	}
 
+	selectedBackend, err := s.resolveBackend(ctx, request.Backend)
+	if err != nil {
+		s.noteRejectedLaunch(ctx, suite.ID, "backend_unavailable")
+		return nil, err
+	}
+
 	executionID := "run-" + uuid.NewString()[:8]
 	startedAt := time.Now().UTC()
 	state := &executionState{
@@ -124,6 +113,8 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 			ID:        executionID,
 			Suite:     buildExecutionSuite(*suite),
 			Profile:   profile,
+			BackendID: selectedBackend.option.ID,
+			Backend:   selectedBackend.option.Label,
 			Trigger:   firstNonEmpty(meta.DefaultTrigger, "Manual"),
 			Status:    "Booting",
 			StartedAt: startedAt,
@@ -148,6 +139,7 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 	s.order = append(s.order, executionID)
 	s.mu.Unlock()
 	s.logs.Open(executionID)
+	s.persistExecutionRuntime()
 	s.beginRunObservation(ctx, state)
 
 	tasks := make([]queue.Task, 0, len(topology))
@@ -171,7 +163,7 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 			Dependencies: dependencies,
 			LeaseTTL:     8 * time.Second,
 			Run: func(ctx context.Context) error {
-				return s.runNode(ctx, executionID, suite, profile, node)
+				return s.runNode(ctx, executionID, suite, profile, selectedBackend.backend, node)
 			},
 		})
 	}
@@ -200,7 +192,7 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 	return &summary, nil
 }
 
-func (s *Service) runNode(ctx context.Context, executionID string, suite *suites.Definition, profile string, node topologyNode) error {
+func (s *Service) runNode(ctx context.Context, executionID string, suite *suites.Definition, profile string, backend runner.Backend, node topologyNode) error {
 	stepCtx, stepSpan, stepStartedAt := s.beginStepObservation(s.stepContext(executionID), executionID, suite, profile, node)
 
 	s.appendEvent(executionID, ExecutionEvent{
@@ -212,11 +204,19 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		Level:     "info",
 	})
 
-	err := s.runner.Run(stepCtx, runner.StepSpec{
-		ExecutionID: executionID,
-		SuiteID:     suite.ID,
-		SuiteTitle:  suite.Title,
-		Profile:     profile,
+	err := backend.Run(stepCtx, runner.StepSpec{
+		ExecutionID:     executionID,
+		SuiteID:         suite.ID,
+		SuiteTitle:      suite.Title,
+		SuiteRepository: suite.Repository,
+		Profile:         profile,
+		Trigger:         s.executionTrigger(executionID),
+		BackendID:       s.executionBackendID(executionID),
+		BackendLabel:    s.executionBackendLabel(executionID),
+		BackendKind:     backend.Kind(),
+		StepIndex:       node.Order,
+		TotalSteps:      len(parseSuiteTopologyOrEmpty(suite.SuiteStar)),
+		LeaseTTL:        8 * time.Second,
 		Node: runner.StepNode{
 			ID:        node.ID,
 			Name:      node.Name,
@@ -279,6 +279,7 @@ func (s *Service) appendEvent(executionID string, event ExecutionEvent) {
 
 	s.publish(streamEvent, subscribers)
 	s.appendLog(executionID, event)
+	s.persistExecutionRuntime()
 	s.syncObservers(executionID)
 }
 
@@ -308,8 +309,10 @@ func (s *Service) markNodeComplete(executionID string) bool {
 	item.record.UpdatedAt = time.Now().UTC()
 	if item.completed >= item.total {
 		item.record.Status = "Healthy"
+		go s.persistExecutionRuntime()
 		return true
 	}
+	go s.persistExecutionRuntime()
 	return false
 }
 
@@ -350,6 +353,7 @@ func (s *Service) failExecution(executionID, source, message string) {
 	s.queue.CancelGroup(executionID)
 	s.publish(streamEvent, subscribers)
 	s.appendLog(executionID, event)
+	s.persistExecutionRuntime()
 	s.syncObservers(executionID)
 }
 
@@ -392,6 +396,7 @@ func (s *Service) appendRunnerLog(executionID, source string, line logstream.Lin
 		Level:     firstNonEmpty(line.Level, "info"),
 		Text:      line.Text,
 	})
+	s.persistExecutionRuntime()
 }
 
 func (s *Service) summaryLocked(item *executionState) ExecutionSummary {
@@ -400,6 +405,8 @@ func (s *Service) summaryLocked(item *executionState) ExecutionSummary {
 		SuiteID:    item.record.Suite.ID,
 		SuiteTitle: item.record.Suite.Title,
 		Profile:    item.record.Profile,
+		BackendID:  item.record.BackendID,
+		Backend:    item.record.Backend,
 		Trigger:    item.record.Trigger,
 		Status:     item.record.Status,
 		Duration:   s.durationLocked(item),
@@ -430,6 +437,33 @@ func firstNonEmpty(values ...string) string {
 		if strings.TrimSpace(value) != "" {
 			return value
 		}
+	}
+	return ""
+}
+
+func (s *Service) executionTrigger(executionID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if item := s.executions[executionID]; item != nil {
+		return item.record.Trigger
+	}
+	return ""
+}
+
+func (s *Service) executionBackendID(executionID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if item := s.executions[executionID]; item != nil {
+		return item.record.BackendID
+	}
+	return ""
+}
+
+func (s *Service) executionBackendLabel(executionID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if item := s.executions[executionID]; item != nil {
+		return item.record.Backend
 	}
 	return ""
 }

@@ -29,6 +29,7 @@ type Section = 'agents' | 'registries' | 'secrets'
 
 const AGENT_TYPES = [
   { value: 'local', label: 'Local (Default)' },
+  { value: 'remote-agent', label: 'Remote Worker' },
   { value: 'remote-docker', label: 'Remote Docker' },
   { value: 'kubernetes', label: 'Kubernetes' },
 ] as const
@@ -358,6 +359,9 @@ export default function PlatformSettings() {
                       <div className='platform-list__main'>
                         <strong>{agent.name}</strong>
                         <p>{labelForAgentType(agent.type)}{agent.default ? ' · Default' : ''}</p>
+                        {agent.lastHeartbeatAt && (
+                          <p className='platform-list__sub'>Last heartbeat {new Date(agent.lastHeartbeatAt).toLocaleString()}</p>
+                        )}
                       </div>
                       <div className='platform-list__meta'>
                         <span className={`platform-status platform-status--${statusTone(agent.status)}`}>{agent.status}</span>
@@ -408,12 +412,24 @@ export default function PlatformSettings() {
                       <span>Status</span>
                       <input value={selectedAgent.status} onChange={(e) => updateAgent('status', e.target.value)} />
                     </label>
+                    <label className='platform-field'>
+                      <span>Last heartbeat</span>
+                      <input value={selectedAgent.lastHeartbeatAt ? new Date(selectedAgent.lastHeartbeatAt).toLocaleString() : 'Never'} readOnly />
+                    </label>
                     <label className='platform-field platform-field--full'>
                       <span>Routing Tags</span>
                       <input
                         value={selectedAgent.routingTags.join(', ')}
                         onChange={(e) => updateAgent('routingTags', splitList(e.target.value))}
                         placeholder='gpu-enabled, high-memory, ci-only'
+                      />
+                    </label>
+                    <label className='platform-field platform-field--full'>
+                      <span>Runtime Capabilities</span>
+                      <input
+                        value={selectedAgent.runtimeCapabilities.join(', ')}
+                        onChange={(e) => updateAgent('runtimeCapabilities', splitList(e.target.value))}
+                        placeholder='container, mock, script, scenario'
                       />
                     </label>
                   </div>
@@ -430,6 +446,26 @@ export default function PlatformSettings() {
                         <span>Docker Socket</span>
                         <input value={selectedAgent.dockerSocket} onChange={(e) => updateAgent('dockerSocket', e.target.value)} />
                       </label>
+                    </div>
+                  )}
+
+                  {selectedAgent.type === 'remote-agent' && (
+                    <div className='platform-detail-card'>
+                      <div className='platform-detail-card__title'><FaCloudArrowUp /> Remote Worker</div>
+                      <div className='platform-form-grid'>
+                        <label className='platform-field platform-field--full'>
+                          <span>Worker URL</span>
+                          <input value={selectedAgent.hostUrl} onChange={(e) => updateAgent('hostUrl', e.target.value)} />
+                        </label>
+                        <label className='platform-field'>
+                          <span>TLS Cert</span>
+                          <input value={selectedAgent.tlsCert} onChange={(e) => updateAgent('tlsCert', e.target.value)} />
+                        </label>
+                        <label className='platform-field'>
+                          <span>TLS Key</span>
+                          <input value={selectedAgent.tlsKey} onChange={(e) => updateAgent('tlsKey', e.target.value)} />
+                        </label>
+                      </div>
                     </div>
                   )}
 
@@ -726,6 +762,7 @@ export default function PlatformSettings() {
 function labelForAgentType(type: ExecutionAgent['type']) {
   switch (type) {
     case 'local': return 'Local Docker'
+    case 'remote-agent': return 'Remote Worker'
     case 'remote-docker': return 'Remote Docker'
     case 'kubernetes': return 'Kubernetes'
     default: return type
@@ -734,8 +771,9 @@ function labelForAgentType(type: ExecutionAgent['type']) {
 
 function statusTone(status: string) {
   const s = status.toLowerCase()
-  if (s.includes('ready') || s.includes('indexed')) return 'success'
+  if (s.includes('ready') || s.includes('indexed') || s.includes('online')) return 'success'
   if (s.includes('pending') || s.includes('standby')) return 'warning'
+  if (s.includes('offline') || s.includes('disconnect')) return 'neutral'
   return 'neutral'
 }
 
@@ -758,6 +796,7 @@ function emptyAgent(index: number): ExecutionAgent {
     default: false,
     status: 'Ready',
     routingTags: [],
+    runtimeCapabilities: [],
     dockerSocket: '/var/run/docker.sock',
     hostUrl: '',
     tlsCert: '',

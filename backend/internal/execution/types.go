@@ -8,17 +8,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/babelsuite/babelsuite/internal/agent"
 	"github.com/babelsuite/babelsuite/internal/logstream"
+	"github.com/babelsuite/babelsuite/internal/platform"
 	"github.com/babelsuite/babelsuite/internal/queue"
-	"github.com/babelsuite/babelsuite/internal/runner"
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 var (
-	ErrSuiteNotFound     = errors.New("suite not found")
-	ErrProfileNotFound   = errors.New("profile not found")
-	ErrExecutionNotFound = errors.New("execution not found")
-	ErrInvalidTopology   = errors.New("invalid suite topology")
+	ErrSuiteNotFound      = errors.New("suite not found")
+	ErrProfileNotFound    = errors.New("profile not found")
+	ErrExecutionNotFound  = errors.New("execution not found")
+	ErrBackendNotFound    = errors.New("backend not found")
+	ErrBackendUnavailable = errors.New("backend unavailable")
+	ErrInvalidTopology    = errors.New("invalid suite topology")
 )
 
 var (
@@ -34,6 +37,15 @@ type ProfileOption struct {
 	Default     bool   `json:"default"`
 }
 
+type BackendOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Kind        string `json:"kind"`
+	Description string `json:"description"`
+	Default     bool   `json:"default"`
+	Available   bool   `json:"available"`
+}
+
 type LaunchSuite struct {
 	ID          string          `json:"id"`
 	Title       string          `json:"title"`
@@ -42,6 +54,7 @@ type LaunchSuite struct {
 	Provider    string          `json:"provider"`
 	Status      string          `json:"status"`
 	Profiles    []ProfileOption `json:"profiles"`
+	Backends    []BackendOption `json:"backends"`
 }
 
 type ExecutionSummary struct {
@@ -49,6 +62,8 @@ type ExecutionSummary struct {
 	SuiteID    string    `json:"suiteId"`
 	SuiteTitle string    `json:"suiteTitle"`
 	Profile    string    `json:"profile"`
+	BackendID  string    `json:"backendId"`
+	Backend    string    `json:"backend"`
 	Trigger    string    `json:"trigger"`
 	Status     string    `json:"status"`
 	Duration   string    `json:"duration"`
@@ -79,6 +94,8 @@ type ExecutionRecord struct {
 	ID        string           `json:"id"`
 	Suite     ExecutionSuite   `json:"suite"`
 	Profile   string           `json:"profile"`
+	BackendID string           `json:"backendId"`
+	Backend   string           `json:"backend"`
 	Trigger   string           `json:"trigger"`
 	Status    string           `json:"status"`
 	Duration  string           `json:"duration"`
@@ -94,6 +111,7 @@ type ExecutionRecord struct {
 type CreateRequest struct {
 	SuiteID string `json:"suiteId"`
 	Profile string `json:"profile"`
+	Backend string `json:"backend,omitempty"`
 }
 
 type StepSnapshot struct {
@@ -109,6 +127,8 @@ type Snapshot struct {
 	SuiteID       string         `json:"suiteId"`
 	SuiteTitle    string         `json:"suiteTitle"`
 	Profile       string         `json:"profile"`
+	BackendID     string         `json:"backendId"`
+	Backend       string         `json:"backend"`
 	Trigger       string         `json:"trigger"`
 	Status        string         `json:"status"`
 	Duration      string         `json:"duration"`
@@ -132,11 +152,16 @@ type Service struct {
 	cancel context.CancelFunc
 	queue  *queue.Memory
 
-	suiteSource suiteSource
-	observers   []Observer
-	logs        *logstream.Hub
-	runner      runner.Executor
-	signals     *telemetrySet
+	suiteSource    suiteSource
+	platformSource platformSource
+	registry       *agent.Registry
+	coordinator    *agent.Coordinator
+	runtimeStore   RuntimeStore
+	runtimeCache   executionCache
+	runtimeTTL     time.Duration
+	observers      []Observer
+	logs           *logstream.Hub
+	signals        *telemetrySet
 
 	mu         sync.Mutex
 	suiteMeta  map[string]suiteRuntimeMeta
@@ -148,6 +173,10 @@ type Service struct {
 type suiteSource interface {
 	List() []suites.Definition
 	Get(id string) (*suites.Definition, error)
+}
+
+type platformSource interface {
+	Load() (*platform.PlatformSettings, error)
 }
 
 type suiteRuntimeMeta struct {

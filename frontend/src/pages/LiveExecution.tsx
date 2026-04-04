@@ -93,7 +93,7 @@ export default function LiveExecution() {
     setRestarting(true)
     setActionError('')
     try {
-      const next = await createExecution({ suiteId: execution.suite.id, profile: execution.profile })
+      const next = await createExecution({ suiteId: execution.suite.id, profile: execution.profile, backend: execution.backendId })
       navigate(`/executions/${next.id}`)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not restart execution.')
@@ -203,6 +203,7 @@ export default function LiveExecution() {
 
           <div className='exec-header__meta'>
             <ExecMeta label='Profile' value={execution.profile} />
+            <ExecMeta label='Backend' value={execution.backend} />
             <ExecMeta label='Trigger' value={execution.trigger} />
             {execution.branch && <ExecMeta label='Branch' value={execution.branch} />}
             {execution.commit && <ExecMeta label='Commit' value={execution.commit.slice(0, 7)} mono />}

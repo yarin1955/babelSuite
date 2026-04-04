@@ -15,6 +15,8 @@ type ExecutionState struct {
 	SuiteID       string      `json:"suiteId"`
 	SuiteTitle    string      `json:"suiteTitle"`
 	Profile       string      `json:"profile"`
+	BackendID     string      `json:"backendId"`
+	Backend       string      `json:"backend"`
 	Trigger       string      `json:"trigger"`
 	Status        string      `json:"status"`
 	Duration      string      `json:"duration"`

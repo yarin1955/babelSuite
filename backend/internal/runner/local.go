@@ -8,10 +8,33 @@ import (
 	"github.com/babelsuite/babelsuite/internal/logstream"
 )
 
-type Local struct{}
+type Local struct {
+	config BackendConfig
+}
 
-func NewLocal() *Local {
-	return &Local{}
+func NewLocal(configs ...BackendConfig) *Local {
+	config := BackendConfig{}
+	if len(configs) > 0 {
+		config = configs[0]
+	}
+	config = normalizeBackendConfig(config, "local", "Local Docker", "local")
+	return &Local{config: config}
+}
+
+func (l *Local) ID() string {
+	return l.config.ID
+}
+
+func (l *Local) Label() string {
+	return l.config.Label
+}
+
+func (l *Local) Kind() string {
+	return l.config.Kind
+}
+
+func (l *Local) IsAvailable(context.Context) bool {
+	return true
 }
 
 func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line)) error {

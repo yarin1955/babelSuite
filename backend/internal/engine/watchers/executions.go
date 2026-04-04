@@ -35,6 +35,8 @@ func (w *ExecutionWatcher) SyncExecution(snapshot execution.Snapshot) {
 			SuiteID:       snapshot.SuiteID,
 			SuiteTitle:    snapshot.SuiteTitle,
 			Profile:       snapshot.Profile,
+			BackendID:     snapshot.BackendID,
+			Backend:       snapshot.Backend,
 			Trigger:       snapshot.Trigger,
 			Status:        snapshot.Status,
 			Duration:      snapshot.Duration,

@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/babelsuite/babelsuite/cli/babelctl"
+	babelctl "github.com/babelsuite/babelsuite/cli/ctl"
 )
 
 func main() {

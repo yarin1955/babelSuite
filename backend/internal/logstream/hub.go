@@ -101,6 +101,17 @@ func (h *Hub) Subscribe(ctx context.Context, executionID string, since int) (<-c
 	return sub.ch, nil
 }
 
+func (h *Hub) Snapshot(executionID string) ([]Line, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	s, ok := h.streams[executionID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return append([]Line{}, s.list...), nil
+}
+
 func (h *Hub) ensureStream(executionID string) *stream {
 	s, ok := h.streams[executionID]
 	if ok {
