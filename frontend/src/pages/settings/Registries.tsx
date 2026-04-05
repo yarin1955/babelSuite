@@ -32,6 +32,7 @@ export default function Registries() {
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [panelRegistry, setPanelRegistry] = useState<OCIRegistry | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [isNewRegistry, setIsNewRegistry] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -68,32 +69,37 @@ export default function Registries() {
     if (!panelRegistry) return
     const updated = { ...panelRegistry, [field]: value }
     setPanelRegistry(updated)
-    patchDraft((next) => {
-      next.registries = next.registries.map((r) =>
-        r.registryId === panelRegistry.registryId ? updated : r,
-      )
-    })
+    if (!isNewRegistry) {
+      patchDraft((next) => {
+        next.registries = next.registries.map((r) =>
+          r.registryId === panelRegistry.registryId ? updated : r,
+        )
+      })
+    }
   }
 
   const openPanel = (registry: OCIRegistry) => {
     setPanelRegistry(structuredClone(registry))
+    setIsNewRegistry(false)
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
+    setIsNewRegistry(false)
     setTimeout(() => setPanelRegistry(null), 300)
   }
 
   const addRegistry = () => {
     if (!draft) return
     const registry = emptyRegistry(draft.registries.length + 1)
-    patchDraft((next) => { next.registries.push(registry) })
     setPanelRegistry(registry)
+    setIsNewRegistry(true)
     setPanelOpen(true)
   }
 
   const removeRegistry = (registryId: string) => {
+    if (isNewRegistry) { closePanel(); return }
     if (!draft || draft.registries.length === 1) return
     patchDraft((next) => { next.registries = next.registries.filter((r) => r.registryId !== registryId) })
     closePanel()
@@ -123,10 +129,14 @@ export default function Registries() {
     setSaving(true)
     setMessage(null)
     try {
-      const updated = await updatePlatformSettings(draft)
+      const payload = (isNewRegistry && panelRegistry)
+        ? { ...draft, registries: [...draft.registries, panelRegistry] }
+        : draft
+      const updated = await updatePlatformSettings(payload)
       startTransition(() => {
         setDraft(updated)
         setSavedSettings(updated)
+        setIsNewRegistry(false)
         setMessage({ tone: 'success', text: 'OCI registries saved.' })
       })
     } catch (reason) {
@@ -149,7 +159,7 @@ export default function Registries() {
     )
   }
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(savedSettings)
+  const dirty = isNewRegistry || JSON.stringify(draft) !== JSON.stringify(savedSettings)
 
   return (
     <AppShell
