@@ -13,6 +13,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/logstream"
 	"github.com/babelsuite/babelsuite/internal/platform"
 	"github.com/babelsuite/babelsuite/internal/profiles"
+	"github.com/babelsuite/babelsuite/internal/runner"
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
@@ -283,6 +284,200 @@ func TestCreateExecutionRejectsInvalidTopology(t *testing.T) {
 	}
 }
 
+func TestCreateExecutionExpandsNestedSuiteTopology(t *testing.T) {
+	source := staticSuiteSource{
+		items: map[string]suites.Definition{
+			"child-suite": {
+				ID:         "child-suite",
+				Title:      "Child Suite",
+				Repository: "localhost:5000/core/child-suite",
+				Version:    "workspace",
+				SuiteStar: strings.Join([]string{
+					`db = container.run(name="db")`,
+					`stub = mock.serve(name="stub", after=["db"])`,
+					`api = container.run(name="api", after=["stub"])`,
+				}, "\n"),
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+				SourceFiles: []suites.SourceFile{
+					{
+						Path: "profiles/local.yaml",
+						Content: strings.TrimSpace(`
+name: Local
+default: true
+env:
+  JWT_AUDIENCE: payments
+services:
+  api:
+    env:
+      API_MODE: strict
+`),
+					},
+				},
+			},
+			"parent-suite": {
+				ID:         "parent-suite",
+				Title:      "Parent Suite",
+				Repository: "localhost:5000/core/parent-suite",
+				Version:    "workspace",
+				SuiteStar: strings.Join([]string{
+					`global = container.run(name="global-db")`,
+					`auth = suite.run(ref="auth-module", after=["global-db"])`,
+					`smoke = scenario.go(name="smoke", after=["auth"])`,
+				}, "\n"),
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+				SourceFiles: []suites.SourceFile{
+					{
+						Path: "dependencies.yaml",
+						Content: strings.TrimSpace(`
+dependencies:
+  auth-module:
+    ref: localhost:5000/core/child-suite
+    version: workspace
+    profile: local.yaml
+    inputs:
+      DATABASE_URL: postgres://postgres:postgres@global-db:5432/auth
+      REDIS_ADDR: redis:6379
+`),
+					},
+					{
+						Path: "dependencies.lock.yaml",
+						Content: strings.TrimSpace(`
+locks:
+  auth-module:
+    resolved: localhost:5000/core/child-suite@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`),
+					},
+				},
+			},
+		},
+	}
+
+	service := NewService(source)
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "parent-suite",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	record, err := service.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+
+	if len(record.Suite.Topology) != 5 {
+		t.Fatalf("expected 5 resolved topology nodes, got %d", len(record.Suite.Topology))
+	}
+
+	byID := map[string]suites.TopologyNode{}
+	for _, node := range record.Suite.Topology {
+		byID[node.ID] = node
+	}
+
+	if !containsTopologyDependency(byID["auth/db"].DependsOn, "global-db") {
+		t.Fatalf("expected auth/db to depend on global-db, got %+v", byID["auth/db"].DependsOn)
+	}
+	if !containsTopologyDependency(byID["smoke"].DependsOn, "auth/api") {
+		t.Fatalf("expected smoke to depend on auth/api, got %+v", byID["smoke"].DependsOn)
+	}
+	if byID["auth/api"].RuntimeProfile != "local.yaml" {
+		t.Fatalf("expected local.yaml runtime profile, got %q", byID["auth/api"].RuntimeProfile)
+	}
+	if got := byID["auth/api"].RuntimeEnv["DATABASE_URL"]; got != "postgres://postgres:postgres@global-db:5432/auth" {
+		t.Fatalf("expected dependency input DATABASE_URL, got %q", got)
+	}
+	if got := byID["auth/api"].RuntimeEnv["JWT_AUDIENCE"]; got != "payments" {
+		t.Fatalf("expected profile env JWT_AUDIENCE, got %q", got)
+	}
+	if got := byID["auth/api"].RuntimeEnv["API_MODE"]; got != "strict" {
+		t.Fatalf("expected service env API_MODE, got %q", got)
+	}
+	if got := byID["auth/stub"].RuntimeHeaders["x-suite-profile"]; got != "local.yaml" {
+		t.Fatalf("expected x-suite-profile header for imported mock, got %q", got)
+	}
+	if got := byID["auth/api"].ResolvedRef; got != "localhost:5000/core/child-suite@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" {
+		t.Fatalf("expected resolved ref, got %q", got)
+	}
+}
+
+type captureBackend struct {
+	spec runner.StepSpec
+}
+
+func (b *captureBackend) ID() string                       { return "capture" }
+func (b *captureBackend) Label() string                    { return "Capture" }
+func (b *captureBackend) Kind() string                     { return "capture" }
+func (b *captureBackend) IsAvailable(context.Context) bool { return true }
+func (b *captureBackend) Run(_ context.Context, step runner.StepSpec, _ func(logstream.Line)) error {
+	b.spec = step
+	return nil
+}
+
+func TestRunNodePassesDependencyRuntimeToBackend(t *testing.T) {
+	service := NewService(suites.NewService())
+	defer service.Close()
+
+	backend := &captureBackend{}
+	suite := &suites.Definition{
+		ID:         "parent-suite",
+		Title:      "Parent Suite",
+		Repository: "localhost:5000/core/parent-suite",
+		Version:    "workspace",
+		Topology: []suites.TopologyNode{
+			{ID: "auth/api"},
+		},
+	}
+	node := topologyNode{
+		ID:               "auth/api",
+		Name:             "auth/api",
+		Kind:             "container",
+		SourceSuiteID:    "child-suite",
+		SourceSuiteTitle: "Child Suite",
+		SourceRepository: "localhost:5000/core/child-suite",
+		SourceVersion:    "workspace",
+		DependencyAlias:  "auth-module",
+		ResolvedRef:      "localhost:5000/core/child-suite@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+		Digest:           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+		RuntimeProfile:   "local.yaml",
+		RuntimeEnv: map[string]string{
+			"DATABASE_URL": "postgres://postgres:postgres@global-db:5432/auth",
+		},
+		RuntimeHeaders: map[string]string{
+			"x-suite-profile": "local.yaml",
+		},
+	}
+
+	if err := service.runNode(context.Background(), "run-runtime", suite, "parent.yaml", backend, node); err != nil {
+		t.Fatalf("run node: %v", err)
+	}
+
+	if backend.spec.RuntimeProfile != "local.yaml" {
+		t.Fatalf("expected runtime profile local.yaml, got %q", backend.spec.RuntimeProfile)
+	}
+	if got := backend.spec.Env["DATABASE_URL"]; got != "postgres://postgres:postgres@global-db:5432/auth" {
+		t.Fatalf("expected runtime env DATABASE_URL, got %q", got)
+	}
+	if got := backend.spec.Headers["x-suite-profile"]; got != "local.yaml" {
+		t.Fatalf("expected runtime header x-suite-profile, got %q", got)
+	}
+	if backend.spec.DependencyAlias != "auth-module" {
+		t.Fatalf("expected dependency alias auth-module, got %q", backend.spec.DependencyAlias)
+	}
+	if backend.spec.SourceSuiteID != "child-suite" {
+		t.Fatalf("expected source suite child-suite, got %q", backend.spec.SourceSuiteID)
+	}
+	if backend.spec.ResolvedRef != "localhost:5000/core/child-suite@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
+		t.Fatalf("expected resolved ref to round-trip, got %q", backend.spec.ResolvedRef)
+	}
+}
+
 func TestCreateExecutionUsesPersistedSuiteProfileSet(t *testing.T) {
 	profileService := profiles.NewService(suites.NewService(), profiles.NewMemoryStore())
 	if _, err := profileService.CreateProfile("payment-suite", profiles.UpsertRequest{
@@ -309,6 +504,15 @@ func TestCreateExecutionUsesPersistedSuiteProfileSet(t *testing.T) {
 	if execution.Profile != "holiday.yaml" {
 		t.Fatalf("expected holiday.yaml profile, got %q", execution.Profile)
 	}
+}
+
+func containsTopologyDependency(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCreateExecutionSyncsObservers(t *testing.T) {

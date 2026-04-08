@@ -89,6 +89,14 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 		s.noteRejectedLaunch(ctx, suiteID, "suite_not_found")
 		return nil, ErrSuiteNotFound
 	}
+	resolved, err := suites.ResolveRuntime(*suite, s.suiteSource.List())
+	if err != nil {
+		s.noteRejectedLaunch(ctx, suite.ID, "invalid_topology")
+		return nil, ErrInvalidTopology
+	}
+	suite.Topology = resolved.Nodes
+	suite.ResolvedDependencies = resolved.Dependencies
+	suite.TopologyError = ""
 	meta := s.suiteMeta[suite.ID]
 
 	profile := strings.TrimSpace(request.Profile)
@@ -126,13 +134,7 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 			Events:    []ExecutionEvent{},
 		},
 	}
-
-	topology, err := parseSuiteTopology(suite.SuiteStar)
-	if err != nil {
-		s.noteRejectedLaunch(ctx, suite.ID, "invalid_topology")
-		return nil, err
-	}
-	state.total = len(topology)
+	state.total = len(resolved.Nodes)
 
 	s.mu.Lock()
 	s.executions[executionID] = state
@@ -142,12 +144,12 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 	s.persistExecutionRuntime()
 	s.beginRunObservation(ctx, state)
 
-	tasks := make([]queue.Task, 0, len(topology))
-	taskIDs := make(map[string]string, len(topology))
-	for _, node := range topology {
+	tasks := make([]queue.Task, 0, len(resolved.Nodes))
+	taskIDs := make(map[string]string, len(resolved.Nodes))
+	for _, node := range resolved.Nodes {
 		taskIDs[node.ID] = executionID + ":" + node.ID
 	}
-	for _, node := range topology {
+	for _, node := range resolved.Nodes {
 		dependencies := make([]string, 0, len(node.DependsOn))
 		for _, dependency := range node.DependsOn {
 			if dependencyID := taskIDs[dependency]; dependencyID != "" {
@@ -205,18 +207,28 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 	})
 
 	err := backend.Run(stepCtx, runner.StepSpec{
-		ExecutionID:     executionID,
-		SuiteID:         suite.ID,
-		SuiteTitle:      suite.Title,
-		SuiteRepository: suite.Repository,
-		Profile:         profile,
-		Trigger:         s.executionTrigger(executionID),
-		BackendID:       s.executionBackendID(executionID),
-		BackendLabel:    s.executionBackendLabel(executionID),
-		BackendKind:     backend.Kind(),
-		StepIndex:       node.Order,
-		TotalSteps:      len(parseSuiteTopologyOrEmpty(suite.SuiteStar)),
-		LeaseTTL:        8 * time.Second,
+		ExecutionID:      executionID,
+		SuiteID:          suite.ID,
+		SuiteTitle:       suite.Title,
+		SuiteRepository:  suite.Repository,
+		Profile:          profile,
+		RuntimeProfile:   firstNonEmpty(node.RuntimeProfile, profile),
+		Env:              cloneRuntimeMap(node.RuntimeEnv),
+		Headers:          cloneRuntimeMap(node.RuntimeHeaders),
+		Trigger:          s.executionTrigger(executionID),
+		BackendID:        s.executionBackendID(executionID),
+		BackendLabel:     s.executionBackendLabel(executionID),
+		BackendKind:      backend.Kind(),
+		SourceSuiteID:    firstNonEmpty(node.SourceSuiteID, suite.ID),
+		SourceSuiteTitle: firstNonEmpty(node.SourceSuiteTitle, suite.Title),
+		SourceRepository: firstNonEmpty(node.SourceRepository, suite.Repository),
+		SourceVersion:    firstNonEmpty(node.SourceVersion, suite.Version),
+		ResolvedRef:      node.ResolvedRef,
+		Digest:           node.Digest,
+		DependencyAlias:  node.DependencyAlias,
+		StepIndex:        node.Order,
+		TotalSteps:       len(suite.Topology),
+		LeaseTTL:         8 * time.Second,
 		Node: runner.StepNode{
 			ID:        node.ID,
 			Name:      node.Name,
@@ -254,6 +266,18 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 	}
 
 	return nil
+}
+
+func cloneRuntimeMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
 
 func (s *Service) appendEvent(executionID string, event ExecutionEvent) {

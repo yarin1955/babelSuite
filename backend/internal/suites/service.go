@@ -23,9 +23,10 @@ func (s *Service) List() []Definition {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	catalog := suiteCatalog(s.suites)
 	result := make([]Definition, 0, len(s.suites))
-	for _, suite := range s.suites {
-		result = append(result, cloneDefinition(suite))
+	for _, suite := range catalog {
+		result = append(result, cloneDefinition(ResolveDefinitionTopology(suite, catalog)))
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -43,8 +44,17 @@ func (s *Service) Get(id string) (*Definition, error) {
 		return nil, ErrNotFound
 	}
 
-	clone := cloneDefinition(suite)
+	catalog := suiteCatalog(s.suites)
+	clone := cloneDefinition(ResolveDefinitionTopology(suite, catalog))
 	return &clone, nil
+}
+
+func suiteCatalog(items map[string]Definition) []Definition {
+	result := make([]Definition, 0, len(items))
+	for _, suite := range items {
+		result = append(result, suite)
+	}
+	return result
 }
 
 func loadDemoSuites() map[string]Definition {

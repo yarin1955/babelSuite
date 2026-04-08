@@ -167,13 +167,15 @@ function topologyKind(rawCall: string): RuntimeKind | null {
     case 'scenario.go':
     case 'scenario.python':
     case 'scenario.http':
+    case 'suite':
+    case 'suite.run':
       if (call.startsWith('load.')) {
         return 'load'
       }
       if (call.startsWith('scenario.')) {
         return 'scenario'
       }
-      return call
+      return call === 'suite' || call === 'suite.run' ? 'container' : call
     default:
       return null
   }

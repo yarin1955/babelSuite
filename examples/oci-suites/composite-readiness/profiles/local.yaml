@@ -1,0 +1,7 @@
+name: Local
+description: Local composite profile for readiness validation.
+default: true
+runtime:
+  suite: composite-readiness
+  repository: localhost:5000/composite/composite-readiness
+  profileFile: local.yaml

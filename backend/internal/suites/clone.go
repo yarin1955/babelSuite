@@ -9,6 +9,8 @@ func cloneDefinition(input Definition) Definition {
 	output.Folders = cloneFolders(input.Folders)
 	output.SeedSources = cloneSourceFiles(input.SeedSources)
 	output.SourceFiles = cloneSourceFiles(input.SourceFiles)
+	output.Topology = cloneTopology(input.Topology)
+	output.ResolvedDependencies = cloneResolvedDependencies(input.ResolvedDependencies)
 	output.APISurfaces = cloneSurfaces(input.APISurfaces)
 	return output
 }
@@ -31,6 +33,27 @@ func cloneFolders(input []FolderEntry) []FolderEntry {
 func cloneSourceFiles(input []SourceFile) []SourceFile {
 	output := make([]SourceFile, len(input))
 	copy(output, input)
+	return output
+}
+
+func cloneTopology(input []TopologyNode) []TopologyNode {
+	output := make([]TopologyNode, len(input))
+	for index, node := range input {
+		output[index] = node
+		output[index].DependsOn = append([]string{}, node.DependsOn...)
+		output[index].RuntimeEnv = cloneStringMap(node.RuntimeEnv)
+		output[index].RuntimeHeaders = cloneStringMap(node.RuntimeHeaders)
+	}
+	return output
+}
+
+func cloneResolvedDependencies(input []ResolvedDependency) []ResolvedDependency {
+	output := make([]ResolvedDependency, len(input))
+	for index, dependency := range input {
+		output[index] = dependency
+		output[index].Inputs = cloneStringMap(dependency.Inputs)
+		output[index].SourceFiles = cloneSourceFiles(dependency.SourceFiles)
+	}
 	return output
 }
 
