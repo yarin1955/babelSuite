@@ -147,7 +147,8 @@ func TestMeUsesAdminClaimFromToken(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 
-	handler.me(rec, req)
+	authenticated := RequireSession(jwtSvc, VerifyOptions{})
+	authenticated(http.HandlerFunc(handler.me)).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)

@@ -70,10 +70,11 @@ func NewHandler(st store.Store, jwt *JWTService, config Config) *Handler {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
+	protected := RequireSession(h.jwt, VerifyOptions{})
 	mux.HandleFunc("GET /api/v1/auth/config", h.getAuthConfig)
 	mux.HandleFunc("POST /api/v1/auth/sign-up", h.signUp)
 	mux.HandleFunc("POST /api/v1/auth/sign-in", h.signIn)
-	mux.HandleFunc("GET /api/v1/auth/me", h.me)
+	mux.Handle("GET /api/v1/auth/me", protected(http.HandlerFunc(h.me)))
 	mux.HandleFunc("GET /api/v1/auth/sso/providers", h.listSSOProviders)
 	mux.HandleFunc("GET /api/v1/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/v1/auth/oidc/callback", h.oidcCallback)
@@ -81,7 +82,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/config", h.getAuthConfig)
 	mux.HandleFunc("POST /auth/register", h.signUp)
 	mux.HandleFunc("POST /auth/login", h.signIn)
-	mux.HandleFunc("GET /auth/me", h.me)
+	mux.Handle("GET /auth/me", protected(http.HandlerFunc(h.me)))
 	mux.HandleFunc("GET /auth/sso/providers", h.listSSOProviders)
 	mux.HandleFunc("GET /auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /auth/oidc/callback", h.oidcCallback)
@@ -300,15 +301,9 @@ func (h *Handler) redirectOIDCError(w http.ResponseWriter, r *http.Request, stat
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
-	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Missing bearer token.")
-		return
-	}
-
-	claims, err := h.jwt.Verify(token)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
+	claims, ok := SessionFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
 
@@ -328,7 +323,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	userView.IsAdmin = claims.IsAdmin
 
 	writeJSON(w, http.StatusOK, authResponse{
-		Token:     token,
+		Token:     strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer")),
 		User:      &userView,
 		Workspace: workspace,
 		ExpiresAt: claims.ExpiresAt.Time,

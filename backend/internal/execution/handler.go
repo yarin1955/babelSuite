@@ -11,6 +11,7 @@ import (
 
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/engine"
+	"github.com/babelsuite/babelsuite/internal/httpserver"
 )
 
 type Handler struct {
@@ -24,28 +25,22 @@ func NewHandler(service *Service, engineStore *engine.Store, jwt *auth.JWTServic
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/executions/launch-suites", h.listLaunchSuites)
-	mux.HandleFunc("GET /api/v1/executions/overview", h.getOverview)
-	mux.HandleFunc("GET /api/v1/executions", h.listExecutions)
-	mux.HandleFunc("POST /api/v1/executions", h.createExecution)
-	mux.HandleFunc("GET /api/v1/executions/{executionId}", h.getExecution)
-	mux.HandleFunc("GET /api/v1/executions/{executionId}/events", h.streamEvents)
-	mux.HandleFunc("GET /api/v1/executions/{executionId}/logs", h.streamLogs)
+	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	httpserver.HandleFunc(mux, "GET /api/v1/executions/launch-suites", h.listLaunchSuites, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/executions/overview", h.getOverview, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/executions", h.listExecutions, protected)
+	httpserver.HandleFunc(mux, "POST /api/v1/executions", h.createExecution, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/executions/{executionId}", h.getExecution, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/executions/{executionId}/events", h.streamEvents, streaming)
+	httpserver.HandleFunc(mux, "GET /api/v1/executions/{executionId}/logs", h.streamLogs, streaming)
 }
 
 func (h *Handler) listLaunchSuites(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"suites": h.service.ListLaunchSuites()})
 }
 
 func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	if h.engine == nil {
 		writeJSON(w, http.StatusOK, engine.Overview{})
 		return
@@ -55,18 +50,10 @@ func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"executions": h.service.ListExecutions()})
 }
 
 func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	var request CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "Execution payload is invalid.")
@@ -96,10 +83,6 @@ func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	execution, err := h.service.GetExecution(r.PathValue("executionId"))
 	if err != nil {
 		if errors.Is(err, ErrExecutionNotFound) {
@@ -115,10 +98,6 @@ func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
@@ -179,10 +158,6 @@ func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
@@ -241,29 +216,6 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if token == "" {
-		bearer := strings.TrimSpace(r.Header.Get("Authorization"))
-		if strings.HasPrefix(bearer, "Bearer ") {
-			token = strings.TrimSpace(strings.TrimPrefix(bearer, "Bearer "))
-		}
-	}
-
-	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return false
-	}
-
-	if _, err := h.jwt.Verify(token); err != nil {
-		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
-		return false
-	}
-
-	return true
-}
-
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

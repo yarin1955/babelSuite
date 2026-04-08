@@ -6,10 +6,11 @@ spec:
   repository: localhost:5000/babelsuite/kafka
   provider: Stdlib
   version: 1.2.3
+  entrypoint: module.star
   tags:
     - 1.2.3
     - 1.2.2
     - latest
-  description: Typed Kafka module that creates brokers, topics, and address outputs without leaking Docker wiring into suite authorship.
+  description: Pure Starlark Kafka module built on top of BabelSuite's built-in runtime containers.
   pullCommand: babelctl run localhost:5000/babelsuite/kafka:1.2.3
   forkCommand: babelctl fork localhost:5000/babelsuite/kafka:1.2.3 ./stdlib-kafka

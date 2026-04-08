@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/auth"
+	"github.com/babelsuite/babelsuite/internal/httpserver"
 )
 
 type Handler struct {
@@ -22,17 +23,15 @@ func NewHandler(manager Manager, jwt *auth.JWTService) *Handler {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/sandboxes", h.listSandboxes)
-	mux.HandleFunc("GET /api/v1/sandboxes/events", h.streamEvents)
-	mux.HandleFunc("POST /api/v1/sandboxes/reap-all", h.reapAll)
-	mux.HandleFunc("POST /api/v1/sandboxes/{sandboxId}/reap", h.reapSandbox)
+	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	httpserver.HandleFunc(mux, "GET /api/v1/sandboxes", h.listSandboxes, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/sandboxes/events", h.streamEvents, streaming)
+	httpserver.HandleFunc(mux, "POST /api/v1/sandboxes/reap-all", h.reapAll, protected)
+	httpserver.HandleFunc(mux, "POST /api/v1/sandboxes/{sandboxId}/reap", h.reapSandbox, protected)
 }
 
 func (h *Handler) listSandboxes(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	inventory, err := h.manager.Snapshot(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Could not load sandboxes.")
@@ -43,10 +42,6 @@ func (h *Handler) listSandboxes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
@@ -109,10 +104,6 @@ func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) reapSandbox(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	result, err := h.manager.ReapSandbox(r.Context(), r.PathValue("sandboxId"))
 	if err != nil {
 		h.writeManagerError(w, err)
@@ -123,10 +114,6 @@ func (h *Handler) reapSandbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) reapAll(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	result, err := h.manager.ReapAll(r.Context())
 	if err != nil {
 		h.writeManagerError(w, err)
@@ -146,29 +133,6 @@ func (h *Handler) writeManagerError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusInternalServerError, "Sandbox cleanup failed.")
 	}
 }
-
-func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if token == "" {
-		bearer := strings.TrimSpace(r.Header.Get("Authorization"))
-		if strings.HasPrefix(bearer, "Bearer ") {
-			token = strings.TrimSpace(strings.TrimPrefix(bearer, "Bearer "))
-		}
-	}
-
-	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return false
-	}
-
-	if _, err := h.jwt.Verify(token); err != nil {
-		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
-		return false
-	}
-
-	return true
-}
-
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

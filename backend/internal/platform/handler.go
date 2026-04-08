@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/babelsuite/babelsuite/internal/auth"
+	"github.com/babelsuite/babelsuite/internal/httpserver"
 )
 
 type Handler struct {
@@ -19,16 +20,13 @@ func NewHandler(store Store, jwt *auth.JWTService) *Handler {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/platform-settings", h.getSettings)
-	mux.HandleFunc("PUT /api/v1/platform-settings", h.updateSettings)
-	mux.HandleFunc("POST /api/v1/platform-settings/registries/{registryId}/sync", h.syncRegistry)
+	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
+	httpserver.HandleFunc(mux, "GET /api/v1/platform-settings", h.getSettings, protected)
+	httpserver.HandleFunc(mux, "PUT /api/v1/platform-settings", h.updateSettings, protected)
+	httpserver.HandleFunc(mux, "POST /api/v1/platform-settings/registries/{registryId}/sync", h.syncRegistry, protected)
 }
 
 func (h *Handler) getSettings(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	settings, err := h.store.Load()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Could not load platform settings.")
@@ -38,10 +36,6 @@ func (h *Handler) getSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	var settings PlatformSettings
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid platform settings payload.")
@@ -62,10 +56,6 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) syncRegistry(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	registryID := strings.TrimSpace(r.PathValue("registryId"))
 	if registryID == "" {
 		writeError(w, http.StatusBadRequest, "Registry ID is required.")
@@ -85,28 +75,6 @@ func (h *Handler) syncRegistry(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, settings)
 }
-
-func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	bearer := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(bearer, "Bearer ") {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return false
-	}
-
-	token := strings.TrimSpace(strings.TrimPrefix(bearer, "Bearer "))
-	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return false
-	}
-
-	if _, err := h.jwt.Verify(token); err != nil {
-		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
-		return false
-	}
-
-	return true
-}
-
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
