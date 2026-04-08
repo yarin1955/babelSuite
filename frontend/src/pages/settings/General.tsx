@@ -62,13 +62,28 @@ export default function General() {
     }
   }
 
-  if (loading || !draft) {
+  if (loading) {
     return (
       <AppShell section='Settings' title='General' description=''>
         <div className='platform-page platform-page--loading'>
           <div className='platform-loading-card'>
             <p className='platform-loading-card__eyebrow'>Settings</p>
             <h1>Loading general settings…</h1>
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (!draft) {
+    return (
+      <AppShell section='Settings' title='General' description=''>
+        <div className='platform-page'>
+          {message && <div className={`platform-alert platform-alert--${message.tone}`}>{message.text}</div>}
+          <div className='platform-loading-card'>
+            <p className='platform-loading-card__eyebrow'>Settings</p>
+            <h1>General settings unavailable</h1>
+            <p>The frontend could not load platform settings from the backend.</p>
           </div>
         </div>
       </AppShell>

@@ -1,16 +1,40 @@
 import { useEffect, useState } from 'react'
 import { FaAngleRight, FaBoxArchive, FaGear, FaKey, FaServer } from 'react-icons/fa6'
 import { useNavigate } from 'react-router-dom'
-import { getPlatformSettings, type PlatformSettings } from '../lib/api'
+import { ApiError, getPlatformSettings, type PlatformSettings } from '../lib/api'
 import AppShell from '../components/AppShell'
 import './PlatformSettings.css'
 
 export default function Settings() {
   const navigate = useNavigate()
   const [platform, setPlatform] = useState<PlatformSettings | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    void getPlatformSettings().then(setPlatform).catch(() => null)
+    let cancelled = false
+
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const settings = await getPlatformSettings()
+        if (!cancelled) {
+          setPlatform(settings)
+        }
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof ApiError ? reason.message : 'Could not load platform settings.')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
   }, [])
 
   const sections = [
@@ -58,6 +82,14 @@ export default function Settings() {
       ) : undefined}
     >
       <div className='platform-page'>
+        {error && <div className='platform-alert platform-alert--error'>{error}</div>}
+        {loading && (
+          <div className='platform-loading-card'>
+            <p className='platform-loading-card__eyebrow'>Settings</p>
+            <h2>Loading platform settings</h2>
+            <p>Reading execution agents, OCI registries, and secret controls.</p>
+          </div>
+        )}
         <div className='settings-index'>
           {sections.map((section) => {
             const Icon = section.icon
