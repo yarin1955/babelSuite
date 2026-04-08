@@ -29,6 +29,7 @@ import {
   type CatalogPackage,
   type SuiteDefinition,
 } from '../lib/api'
+import { buildSuiteDropRef, SANDBOX_SUITE_REF_MIME } from '../lib/sandboxRef'
 import './Catalog.css'
 
 type SortKey = 'starred' | 'title' | 'version'
@@ -881,9 +882,22 @@ function PackageCard({ item, starred, copiedId, favoriteBusy, onInspect, onCopyR
   const hiddenModuleCount = Math.max(item.modules.length - visibleModules.length, 0)
   const publishedVersions = countPublishedVersions(item.tags)
   const versionSummary = publishedVersions > 1 ? `${publishedVersions} versions available` : '1 version available'
+  const draggable = item.kind === 'suite'
 
   return (
-    <article className='catalog-card'>
+    <article
+      className='catalog-card'
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) {
+          return
+        }
+        const ref = buildSuiteDropRef(item.repository, item.version)
+        event.dataTransfer.effectAllowed = 'copy'
+        event.dataTransfer.setData(SANDBOX_SUITE_REF_MIME, ref)
+        event.dataTransfer.setData('text/plain', ref)
+      }}
+    >
       {/* Header row: logo + headline + star */}
       <div className='catalog-card__header'>
         <div className='catalog-card__logo' aria-hidden='true' style={{ background: logoGradient(item.id) }}>

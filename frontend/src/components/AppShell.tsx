@@ -7,6 +7,7 @@ import {
   FaBook,
   FaBoxesStacked,
   FaDocker,
+  FaFlask,
   FaFolderTree,
   FaGear,
   FaRightFromBracket,
@@ -34,9 +35,10 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Runs', icon: FaBoxesStacked, matchPrefixes: ['/', '/executions'] },
+  { to: '/sandbox', label: 'Sandbox', icon: FaFlask, matchPrefixes: ['/sandbox'] },
   { to: '/catalog', label: 'Catalog', icon: FaBook, matchPrefixes: ['/catalog'] },
   { to: '/profiles', label: 'Profiles', icon: FaFolderTree, matchPrefixes: ['/profiles'] },
-  { to: '/environments', label: 'Environments', icon: FaDocker, matchPrefixes: ['/environments', '/sandbox', '/sandboxes'] },
+  { to: '/environments', label: 'Environments', icon: FaDocker, matchPrefixes: ['/environments', '/sandboxes'] },
   { to: '/settings', label: 'Settings', icon: FaGear, matchPrefixes: ['/settings'], adminOnly: true },
 ]
 

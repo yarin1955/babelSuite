@@ -7,6 +7,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import Home from './pages/Home'
 import LiveExecution from './pages/LiveExecution'
 import Profiles from './pages/Profiles'
+import Sandbox from './pages/Sandbox'
 import Sandboxes from './pages/Sandboxes'
 import Settings from './pages/Settings'
 import General from './pages/settings/General'
@@ -43,8 +44,8 @@ export default function App() {
         <Route path='/suites/:suiteId' element={<Guard><Suites /></Guard>} />
         <Route path='/executions/:executionId' element={<Guard><LiveExecution /></Guard>} />
         <Route path='/profiles' element={<Guard><Profiles /></Guard>} />
+        <Route path='/sandbox' element={<Guard><Sandbox /></Guard>} />
         <Route path='/environments' element={<Guard><Sandboxes /></Guard>} />
-        <Route path='/sandbox' element={<Navigate to='/environments' replace />} />
         <Route path='/sandboxes' element={<Navigate to='/environments' replace />} />
         <Route path='/settings' element={<AdminGuard><Settings /></AdminGuard>} />
         <Route path='/settings/general' element={<AdminGuard><General /></AdminGuard>} />
