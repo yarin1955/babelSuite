@@ -45,7 +45,9 @@ export default function LiveExecution() {
   const logRef = useRef<HTMLDivElement | null>(null)
 
   const topology = useMemo(
-    () => execution ? groupTopologyByLevel(parseSuiteTopology(execution.suite.suiteStar)) : [],
+    () => execution
+      ? groupTopologyByLevel(execution.suite.topology?.length ? execution.suite.topology : parseSuiteTopology(execution.suite.suiteStar))
+      : [],
     [execution],
   )
   const flatTopology = useMemo(() => topology.flat(), [topology])

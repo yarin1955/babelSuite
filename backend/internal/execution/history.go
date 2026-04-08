@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/demofs"
+	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 type demoExecutionDocument struct {
@@ -40,10 +41,14 @@ func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger
 	if err != nil {
 		return
 	}
+	topology, err := suites.ResolveTopology(*suite, s.suiteSource.List())
+	if err != nil {
+		return
+	}
+	suite.Topology = topology
 	meta := s.suiteMeta[suiteID]
 
 	startedAt := time.Now().UTC().Add(-startedAgo)
-	topology := parseSuiteTopologyOrEmpty(suite.SuiteStar)
 	events := buildHistoricalEvents(suite, topology, status, profile, meta)
 
 	state := &executionState{

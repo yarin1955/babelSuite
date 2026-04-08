@@ -82,9 +82,16 @@ export default function Suites() {
     return () => { active = false }
   }, [suiteId])
 
-  const topology = useMemo(() => (suite ? parseSuiteTopology(suite.suiteStar) : []), [suite])
+  const topology = useMemo(
+    () => (suite ? (suite.topology?.length ? suite.topology : parseSuiteTopology(suite.suiteStar)) : []),
+    [suite],
+  )
   const topologyLevels = useMemo(() => groupTopologyByLevel(topology), [topology])
   const suiteSourceFiles = suite?.sourceFiles ?? []
+  const rootSourceFiles = useMemo(
+    () => suiteSourceFiles.filter((file) => !file.path.includes('/')),
+    [suiteSourceFiles],
+  )
   const sourceFileByPath = useMemo(
     () => new Map(suiteSourceFiles.map((file) => [file.path, file])),
     [suiteSourceFiles],
@@ -632,9 +639,27 @@ export default function Suites() {
           )}
 
           {/* Package explorer */}
-          {suite.folders.length > 0 && (
+          {(suite.folders.length > 0 || rootSourceFiles.length > 0) && (
             <div className='suite-info-card'>
               <p className='suite-info-card__title'>Package Explorer</p>
+              {rootSourceFiles.length > 0 && (
+                <div className='suite-folder-detail'>
+                  <p className='suite-eyebrow'>Root Files</p>
+                  <div className='suite-folder-files'>
+                    {rootSourceFiles.map((file) => (
+                      <button
+                        key={file.path}
+                        type='button'
+                        className={`suite-folder-file${selectedSourcePath === file.path ? ' suite-folder-file--active' : ''}`}
+                        onClick={() => setSelectedSourcePath(file.path)}
+                        title={file.path}
+                      >
+                        {file.path}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className='suite-folder-list'>
                 {suite.folders.map((folder) => (
                   <button
@@ -797,7 +822,7 @@ function renderHighlightedLine(line: string): ReactNode[] {
   const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line
   const comment = commentIndex >= 0 ? line.slice(commentIndex) : ''
   const fragments: ReactNode[] = []
-  const pattern = /"[^"]*"|\b(load|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
+  const pattern = /"[^"]*"|\b(load|container|mock|script|scenario|suite)\b|@[a-zA-Z0-9/_-]+/g
   let cursor = 0
 
   for (const match of code.matchAll(pattern)) {

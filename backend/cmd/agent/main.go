@@ -41,10 +41,21 @@ func main() {
 		Capabilities: []string{"container", "mock", "script", "scenario"},
 	}, agent.ExecutorFunc(func(ctx context.Context, request agent.StepRequest, emit func(logstream.Line)) error {
 		return localBackend.Run(ctx, runner.StepSpec{
-			ExecutionID: request.ExecutionID,
-			SuiteID:     request.SuiteID,
-			SuiteTitle:  request.SuiteTitle,
-			Profile:     request.Profile,
+			ExecutionID:      request.ExecutionID,
+			SuiteID:          request.SuiteID,
+			SuiteTitle:       request.SuiteTitle,
+			SuiteRepository:  request.SuiteRepository,
+			Profile:          request.Profile,
+			RuntimeProfile:   request.RuntimeProfile,
+			Env:              cloneStringMap(request.Env),
+			Headers:          cloneStringMap(request.Headers),
+			SourceSuiteID:    request.SourceSuiteID,
+			SourceSuiteTitle: request.SourceSuiteTitle,
+			SourceRepository: request.SourceRepository,
+			SourceVersion:    request.SourceVersion,
+			ResolvedRef:      request.ResolvedRef,
+			Digest:           request.Digest,
+			DependencyAlias:  request.DependencyAlias,
 			Node: runner.StepNode{
 				ID:        request.Node.ID,
 				Name:      request.Node.Name,
@@ -156,4 +167,16 @@ func durationOr(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return parsed
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }

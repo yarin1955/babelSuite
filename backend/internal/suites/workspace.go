@@ -52,6 +52,7 @@ func loadWorkspaceSuite(root, suiteID string) (Definition, bool) {
 
 	profiles, repository, modules := loadWorkspaceProfiles(base)
 	title, description := loadWorkspaceReadme(base, suiteID)
+	rootSources := loadWorkspaceRootSourceFiles(base)
 	if repository == "" {
 		repository = "workspace/" + suiteID
 	}
@@ -73,6 +74,7 @@ func loadWorkspaceSuite(root, suiteID string) (Definition, bool) {
 		SuiteStar:   string(suiteStarBytes),
 		Profiles:    profiles,
 		Folders:     loadWorkspaceFolders(base),
+		SeedSources: rootSources,
 		Contracts:   loadWorkspaceContracts(string(suiteStarBytes)),
 	}
 
@@ -207,6 +209,39 @@ func loadWorkspaceFolders(base string) []FolderEntry {
 		return folders[i].Name < folders[j].Name
 	})
 	return folders
+}
+
+func loadWorkspaceRootSourceFiles(base string) []SourceFile {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return nil
+	}
+
+	files := make([]SourceFile, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if name == "" || strings.EqualFold(name, "suite.star") || strings.EqualFold(name, "README.md") {
+			continue
+		}
+
+		content, err := os.ReadFile(filepath.Join(base, name))
+		if err != nil {
+			continue
+		}
+		files = append(files, SourceFile{
+			Path:     name,
+			Language: detectSourceLanguage(name),
+			Content:  string(content),
+		})
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Path < files[j].Path
+	})
+	return files
 }
 
 func loadWorkspaceContracts(suiteStar string) []string {

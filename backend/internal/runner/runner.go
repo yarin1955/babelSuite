@@ -15,19 +15,29 @@ type StepNode struct {
 }
 
 type StepSpec struct {
-	ExecutionID     string
-	SuiteID         string
-	SuiteTitle      string
-	SuiteRepository string
-	Profile         string
-	Trigger         string
-	BackendID       string
-	BackendLabel    string
-	BackendKind     string
-	StepIndex       int
-	TotalSteps      int
-	LeaseTTL        time.Duration
-	Node            StepNode
+	ExecutionID      string
+	SuiteID          string
+	SuiteTitle       string
+	SuiteRepository  string
+	Profile          string
+	RuntimeProfile   string
+	Env              map[string]string
+	Headers          map[string]string
+	Trigger          string
+	BackendID        string
+	BackendLabel     string
+	BackendKind      string
+	SourceSuiteID    string
+	SourceSuiteTitle string
+	SourceRepository string
+	SourceVersion    string
+	ResolvedRef      string
+	Digest           string
+	DependencyAlias  string
+	StepIndex        int
+	TotalSteps       int
+	LeaseTTL         time.Duration
+	Node             StepNode
 }
 
 type Executor interface {

@@ -496,6 +496,10 @@ function InspectModal({ item, suite, starred, loading, error, favoriteBusy, onCl
   const fallbackSourceFile = useMemo(() => buildRegistryPreviewFile(item, error), [item, error])
   const suiteSourceFiles = suite?.sourceFiles ?? []
   const suiteFolders = suite?.folders ?? []
+  const rootSourceFiles = useMemo(
+    () => suiteSourceFiles.filter((file) => !file.path.includes('/')),
+    [suiteSourceFiles],
+  )
   const suiteProfiles = suite?.profiles ?? []
   const sourceFileByPath = useMemo(
     () => new Map(suiteSourceFiles.map((file) => [file.path, file])),
@@ -591,6 +595,17 @@ function InspectModal({ item, suite, starred, loading, error, favoriteBusy, onCl
                         <span>{fallbackSourceFile.path}</span>
                       </button>
                     )}
+                    {rootSourceFiles.map((file) => (
+                      <button
+                        key={file.path}
+                        type='button'
+                        className={`ci-tree__item${selected === file.path ? ' ci-tree__item--active' : ''}`}
+                        onClick={() => setSelected(file.path)}
+                      >
+                        <span className='ci-tree__item-icon'><FaFile /></span>
+                        <span>{file.path}</span>
+                      </button>
+                    ))}
                     {suiteFolders.map((folder) => (
                       <div key={folder.name} className='ci-tree__group'>
                         <div className='ci-tree__folder'>
@@ -741,7 +756,7 @@ function renderStarLine(line: string): ReactNode[] {
   const code = ci >= 0 ? line.slice(0, ci) : line
   const comment = ci >= 0 ? line.slice(ci) : ''
   const out: ReactNode[] = []
-  const pat = /"[^"]*"|\b(load|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
+  const pat = /"[^"]*"|\b(load|container|mock|script|scenario|suite)\b|@[a-zA-Z0-9/_-]+/g
   let cur = 0
   for (const m of code.matchAll(pat)) {
     const v = m[0]

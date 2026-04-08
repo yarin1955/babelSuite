@@ -16,33 +16,44 @@ type sourceFileLoader func(suiteID, path string) (string, bool)
 func buildSourceFiles(suite Definition, loader sourceFileLoader) []SourceFile {
 	files := make([]SourceFile, 0)
 	seen := make(map[string]struct{})
+	appendFile := func(path string) {
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+
+		content, generated := explicitSuiteSourceContent(suite.SeedSources, path)
+		if !generated {
+			content, generated = GeneratedSourceContent(suite, path)
+		}
+		if !generated {
+			content = missingSourceContent(suite, path)
+		}
+		if !generated && loader != nil {
+			if loaded, ok := loader(suite.ID, path); ok {
+				content = loaded
+			}
+		}
+
+		files = append(files, SourceFile{
+			Path:     path,
+			Language: detectSourceLanguage(path),
+			Content:  content,
+		})
+	}
+
+	for _, file := range suite.SeedSources {
+		path := strings.Trim(strings.TrimSpace(file.Path), "/")
+		if path == "" || strings.Contains(path, "/") {
+			continue
+		}
+		appendFile(path)
+	}
 
 	for _, folder := range suite.Folders {
 		for _, file := range folder.Files {
 			path := normalizeSourcePath(folder.Name, file)
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-
-			content, generated := explicitSuiteSourceContent(suite.SeedSources, path)
-			if !generated {
-				content, generated = GeneratedSourceContent(suite, path)
-			}
-			if !generated {
-				content = missingSourceContent(suite, path)
-			}
-			if !generated && loader != nil {
-				if loaded, ok := loader(suite.ID, path); ok {
-					content = loaded
-				}
-			}
-
-			files = append(files, SourceFile{
-				Path:     path,
-				Language: detectSourceLanguage(path),
-				Content:  content,
-			})
+			appendFile(path)
 		}
 	}
 

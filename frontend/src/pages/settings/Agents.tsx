@@ -174,13 +174,28 @@ export default function Agents() {
     }
   }
 
-  if (loading || !draft) {
+  if (loading) {
     return (
       <AppShell section='Settings' title='Execution Agents' description=''>
         <div className='platform-page platform-page--loading'>
           <div className='platform-loading-card'>
             <p className='platform-loading-card__eyebrow'>Settings</p>
             <h1>Loading execution agents…</h1>
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (!draft) {
+    return (
+      <AppShell section='Settings' title='Execution Agents' description=''>
+        <div className='platform-page'>
+          {message && <div className={`platform-alert platform-alert--${message.tone}`}>{message.text}</div>}
+          <div className='platform-loading-card'>
+            <p className='platform-loading-card__eyebrow'>Settings</p>
+            <h1>Execution agents unavailable</h1>
+            <p>The frontend could not load platform settings from the backend.</p>
           </div>
         </div>
       </AppShell>

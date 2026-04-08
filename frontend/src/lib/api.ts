@@ -235,6 +235,7 @@ export interface ExecutionOverviewStep {
   kind: string
   status: 'pending' | 'running' | 'healthy' | 'failed'
   dependsOn: string[]
+  level: number
 }
 
 export interface ExecutionOverviewItem {
@@ -293,6 +294,7 @@ export interface ExecutionRecord {
     profiles: ExecutionProfileOption[]
     folders: SuiteFolderEntry[]
     sourceFiles: SuiteSourceFile[]
+    topology: SuiteTopologyNode[]
     apiSurfaces: SuiteApiSurface[]
   }
   profile: string
@@ -321,6 +323,14 @@ export interface SuiteSourceFile {
   path: string
   language: string
   content: string
+}
+
+export interface SuiteTopologyNode {
+  id: string
+  name: string
+  kind: string
+  dependsOn: string[]
+  level: number
 }
 
 export interface SuiteExchangeExample {
@@ -422,6 +432,8 @@ export interface SuiteDefinition {
   profiles: ExecutionProfileOption[]
   folders: SuiteFolderEntry[]
   sourceFiles: SuiteSourceFile[]
+  topology: SuiteTopologyNode[]
+  topologyError?: string
   contracts: string[]
   apiSurfaces: SuiteApiSurface[]
 }

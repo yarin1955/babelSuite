@@ -24,6 +24,39 @@ type SourceFile struct {
 	Content  string `json:"content"`
 }
 
+type TopologyNode struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Kind             string            `json:"kind"`
+	DependsOn        []string          `json:"dependsOn"`
+	Level            int               `json:"level"`
+	SourceSuiteID    string            `json:"sourceSuiteId,omitempty"`
+	SourceSuiteTitle string            `json:"sourceSuiteTitle,omitempty"`
+	SourceRepository string            `json:"sourceRepository,omitempty"`
+	SourceVersion    string            `json:"sourceVersion,omitempty"`
+	DependencyAlias  string            `json:"dependencyAlias,omitempty"`
+	ResolvedRef      string            `json:"resolvedRef,omitempty"`
+	Digest           string            `json:"digest,omitempty"`
+	RuntimeProfile   string            `json:"runtimeProfile,omitempty"`
+	RuntimeEnv       map[string]string `json:"runtimeEnv,omitempty"`
+	RuntimeHeaders   map[string]string `json:"runtimeHeaders,omitempty"`
+	Order            int               `json:"-"`
+}
+
+type ResolvedDependency struct {
+	Alias       string            `json:"alias"`
+	Ref         string            `json:"ref"`
+	Version     string            `json:"version,omitempty"`
+	Resolved    string            `json:"resolved,omitempty"`
+	Digest      string            `json:"digest,omitempty"`
+	Profile     string            `json:"profile,omitempty"`
+	Inputs      map[string]string `json:"inputs,omitempty"`
+	SuiteID     string            `json:"suiteId,omitempty"`
+	SuiteTitle  string            `json:"suiteTitle,omitempty"`
+	Repository  string            `json:"repository,omitempty"`
+	SourceFiles []SourceFile      `json:"-"`
+}
+
 type Header struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
@@ -117,24 +150,27 @@ type APISurface struct {
 }
 
 type Definition struct {
-	ID          string          `json:"id"`
-	Title       string          `json:"title"`
-	Repository  string          `json:"repository"`
-	Owner       string          `json:"owner"`
-	Provider    string          `json:"provider"`
-	Version     string          `json:"version"`
-	Tags        []string        `json:"tags"`
-	Description string          `json:"description"`
-	Modules     []string        `json:"modules"`
-	Status      string          `json:"status"`
-	Score       int             `json:"score"`
-	PullCommand string          `json:"pullCommand"`
-	ForkCommand string          `json:"forkCommand"`
-	SuiteStar   string          `json:"suiteStar"`
-	Profiles    []ProfileOption `json:"profiles"`
-	Folders     []FolderEntry   `json:"folders"`
-	SeedSources []SourceFile    `json:"-"`
-	SourceFiles []SourceFile    `json:"sourceFiles"`
-	Contracts   []string        `json:"contracts"`
-	APISurfaces []APISurface    `json:"apiSurfaces"`
+	ID                   string               `json:"id"`
+	Title                string               `json:"title"`
+	Repository           string               `json:"repository"`
+	Owner                string               `json:"owner"`
+	Provider             string               `json:"provider"`
+	Version              string               `json:"version"`
+	Tags                 []string             `json:"tags"`
+	Description          string               `json:"description"`
+	Modules              []string             `json:"modules"`
+	Status               string               `json:"status"`
+	Score                int                  `json:"score"`
+	PullCommand          string               `json:"pullCommand"`
+	ForkCommand          string               `json:"forkCommand"`
+	SuiteStar            string               `json:"suiteStar"`
+	Profiles             []ProfileOption      `json:"profiles"`
+	Folders              []FolderEntry        `json:"folders"`
+	SeedSources          []SourceFile         `json:"-"`
+	SourceFiles          []SourceFile         `json:"sourceFiles"`
+	Topology             []TopologyNode       `json:"topology,omitempty"`
+	TopologyError        string               `json:"topologyError,omitempty"`
+	ResolvedDependencies []ResolvedDependency `json:"resolvedDependencies,omitempty"`
+	Contracts            []string             `json:"contracts"`
+	APISurfaces          []APISurface         `json:"apiSurfaces"`
 }

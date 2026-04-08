@@ -31,22 +31,15 @@ func defaultProfile(profiles []suites.ProfileOption) string {
 }
 
 func parseSuiteTopology(suiteStar string) ([]topologyNode, error) {
-	nodes := make([]topologyNode, 0)
-	for _, rawLine := range strings.Split(suiteStar, "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		node, ok := parseTopologyNode(line)
-		if !ok {
-			continue
-		}
-		node.Order = len(nodes)
-		nodes = append(nodes, node)
+	nodes, err := suites.ResolveTopology(suites.Definition{
+		ID:        "inline-suite",
+		Title:     "Inline Suite",
+		SuiteStar: suiteStar,
+	}, nil)
+	if err != nil {
+		return nil, topologyResolutionError{cause: err}
 	}
-
-	return resolveTopology(nodes)
+	return nodes, nil
 }
 
 func parseSuiteTopologyOrEmpty(suiteStar string) []topologyNode {
@@ -55,6 +48,18 @@ func parseSuiteTopologyOrEmpty(suiteStar string) []topologyNode {
 		return nil
 	}
 	return nodes
+}
+
+type topologyResolutionError struct {
+	cause error
+}
+
+func (e topologyResolutionError) Error() string {
+	return e.cause.Error()
+}
+
+func (e topologyResolutionError) Is(target error) bool {
+	return target == ErrInvalidTopology
 }
 
 func resolveTopology(nodes []topologyNode) ([]topologyNode, error) {
@@ -315,7 +320,7 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 		return Snapshot{}, false
 	}
 
-	topology := parseSuiteTopologyOrEmpty(item.record.Suite.SuiteStar)
+	topology := cloneExecutionTopology(item.record.Suite.Topology)
 	statuses := make(map[string]string, len(topology))
 	for _, node := range topology {
 		statuses[node.ID] = "pending"
@@ -349,6 +354,7 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 			Kind:      node.Kind,
 			Status:    status,
 			DependsOn: append([]string{}, node.DependsOn...),
+			Level:     node.Level,
 		})
 	}
 

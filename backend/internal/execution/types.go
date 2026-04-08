@@ -71,14 +71,16 @@ type ExecutionSummary struct {
 }
 
 type ExecutionSuite struct {
-	ID          string               `json:"id"`
-	Title       string               `json:"title"`
-	Repository  string               `json:"repository"`
-	SuiteStar   string               `json:"suiteStar"`
-	Profiles    []ProfileOption      `json:"profiles"`
-	Folders     []suites.FolderEntry `json:"folders"`
-	SourceFiles []suites.SourceFile  `json:"sourceFiles"`
-	APISurfaces []suites.APISurface  `json:"apiSurfaces"`
+	ID                   string                      `json:"id"`
+	Title                string                      `json:"title"`
+	Repository           string                      `json:"repository"`
+	SuiteStar            string                      `json:"suiteStar"`
+	Profiles             []ProfileOption             `json:"profiles"`
+	Folders              []suites.FolderEntry        `json:"folders"`
+	SourceFiles          []suites.SourceFile         `json:"sourceFiles"`
+	Topology             []suites.TopologyNode       `json:"topology,omitempty"`
+	ResolvedDependencies []suites.ResolvedDependency `json:"resolvedDependencies,omitempty"`
+	APISurfaces          []suites.APISurface         `json:"apiSurfaces"`
 }
 
 type ExecutionEvent struct {
@@ -120,6 +122,7 @@ type StepSnapshot struct {
 	Kind      string   `json:"kind"`
 	Status    string   `json:"status"`
 	DependsOn []string `json:"dependsOn"`
+	Level     int      `json:"level"`
 }
 
 type Snapshot struct {
@@ -187,14 +190,7 @@ type suiteRuntimeMeta struct {
 	DefaultTrigger string
 }
 
-type topologyNode struct {
-	ID        string
-	Name      string
-	Kind      string
-	DependsOn []string
-	Level     int
-	Order     int
-}
+type topologyNode = suites.TopologyNode
 
 type topologyDuplicateNodeError struct {
 	Node string

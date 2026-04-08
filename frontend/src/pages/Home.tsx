@@ -534,7 +534,7 @@ function renderStarLine(line: string): ReactNode[] {
   const code = ci >= 0 ? line.slice(0, ci) : line
   const comment = ci >= 0 ? line.slice(ci) : ''
   const out: ReactNode[] = []
-  const pat = /"[^"]*"|\b(load|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
+  const pat = /"[^"]*"|\b(load|container|mock|script|scenario|suite)\b|@[a-zA-Z0-9/_-]+/g
   let cur = 0
   for (const m of code.matchAll(pat)) {
     const v = m[0]; const s = m.index ?? 0
@@ -609,6 +609,10 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
 
   const suiteSourceFiles: SuiteSourceFile[] = suite?.sourceFiles ?? []
   const suiteFolders = suite?.folders ?? []
+  const rootSourceFiles = useMemo(
+    () => suiteSourceFiles.filter((file) => !file.path.includes('/')),
+    [suiteSourceFiles],
+  )
   const suiteProfiles = suite?.profiles ?? []
   const sourceFileByPath = useMemo(
     () => new Map(suiteSourceFiles.map((f) => [f.path, f])),
@@ -662,6 +666,17 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
                         <span>suite.star</span>
                       </button>
                     )}
+                    {rootSourceFiles.map((file) => (
+                      <button
+                        key={file.path}
+                        type='button'
+                        className={`ci-tree__item${selected === file.path ? ' ci-tree__item--active' : ''}`}
+                        onClick={() => setSelected(file.path)}
+                      >
+                        <span className='ci-tree__item-icon'><FaFile /></span>
+                        <span>{file.path}</span>
+                      </button>
+                    ))}
                     {suiteFolders.map((folder) => (
                       <div key={folder.name} className='ci-tree__group'>
                         <div className='ci-tree__folder'>

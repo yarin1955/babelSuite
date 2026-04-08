@@ -40,9 +40,15 @@ func (l *Local) IsAvailable(context.Context) bool {
 func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line)) error {
 	emit(line(step, "info", fmt.Sprintf("[%s] Local runner claimed the step on the host worker.", step.Node.Name)))
 	emit(line(step, "info", bootMessage(step)))
+	if len(step.Env) > 0 {
+		emit(line(step, "info", fmt.Sprintf("[%s] Injected %d runtime variables into the step context.", step.Node.Name, len(step.Env))))
+	}
+	if step.Node.Kind == "mock" && len(step.Headers) > 0 {
+		emit(line(step, "info", fmt.Sprintf("[%s] Forwarded %d runtime headers into the mock context.", step.Node.Name, len(step.Headers))))
+	}
 	if step.Node.Kind == "load" {
 		emit(line(step, "info", fmt.Sprintf("[%s] Resolving load assets from load/ before the ramp begins.", step.Node.Name)))
-		emit(line(step, "info", fmt.Sprintf("[%s] Applying the %s profile budgets for users, ramp-up, and latency thresholds.", step.Node.Name, step.Profile)))
+		emit(line(step, "info", fmt.Sprintf("[%s] Applying the %s profile budgets for users, ramp-up, and latency thresholds.", step.Node.Name, effectiveProfile(step))))
 	}
 
 	delay := nodeDelay(step.Node.Kind)
@@ -76,17 +82,17 @@ func line(step StepSpec, level, text string) logstream.Line {
 func bootMessage(step StepSpec) string {
 	switch step.Node.Kind {
 	case "mock":
-		return fmt.Sprintf("[%s] Hydrating mock assets for %s with the %s profile.", step.Node.Name, step.SuiteTitle, step.Profile)
+		return fmt.Sprintf("[%s] Hydrating mock assets for %s with the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
 	case "service":
-		return fmt.Sprintf("[%s] Starting external compatibility service assets for %s.", step.Node.Name, step.SuiteTitle)
+		return fmt.Sprintf("[%s] Starting external compatibility service assets for %s under the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
 	case "script":
-		return fmt.Sprintf("[%s] Executing bootstrap logic and preparing outputs for downstream steps.", step.Node.Name)
+		return fmt.Sprintf("[%s] Executing bootstrap logic and preparing outputs for downstream steps under the %s profile.", step.Node.Name, effectiveProfile(step))
 	case "load":
 		return fmt.Sprintf("[%s] Starting load generators from the suite package and preparing threshold collectors.", step.Node.Name)
 	case "scenario":
-		return fmt.Sprintf("[%s] Running scenario assertions from the suite package.", step.Node.Name)
+		return fmt.Sprintf("[%s] Running scenario assertions from the suite package under the %s profile.", step.Node.Name, effectiveProfile(step))
 	default:
-		return fmt.Sprintf("[%s] Starting container workload under the local runner.", step.Node.Name)
+		return fmt.Sprintf("[%s] Starting container workload under the local runner with the %s profile.", step.Node.Name, effectiveProfile(step))
 	}
 }
 
@@ -122,4 +128,11 @@ func nodeDelay(kind string) time.Duration {
 	default:
 		return 900 * time.Millisecond
 	}
+}
+
+func effectiveProfile(step StepSpec) string {
+	if step.RuntimeProfile != "" {
+		return step.RuntimeProfile
+	}
+	return step.Profile
 }

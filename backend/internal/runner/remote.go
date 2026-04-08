@@ -59,18 +59,28 @@ func (r *Remote) Run(ctx context.Context, step StepSpec, emit func(logstream.Lin
 
 	emit(line(step, "info", fmt.Sprintf("[%s] Forwarding the step to the remote worker at %s.", step.Node.Name, r.baseURL)))
 	return r.dispatcher.Dispatch(ctx, agent.StepRequest{
-		ExecutionID:     step.ExecutionID,
-		SuiteID:         step.SuiteID,
-		SuiteTitle:      step.SuiteTitle,
-		SuiteRepository: step.SuiteRepository,
-		Profile:         step.Profile,
-		Trigger:         step.Trigger,
-		BackendID:       step.BackendID,
-		BackendKind:     step.BackendKind,
-		BackendLabel:    step.BackendLabel,
-		StepIndex:       step.StepIndex,
-		TotalSteps:      step.TotalSteps,
-		LeaseTTL:        step.LeaseTTL,
+		ExecutionID:      step.ExecutionID,
+		SuiteID:          step.SuiteID,
+		SuiteTitle:       step.SuiteTitle,
+		SuiteRepository:  step.SuiteRepository,
+		Profile:          step.Profile,
+		RuntimeProfile:   step.RuntimeProfile,
+		Env:              cloneRunnerMap(step.Env),
+		Headers:          cloneRunnerMap(step.Headers),
+		Trigger:          step.Trigger,
+		BackendID:        step.BackendID,
+		BackendKind:      step.BackendKind,
+		BackendLabel:     step.BackendLabel,
+		SourceSuiteID:    step.SourceSuiteID,
+		SourceSuiteTitle: step.SourceSuiteTitle,
+		SourceRepository: step.SourceRepository,
+		SourceVersion:    step.SourceVersion,
+		ResolvedRef:      step.ResolvedRef,
+		Digest:           step.Digest,
+		DependencyAlias:  step.DependencyAlias,
+		StepIndex:        step.StepIndex,
+		TotalSteps:       step.TotalSteps,
+		LeaseTTL:         step.LeaseTTL,
 		Node: agent.StepNode{
 			ID:        step.Node.ID,
 			Name:      step.Node.Name,
@@ -78,4 +88,16 @@ func (r *Remote) Run(ctx context.Context, step StepSpec, emit func(logstream.Lin
 			DependsOn: append([]string{}, step.Node.DependsOn...),
 		},
 	}, emit)
+}
+
+func cloneRunnerMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
