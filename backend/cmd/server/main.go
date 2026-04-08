@@ -16,12 +16,12 @@ import (
 	"github.com/babelsuite/babelsuite/internal/catalog"
 	"github.com/babelsuite/babelsuite/internal/engine"
 	enginewatchers "github.com/babelsuite/babelsuite/internal/engine/watchers"
+	"github.com/babelsuite/babelsuite/internal/environments"
 	"github.com/babelsuite/babelsuite/internal/envloader"
 	"github.com/babelsuite/babelsuite/internal/execution"
 	"github.com/babelsuite/babelsuite/internal/mocking"
 	"github.com/babelsuite/babelsuite/internal/platform"
 	"github.com/babelsuite/babelsuite/internal/profiles"
-	"github.com/babelsuite/babelsuite/internal/sandbox"
 	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
@@ -152,9 +152,9 @@ func main() {
 	defer executionService.Close()
 	executionHandler := execution.NewHandler(executionService, engineStore, jwtSvc)
 	platformHandler := platform.NewHandler(platformStore, jwtSvc)
-	sandboxService := sandbox.NewService()
-	defer sandboxService.Close()
-	sandboxHandler := sandbox.NewHandler(sandboxService, jwtSvc)
+	environmentService := environments.NewService()
+	defer environmentService.Close()
+	environmentHandler := environments.NewHandler(environmentService, jwtSvc)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -171,7 +171,7 @@ func main() {
 	mockingHandler.Register(mux)
 	executionHandler.Register(mux)
 	platformHandler.Register(mux)
-	sandboxHandler.Register(mux)
+	environmentHandler.Register(mux)
 
 	addr := envOr("PORT", "8090")
 	if !strings.Contains(addr, ":") {
