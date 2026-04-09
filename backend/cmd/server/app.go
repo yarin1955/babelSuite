@@ -15,12 +15,12 @@ import (
 	"github.com/babelsuite/babelsuite/internal/catalog"
 	"github.com/babelsuite/babelsuite/internal/engine"
 	enginewatchers "github.com/babelsuite/babelsuite/internal/engine/watchers"
+	"github.com/babelsuite/babelsuite/internal/environments"
 	"github.com/babelsuite/babelsuite/internal/execution"
 	"github.com/babelsuite/babelsuite/internal/httpserver"
 	"github.com/babelsuite/babelsuite/internal/mocking"
 	"github.com/babelsuite/babelsuite/internal/platform"
 	"github.com/babelsuite/babelsuite/internal/profiles"
-	"github.com/babelsuite/babelsuite/internal/sandbox"
 	"github.com/babelsuite/babelsuite/internal/store"
 	mongostore "github.com/babelsuite/babelsuite/internal/store/mongo"
 	pgstore "github.com/babelsuite/babelsuite/internal/store/postgres"
@@ -29,13 +29,13 @@ import (
 )
 
 type controlPlane struct {
-	dbDriver          string
-	handler           http.Handler
-	telemetryPipeline *telemetry.Pipeline
-	cacheLayer        *cachehub.Hub
-	primaryStore      store.Store
-	executionService  *execution.Service
-	sandboxService    *sandbox.Service
+	dbDriver           string
+	handler            http.Handler
+	telemetryPipeline  *telemetry.Pipeline
+	cacheLayer         *cachehub.Hub
+	primaryStore       store.Store
+	executionService   *execution.Service
+	environmentService *environments.Service
 }
 
 func newControlPlane(ctx context.Context) (*controlPlane, error) {
@@ -141,8 +141,8 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 
 	executionHandler := execution.NewHandler(executionService, engineStore, jwtSvc)
 	platformHandler := platform.NewHandler(platformStore, jwtSvc)
-	sandboxService := sandbox.NewService()
-	sandboxHandler := sandbox.NewHandler(sandboxService, jwtSvc)
+	environmentService := environments.NewService()
+	environmentHandler := environments.NewHandler(environmentService, jwtSvc)
 
 	health := newHealthService(dbDriver, []subsystemProbe{
 		requiredProbe("database", pingProbe(primaryStore)),
@@ -180,23 +180,23 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 	mockingHandler.Register(mux)
 	executionHandler.Register(mux)
 	platformHandler.Register(mux)
-	sandboxHandler.Register(mux)
+	environmentHandler.Register(mux)
 
 	return &controlPlane{
-		dbDriver:          dbDriver,
-		handler:           buildHTTPHandler(frontendURL, jwtSvc, mux),
-		telemetryPipeline: telemetryPipeline,
-		cacheLayer:        cacheLayer,
-		primaryStore:      primaryStore,
-		executionService:  executionService,
-		sandboxService:    sandboxService,
+		dbDriver:           dbDriver,
+		handler:            buildHTTPHandler(frontendURL, jwtSvc, mux),
+		telemetryPipeline:  telemetryPipeline,
+		cacheLayer:         cacheLayer,
+		primaryStore:       primaryStore,
+		executionService:   executionService,
+		environmentService: environmentService,
 	}, nil
 }
 
 func (c *controlPlane) Close(ctx context.Context) error {
 	var combined error
-	if c.sandboxService != nil {
-		c.sandboxService.Close()
+	if c.environmentService != nil {
+		c.environmentService.Close()
 	}
 	if c.executionService != nil {
 		c.executionService.Close()
