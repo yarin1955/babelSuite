@@ -10,6 +10,7 @@ import (
 
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/domain"
+	"github.com/babelsuite/babelsuite/internal/httpserver"
 )
 
 type Handler struct {
@@ -29,16 +30,18 @@ func NewHandler(service Reader, favorites favoriteStore, jwt *auth.JWTService) *
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/catalog/packages", h.listPackages)
-	mux.HandleFunc("GET /api/v1/catalog/packages/{packageId}", h.getPackage)
-	mux.HandleFunc("GET /api/v1/catalog/favorites", h.listFavorites)
-	mux.HandleFunc("POST /api/v1/catalog/favorites/{packageId}", h.addFavorite)
-	mux.HandleFunc("DELETE /api/v1/catalog/favorites/{packageId}", h.removeFavorite)
+	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
+	httpserver.HandleFunc(mux, "GET /api/v1/catalog/packages", h.listPackages, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/catalog/packages/{packageId}", h.getPackage, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/catalog/favorites", h.listFavorites, protected)
+	httpserver.HandleFunc(mux, "POST /api/v1/catalog/favorites/{packageId}", h.addFavorite, protected)
+	httpserver.HandleFunc(mux, "DELETE /api/v1/catalog/favorites/{packageId}", h.removeFavorite, protected)
 }
 
 func (h *Handler) listPackages(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
+	claims, ok := auth.SessionFromContext(r.Context())
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
 
@@ -62,8 +65,9 @@ func (h *Handler) listPackages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPackage(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
+	claims, ok := auth.SessionFromContext(r.Context())
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
 
@@ -88,8 +92,9 @@ func (h *Handler) getPackage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listFavorites(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
+	claims, ok := auth.SessionFromContext(r.Context())
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
 
@@ -103,8 +108,9 @@ func (h *Handler) listFavorites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) addFavorite(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
+	claims, ok := auth.SessionFromContext(r.Context())
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
 
@@ -137,8 +143,9 @@ func (h *Handler) addFavorite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) removeFavorite(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
+	claims, ok := auth.SessionFromContext(r.Context())
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
 
@@ -155,29 +162,6 @@ func (h *Handler) removeFavorite(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{"packageId": packageID, "starred": false})
 }
-
-func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
-	bearer := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(bearer, "Bearer ") {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return nil, false
-	}
-
-	token := strings.TrimSpace(strings.TrimPrefix(bearer, "Bearer "))
-	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return nil, false
-	}
-
-	claims, err := h.jwt.Verify(token)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
-		return nil, false
-	}
-
-	return claims, true
-}
-
 func (h *Handler) favoriteSet(ctx context.Context, userID string) (map[string]bool, error) {
 	packageIDs, err := h.favorites.ListFavoritePackageIDs(ctx, userID)
 	if err != nil {

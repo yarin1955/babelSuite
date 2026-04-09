@@ -46,11 +46,7 @@ export default function LiveExecution() {
 
   const topology = useMemo(
     () => execution
-      ? groupTopologyByLevel(
-          (execution.suite.topology?.length
-            ? execution.suite.topology
-            : parseSuiteTopology(execution.suite.suiteStar)) as ReturnType<typeof parseSuiteTopology>,
-        )
+      ? groupTopologyByLevel(execution.suite.topology?.length ? execution.suite.topology : parseSuiteTopology(execution.suite.suiteStar))
       : [],
     [execution],
   )

@@ -17,6 +17,7 @@ import (
 var (
 	ErrSuiteNotFound      = errors.New("suite not found")
 	ErrProfileNotFound    = errors.New("profile not found")
+	ErrProfileRuntime     = errors.New("profile runtime error")
 	ErrExecutionNotFound  = errors.New("execution not found")
 	ErrBackendNotFound    = errors.New("backend not found")
 	ErrBackendUnavailable = errors.New("backend unavailable")
@@ -261,9 +262,16 @@ func (e *topologyCycleError) Is(target error) bool {
 
 type executionState struct {
 	record      ExecutionRecord
+	runtime     executionRuntimeOverlay
 	total       int
 	completed   int
 	stepStatus  map[string]string
 	terminalErr error
 	monitor     *liveSpan
+}
+
+type executionRuntimeOverlay struct {
+	Env       map[string]string
+	Services  map[string]map[string]string
+	SecretEnv map[string]string
 }

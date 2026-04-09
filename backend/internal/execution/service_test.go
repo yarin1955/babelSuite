@@ -969,7 +969,7 @@ func TestStorefrontExecutionUsesScenarioOnlyTopology(t *testing.T) {
 	service := NewService(suites.NewService(), observer)
 	defer service.Close()
 
-	_, err := service.CreateExecution(context.Background(), CreateRequest{
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
 		SuiteID: "storefront-browser-lab",
 		Profile: "promo.yaml",
 	})
@@ -981,6 +981,9 @@ func TestStorefrontExecutionUsesScenarioOnlyTopology(t *testing.T) {
 	for {
 		select {
 		case snapshot := <-observer.events:
+			if snapshot.ID != execution.ID {
+				continue
+			}
 			foundTest := false
 			for _, step := range snapshot.Steps {
 				if step.Kind == "traffic" {

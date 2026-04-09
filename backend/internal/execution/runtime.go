@@ -115,6 +115,12 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 		return nil, ErrProfileNotFound
 	}
 
+	runtimeOverlay, err := s.resolveExecutionRuntimeOverlay(ctx, suite.ID, profile)
+	if err != nil {
+		s.noteRejectedLaunch(ctx, suite.ID, "profile_runtime_error")
+		return nil, err
+	}
+
 	selectedBackend, err := s.resolveBackend(ctx, request.Backend)
 	if err != nil {
 		s.noteRejectedLaunch(ctx, suite.ID, "backend_unavailable")
@@ -141,6 +147,7 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 			Events:    []ExecutionEvent{},
 			Artifacts: []ExecutionArtifact{},
 		},
+		runtime:    runtimeOverlay,
 		stepStatus: make(map[string]string, len(resolved.Nodes)),
 	}
 	state.total = len(resolved.Nodes)
@@ -255,7 +262,7 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		SuiteRepository:  suite.Repository,
 		Profile:          profile,
 		RuntimeProfile:   firstNonEmpty(node.RuntimeProfile, profile),
-		Env:              cloneRuntimeMap(node.RuntimeEnv),
+		Env:              s.resolveNodeRuntimeEnv(executionID, node),
 		Headers:          cloneRuntimeMap(node.RuntimeHeaders),
 		Trigger:          s.executionTrigger(executionID),
 		BackendID:        s.executionBackendID(executionID),

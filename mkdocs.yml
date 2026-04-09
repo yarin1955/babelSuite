@@ -1,0 +1,97 @@
+site_name: BabelSuite
+site_description: Control plane, suite model, execution, CLI, API, and operations documentation for BabelSuite.
+repo_url: https://github.com/babelsuite/babelsuite
+repo_name: babelsuite/babelsuite
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Core:
+    - Architecture: architecture.md
+    - Control Plane: control-plane.md
+    - Configuration: configuration.md
+    - Platform Settings: platform.md
+    - Catalog: catalog.md
+    - Suites: suites.md
+    - Suite Authoring: suite-authoring.md
+    - Dependency Manifests: dependencies.md
+    - Profiles: profiles.md
+    - Profile Runtime: profile-runtime.md
+    - Modules: modules.md
+    - Runtime Library: runtime-library.md
+    - Mocking: mocking.md
+    - Mocking Reference: mocking-reference.md
+    - Execution: execution.md
+    - Agents: agents.md
+    - Environments: environments.md
+  - Interfaces:
+    - Authentication: auth.md
+    - API: api.md
+    - CLI: cli.md
+  - Examples: examples.md
+  - Development: development.md
+  - Operations: operations.md
+
+theme:
+  name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.instant
+    - navigation.tracking
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search:
+      lang: en

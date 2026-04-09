@@ -646,7 +646,7 @@
       "v2.4.0",
       "v2.3.8"
     ],
-    "description": "Bank-grade reference environment with Postgres, Kafka, Wiremock, and a full fraud worker topology.",
+    "description": "Bank-grade reference environment with Postgres, Kafka, Wiremock, and profiles ready for settings-managed secret injection.",
     "modules": [
       "postgres",
       "kafka"
@@ -655,7 +655,7 @@
     "score": 94,
     "pullCommand": "babelctl run localhost:5000/core-platform/payment-suite:v2.4.1",
     "forkCommand": "babelctl fork localhost:5000/core-platform/payment-suite:v2.4.1 ./payment-suite-local",
-    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\n# Pre-registered Starlark Modules return strict structs.\ndb = service.run()\nkafka = service.run()\nstripe_mock = service.mock(after=[db])\nbootstrap_topics = task.run(file=\"bootstrap_topics.sh\", image=\"bash:5.2\", after=[kafka])\nmigrations = task.run(file=\"migrate.py\", image=\"python:3.12\", after=[db])\npayment_gateway = service.run(after=[db, stripe_mock, migrations])\nfraud_worker = service.run(after=[kafka, bootstrap_topics, payment_gateway])\ncheckout_smoke = test.run(file=\"checkout_smoke.py\", image=\"python:3.12\", after=[payment_gateway, fraud_worker])",
+    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\", \"traffic\", \"suite\")\n\n# Pre-registered Starlark Modules return strict structs.\ndb = service.run()\nkafka = service.run()\nstripe_mock = service.mock(after=[db])\nbootstrap_topics = task.run(file=\"bootstrap_topics.sh\", image=\"bash:5.2\", after=[kafka])\nmigrations = task.run(file=\"migrate.py\", image=\"python:3.12\", after=[db])\npayment_gateway = service.run(after=[db, stripe_mock, migrations])\nfraud_worker = service.run(after=[kafka, bootstrap_topics, payment_gateway])\ncheckout_baseline = traffic.baseline(plan=\"checkout_baseline.star\", target=\"http://payment_gateway:8080\", after=[payment_gateway, fraud_worker])\ncheckout_smoke = test.run(file=\"checkout_smoke.py\", image=\"python:3.12\", after=[checkout_baseline])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -666,7 +666,7 @@
       {
         "fileName": "staging.yaml",
         "label": "Staging",
-        "description": "Production-like service topology with Vault-backed references.",
+        "description": "Production-like service topology with settings-managed secret injection.",
         "default": false
       },
       {
@@ -678,28 +678,27 @@
     ],
     "folders": [
       {
-        "name": "profiles",
-        "role": "Core",
-        "description": "Environment variable toggles and runtime overrides.",
-        "files": [
-          "local.yaml",
-          "staging.yaml",
-          "year.yaml"
-        ]
-      },
-      {
         "name": "api",
         "role": "Core",
-        "description": "Immutable OpenAPI and protobuf contracts for the suite.",
+        "description": "Contracts and schemas shipped with the suite.",
         "files": [
           "openapi/payments.yaml",
           "proto/payments.proto"
         ]
       },
       {
+        "name": "fixtures",
+        "role": "Core",
+        "description": "Static seed data and sample payloads.",
+        "files": [
+          "cards.json",
+          "merchants.csv"
+        ]
+      },
+      {
         "name": "mock",
         "role": "Core",
-        "description": "Wiremock mappings and scenario-specific stub bodies.",
+        "description": "Mock schemas, metadata, and compatibility assets.",
         "files": [
           "wiremock/stripe/create-charge.cue",
           "wiremock/stripe/create-charge.metadata.yaml",
@@ -708,9 +707,28 @@
         ]
       },
       {
+        "name": "policies",
+        "role": "Core",
+        "description": "Policy rules and invariants enforced by the suite.",
+        "files": [
+          "ledger.rego",
+          "pci.rego"
+        ]
+      },
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Environment-specific runtime overrides and launch profiles.",
+        "files": [
+          "local.yaml",
+          "staging.yaml",
+          "year.yaml"
+        ]
+      },
+      {
         "name": "tasks",
         "role": "Core",
-        "description": "Boot-time migrations and broker preparation scripts.",
+        "description": "Short-lived setup, seed, and migration jobs.",
         "files": [
           "migrate.py",
           "bootstrap_topics.sh"
@@ -719,28 +737,18 @@
       {
         "name": "tests",
         "role": "Core",
-        "description": "Smoke tests and attack-path executions.",
+        "description": "Verification, smoke, regression, and browser assertions.",
         "files": [
           "checkout_smoke.py",
           "refund_regression.py"
         ]
       },
       {
-        "name": "fixtures",
-        "role": "Core",
-        "description": "Static input data for cards, merchants, and seeded accounts.",
+        "name": "traffic",
+        "role": "Performance",
+        "description": "Native traffic plans and protocol-safe workload definitions.",
         "files": [
-          "cards.json",
-          "merchants.csv"
-        ]
-      },
-      {
-        "name": "policies",
-        "role": "Core",
-        "description": "Rego payload validation and ledger invariants.",
-        "files": [
-          "ledger.rego",
-          "pci.rego"
+          "checkout_baseline.star"
         ]
       },
       {
@@ -811,17 +819,22 @@
       {
         "path": "profiles/local.yaml",
         "language": "yaml",
-        "content": "name: Local Debug\ndescription: Verbose logs, local secrets, and relaxed timeouts.\ndefault: true\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: local.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+        "content": "name: Local Debug\ndescription: Verbose logs, local secrets, and relaxed timeouts.\ndefault: true\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: local.yaml\nmodules:\n  - postgres\n  - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\nsecretRefs:\n  - key: STRIPE_API_KEY\n    provider: Local Secret\n    ref: secrets://developer/stripe-api-key\nenv:\n  LOG_LEVEL: debug\n  PAYMENTS_API_BASE_URL: http://payment-gateway.internal\n  FRAUD_STRATEGY: permissive\nservices:\n  payment_gateway:\n    env:\n      API_PORT: 18080\n      CHECKOUT_MODE: local-debug\n  fraud_worker:\n    env:\n      WORKER_REPLICA_COUNT: 1\n"
       },
       {
         "path": "profiles/staging.yaml",
         "language": "yaml",
-        "content": "name: Staging\ndescription: Production-like service topology with Vault-backed references.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: staging.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+        "content": "name: Staging\ndescription: Production-like service topology with settings-managed secret injection.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: staging.yaml\nmodules:\n  - postgres\n  - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\nsecretRefs:\n  - key: DB_PASSWORD\n    provider: Vault\n    ref: kv/payment-suite/staging-db-password\nenv:\n  PAYMENTS_API_BASE_URL: https://payments.staging.company.test\n  FRAUD_STRATEGY: strict\nservices:\n  payment_gateway:\n    env:\n      API_PORT: 8080\n      ROUTING_MODE: staging\n  fraud_worker:\n    env:\n      WORKER_REPLICA_COUNT: 3\n      DECISION_MODE: strict\n"
       },
       {
         "path": "profiles/year.yaml",
         "language": "yaml",
-        "content": "name: Year-End\ndescription: Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: year.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
+        "content": "name: Year-End\ndescription: Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: year.yaml\nmodules:\n  - postgres\n  - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\nsecretRefs:\n  - key: SETTLEMENT_SFTP_KEY\n    provider: Vault\n    ref: kv/payment-suite/year-end-sftp-key\nenv:\n  LEDGER_PERIOD: year_end\n  FRAUD_STRATEGY: settlement_review\nservices:\n  payment_gateway:\n    env:\n      SETTLEMENT_BATCH_SIZE: 500\n  fraud_worker:\n    env:\n      REPLAY_HISTORICAL_CHARGES: true\n      LEDGER_CLOSE_MODE: year-end\n"
+      },
+      {
+        "path": "traffic/checkout_baseline.star",
+        "language": "python",
+        "content": "load(\"@babelsuite/runtime\", \"traffic\")\n\nshopper = traffic.user(\n    name=\"shopper\",\n    weight=1,\n    wait=traffic.between(1, 3),\n    tasks=[\n        traffic.task(\n            name=\"create-charge\",\n            request=traffic.post(\n                \"/charges\",\n                name=\"create-charge\",\n                json={\n                    \"merchantId\": \"merchant-001\",\n                    \"amount\": 4200,\n                    \"currency\": \"USD\",\n                    \"cardToken\": \"tok_visa\",\n                },\n            ),\n            checks=[\n                traffic.threshold(\"status\", \"==\", 200),\n                traffic.threshold(\"latency.p95_ms\", \"<\", 600, sampler=\"create-charge\"),\n            ],\n        ),\n        traffic.task(\n            name=\"get-payment\",\n            request=traffic.get(\"/payments/payment-123\", name=\"get-payment\"),\n            checks=[\n                traffic.threshold(\"status\", \"==\", 200),\n                traffic.threshold(\"latency.p95_ms\", \"<\", 400, sampler=\"get-payment\"),\n            ],\n        ),\n    ],\n)\n\ntraffic.plan(\n    users=[shopper],\n    shape=traffic.stages([\n        traffic.stage(duration=\"3s\", users=4, spawn_rate=2),\n        traffic.stage(duration=\"5s\", users=8, spawn_rate=4),\n        traffic.stage(duration=\"6s\", users=12, spawn_rate=6),\n        traffic.stage(duration=\"2s\", users=0, spawn_rate=6, stop=True),\n    ]),\n    thresholds=[\n        traffic.threshold(\"http.error_rate\", \"<\", 0.01),\n        traffic.threshold(\"http.p95_ms\", \"<\", 600, sampler=\"create-charge\"),\n        traffic.threshold(\"http.p95_ms\", \"<\", 400, sampler=\"get-payment\"),\n    ],\n)\n"
       },
       {
         "path": "tests/checkout_smoke.py",
@@ -2015,7 +2028,7 @@
     "score": 90,
     "pullCommand": "babelctl run localhost:5000/qa/storefront-browser-lab:v1.3.0",
     "forkCommand": "babelctl fork localhost:5000/qa/storefront-browser-lab:v1.3.0 ./storefront-browser-lab",
-    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nbroker = service.run()\ncatalog_mock = service.mock(after=[broker])\norders_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nevent_consumer = service.run(after=[broker, seed_topics, orders_mock])\nstorefront_api = service.run(after=[catalog_mock, orders_mock, seed_topics])\nstorefront_ui = service.run(after=[storefront_api])\nplaywright_checkout = test.run(file=\"playwright_checkout.spec.ts\", image=\"mcr.microsoft.com/playwright:v1.53.0-noble\", after=[storefront_ui, event_consumer])",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/playwright\", \"playwright\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nbroker = service.run()\ncatalog_mock = service.mock(after=[broker])\norders_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nevent_consumer = service.run(after=[broker, seed_topics, orders_mock])\nstorefront_api = service.run(after=[catalog_mock, orders_mock, seed_topics])\nstorefront_ui = service.run(after=[storefront_api])\nplaywright_checkout = test.run(file=\"playwright_checkout.spec.ts\", image=\"mcr.microsoft.com/playwright:v1.53.0-noble\", after=[storefront_ui, event_consumer])",
     "profiles": [
       {
         "fileName": "local.yaml",

@@ -1,4 +1,5 @@
 load("@babelsuite/kafka", "kafka")
+load("@babelsuite/playwright", "playwright")
 load("@babelsuite/runtime", "service", "task", "test", "traffic", "suite")
 
 broker = service.run()

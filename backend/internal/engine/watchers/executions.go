@@ -46,6 +46,7 @@ func (w *ExecutionWatcher) SyncExecution(snapshot execution.Snapshot) {
 			RunningSteps:  snapshot.RunningSteps,
 			HealthySteps:  snapshot.HealthySteps,
 			FailedSteps:   snapshot.FailedSteps,
+			SkippedSteps:  snapshot.SkippedSteps,
 			PendingSteps:  snapshot.PendingSteps,
 			ProgressRatio: snapshot.ProgressRatio,
 			Steps:         steps,

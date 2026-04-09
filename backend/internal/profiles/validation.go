@@ -15,7 +15,7 @@ func applyUpsertRequest(record *Record, request UpsertRequest, current []Record,
 	record.Description = strings.TrimSpace(request.Description)
 	record.Scope = firstNonEmpty(strings.TrimSpace(request.Scope), scopeFromFileName(request.FileName))
 	record.YAML = strings.TrimSpace(request.YAML)
-	record.SecretRefs = compactSecretRefs(request.SecretRefs)
+	record.SecretRefs = mergeSecretRefs(ExtractSecretRefsFromYAML(record.YAML), request.SecretRefs)
 	record.Default = request.Default && record.Launchable
 	record.ExtendsID = strings.TrimSpace(request.ExtendsID)
 	record.UpdatedAt = time.Now().UTC()

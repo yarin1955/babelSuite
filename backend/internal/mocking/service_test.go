@@ -63,6 +63,36 @@ func TestPaymentMockPersistsStateAcrossOperations(t *testing.T) {
 	}
 }
 
+func TestResetSuiteStateClearsPersistedMockState(t *testing.T) {
+	service := NewService(suites.NewService())
+
+	createReq := httptest.NewRequest("POST", "/mocks/rest/payment-suite/payment-gateway/payments?status=approved", strings.NewReader(`{"amount":1299,"currency":"USD","merchantId":"m-117"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Suite-Profile", "year.yaml")
+
+	createResult, err := service.InvokeREST(context.Background(), "payment-suite", "payment-gateway", "/payments", createReq)
+	if err != nil {
+		t.Fatalf("InvokeREST(create): %v", err)
+	}
+	if createResult.Status != 201 {
+		t.Fatalf("expected create status 201, got %d", createResult.Status)
+	}
+
+	if err := service.ResetSuiteState(context.Background(), "payment-suite"); err != nil {
+		t.Fatalf("ResetSuiteState: %v", err)
+	}
+
+	getReq := httptest.NewRequest("GET", "/mocks/rest/payment-suite/payment-gateway/payments/pay_1043", nil)
+	getResult, err := service.InvokeREST(context.Background(), "payment-suite", "payment-gateway", "/payments/pay_1043", getReq)
+	if err != nil {
+		t.Fatalf("InvokeREST(get): %v", err)
+	}
+	body := string(getResult.Body)
+	if strings.Contains(body, `"profile": "year.yaml"`) {
+		t.Fatalf("expected reset suite state to remove persisted profile, got %s", body)
+	}
+}
+
 func TestListProductsEnforcesConstraints(t *testing.T) {
 	service := NewService(suites.NewService())
 

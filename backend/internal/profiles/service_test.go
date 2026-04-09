@@ -59,6 +59,37 @@ func TestServiceCreatesProfileAndSetsDefault(t *testing.T) {
 	}
 }
 
+func TestServiceExtractsSecretRefsFromManagedProfileYAML(t *testing.T) {
+	service := NewService(suites.NewService(), NewMemoryStore())
+
+	created, err := service.CreateProfile("payment-suite", UpsertRequest{
+		Name:        "Direct YAML",
+		FileName:    "direct-yaml.yaml",
+		Description: "Inline secret refs live in the YAML body.",
+		Scope:       "Staging",
+		YAML: `secretRefs:
+  - key: API_TOKEN
+    provider: Vault
+    ref: kv/payment-suite/direct-yaml-token
+env:
+  LOG_LEVEL: debug`,
+	})
+	if err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	record := findProfileRecordByFileName(created, "direct-yaml.yaml")
+	if record == nil {
+		t.Fatal("expected direct-yaml.yaml to be returned")
+	}
+	if len(record.SecretRefs) != 1 {
+		t.Fatalf("expected 1 secret ref extracted from yaml, got %d", len(record.SecretRefs))
+	}
+	if got := record.SecretRefs[0]; got.Key != "API_TOKEN" || got.Provider != "Vault" || got.Ref != "kv/payment-suite/direct-yaml-token" {
+		t.Fatalf("unexpected extracted secret ref: %#v", got)
+	}
+}
+
 func TestServicePreventsDeletingBaseProfile(t *testing.T) {
 	service := NewService(suites.NewService(), NewMemoryStore())
 
@@ -88,6 +119,16 @@ func TestServiceLoadsWorkspaceProfilesWhenDemoDisabled(t *testing.T) {
 	if !suiteContainsProfile(profilesPayload, "local.yaml") {
 		t.Fatal("expected local.yaml in workspace-backed profiles")
 	}
+	staging := findProfileRecordByFileName(profilesPayload, "staging.yaml")
+	if staging == nil {
+		t.Fatal("expected staging.yaml in workspace-backed profiles")
+	}
+	if len(staging.SecretRefs) != 1 {
+		t.Fatalf("expected 1 inline secret ref in staging.yaml, got %d", len(staging.SecretRefs))
+	}
+	if got := staging.SecretRefs[0]; got.Key != "DB_PASSWORD" || got.Provider != "Vault" || got.Ref != "kv/payment-suite/staging-db-password" {
+		t.Fatalf("unexpected workspace secret ref: %#v", got)
+	}
 }
 
 func containsProfile(profiles []suites.ProfileOption, fileName string) bool {
@@ -115,6 +156,15 @@ func findProfileID(payload *SuiteProfiles, fileName string) string {
 		}
 	}
 	return ""
+}
+
+func findProfileRecordByFileName(payload *SuiteProfiles, fileName string) *Record {
+	for index := range payload.Profiles {
+		if payload.Profiles[index].FileName == fileName {
+			return &payload.Profiles[index]
+		}
+	}
+	return nil
 }
 
 func configureProfilesExamplesRoot(t *testing.T) {

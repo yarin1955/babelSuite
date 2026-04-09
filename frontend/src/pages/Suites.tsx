@@ -70,11 +70,7 @@ export default function Suites() {
   }, [suiteId])
 
   const topology = useMemo(
-    () => (
-      suite
-        ? ((suite.topology?.length ? suite.topology : parseSuiteTopology(suite.suiteStar)) as ReturnType<typeof parseSuiteTopology>)
-        : []
-    ),
+    () => (suite ? (suite.topology?.length ? suite.topology : parseSuiteTopology(suite.suiteStar)) : []),
     [suite],
   )
   const topologyLevels = useMemo(() => groupTopologyByLevel(topology), [topology])

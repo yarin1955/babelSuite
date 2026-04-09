@@ -128,6 +128,9 @@ func (r *topologyResolver) resolveSuite(suite Definition, stack []string) (resol
 	if cached, ok := r.cached[id]; ok {
 		return cloneResolvedTopology(cached), nil
 	}
+	if err := ValidateDefinition(suite); err != nil {
+		return resolvedTopology{}, fmt.Errorf("invalid suite package: %w", err)
+	}
 	if containsString(stack, id) {
 		path := append(append([]string{}, stack...), id)
 		return resolvedTopology{}, fmt.Errorf("invalid suite topology: nested suite cycle detected: %s", strings.Join(path, " -> "))

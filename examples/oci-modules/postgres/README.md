@@ -1,6 +1,6 @@
 @babelsuite/postgres
 
-Pre-registered Starlark module for opinionated Postgres provisioning with strict connection URL contracts.
+Pure Starlark Postgres module built on top of BabelSuite's built-in runtime service and task primitives.
 
 Details
 
@@ -9,7 +9,9 @@ Details
 - Tags: `1.4.0`, `1.3.2`, `latest`
 - Pull: `babelctl run localhost:5000/babelsuite/postgres:1.4.0`
 - Fork: `babelctl fork localhost:5000/babelsuite/postgres:1.4.0 ./stdlib-postgres`
+- Entrypoint: `module.star`
+- Helpers: `pg`, `connect`, `query`, `insert`, `select`, `delete`, `upsert`
 
 Usage
 
-See `usage.star` for a minimal Starlark import example.
+See `module.star` for the module implementation and `usage.star` for a consumer example.
