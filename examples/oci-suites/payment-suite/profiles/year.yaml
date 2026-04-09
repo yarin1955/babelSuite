@@ -6,9 +6,24 @@ runtime:
   repository: localhost:5000/core-platform/payment-suite
   profileFile: year.yaml
 modules:
-    - postgres
-    - kafka
+  - postgres
+  - kafka
 observability:
   logs: structured
   traces: enabled
   metrics: enabled
+secretRefs:
+  - key: SETTLEMENT_SFTP_KEY
+    provider: Vault
+    ref: kv/payment-suite/year-end-sftp-key
+env:
+  LEDGER_PERIOD: year_end
+  FRAUD_STRATEGY: settlement_review
+services:
+  payment_gateway:
+    env:
+      SETTLEMENT_BATCH_SIZE: 500
+  fraud_worker:
+    env:
+      REPLAY_HISTORICAL_CHARGES: true
+      LEDGER_CLOSE_MODE: year-end

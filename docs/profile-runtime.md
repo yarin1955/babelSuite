@@ -13,7 +13,7 @@ BabelSuite currently has two profile representations:
 1. workspace profile files under `profiles/*.yaml`
 2. managed profile records in `backend/suite-profiles.yaml` or the profile store API
 
-Workspace files drive suite discovery and default launch choices. Managed profiles support UI/API management, inheritance, defaults, and secret references.
+Workspace files drive suite discovery, runtime env overlays, and inline `secretRefs`. Managed profiles support UI/API management, inheritance, defaults, and secret references.
 
 ## Workspace Profile Shape
 
@@ -34,9 +34,19 @@ observability:
   logs: structured
   traces: enabled
   metrics: enabled
+secretRefs:
+  - key: DB_PASSWORD
+    provider: Vault
+    ref: kv/payment-suite/staging-db-password
+env:
+  PAYMENTS_API_BASE_URL: https://payments.staging.company.test
+services:
+  payment_gateway:
+    env:
+      API_PORT: 8080
 ```
 
-The workspace loader currently uses these fields directly:
+Workspace suite discovery currently uses these fields directly:
 
 - `name`
 - `description`
@@ -44,6 +54,8 @@ The workspace loader currently uses these fields directly:
 - `runtime.repository`
 - `runtime.profileFile`
 - `modules`
+
+Profile loading and execution also consume optional `env`, `services.<step>.env`, and `secretRefs` blocks from the same YAML body.
 
 ## Managed Profile Record Shape
 
@@ -63,18 +75,24 @@ Managed profiles stored through the API expose fields such as:
 
 The managed YAML payload is validated as YAML and can carry fields like:
 
+- `secretRefs`
 - `env`
 - `services`
 
 Example:
 
 ```yaml
+secretRefs:
+  - key: API_TOKEN
+    provider: Vault
+    ref: kv/service/api-token
 env:
   LOG_LEVEL: debug
   TELEMETRY_PROFILE: verbose
 services:
-  uiPort: 13000
-  dispatcherPort: 18081
+  api:
+    env:
+      API_MODE: strict
 ```
 
 ## Defaults And Selection
@@ -132,7 +150,7 @@ Managed profile records enforce:
 
 ## Practical Guidance
 
-- Use workspace profiles for package-owned defaults that should travel with the suite.
-- Use managed profiles for operator-managed overlays and secret bindings.
+- Use workspace profiles for package-owned defaults, runtime env, and inline `secretRefs` that should travel with the suite.
+- Use managed profiles for operator-managed overlays, inheritance, and UI-edited secret bindings.
 - Use dependency `profile` when importing a suite that needs its own internal launch context.
 - Keep profile file names stable, because they become runtime selectors and dependency references.

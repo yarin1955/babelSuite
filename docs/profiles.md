@@ -8,14 +8,14 @@ title: Profiles
 
 ## What Profiles Do
 
-Profiles are the launch-time configuration layer for a suite. They allow the same suite topology to run differently across environments — local development, CI, staging, canary, or event-specific scenarios.
+Profiles are the launch-time configuration layer for a suite. They allow the same suite topology to run differently across environments such as local development, CI, staging, canary, or event-specific scenarios.
 
 A profile can:
 
 - set environment variables for the run
 - select module hints and observability settings
 - override individual service env vars
-- reference secrets from an external provider
+- declare secret-backed env vars with `secretRefs`
 - inherit from another profile via `extendsId`
 
 ## Profile Sources
@@ -24,7 +24,7 @@ BabelSuite has two profile representations:
 
 | Source | Location | Purpose |
 |--------|----------|---------|
-| **Workspace files** | `examples/oci-suites/<suite>/profiles/*.yaml` | Package-owned defaults; travel with the suite |
+| **Workspace files** | `examples/oci-suites/<suite>/profiles/*.yaml` | Package-owned defaults, runtime overlays, and inline `secretRefs` that travel with the suite |
 | **Managed records** | `babelsuite-profiles.yaml` / profiles API | Operator-managed overlays, secret bindings, UI-editable |
 
 Workspace files drive the initial profile list for each suite. Managed records support creation, updates, deletion, and default selection through the UI and API.
@@ -48,9 +48,19 @@ observability:
   logs: structured
   traces: enabled
   metrics: enabled
+secretRefs:
+  - key: DB_PASSWORD
+    provider: Vault
+    ref: kv/payment-suite/staging-db-password
+env:
+  PAYMENTS_API_BASE_URL: https://payments.staging.company.test
+services:
+  payment_gateway:
+    env:
+      API_PORT: 8080
 ```
 
-The workspace loader uses `name`, `description`, `default`, `runtime.repository`, `runtime.profileFile`, and `modules` from this structure.
+Workspace suite discovery uses `name`, `description`, `default`, `runtime.repository`, `runtime.profileFile`, and `modules` from this structure. Profile loading and execution also consume optional `env`, `services.<step>.env`, and `secretRefs` blocks from the same YAML body.
 
 ## Managed Profile Record Fields
 
@@ -64,7 +74,7 @@ Profiles stored via the API expose:
 | `description` | Optional description |
 | `scope` | Suite scope this profile belongs to |
 | `yaml` | The profile YAML payload (validated on write) |
-| `secretRefs` | List of secret references (`key`, `provider`, `ref`) |
+| `secretRefs` | Resolved secret references (`key`, `provider`, `ref`) exposed to the UI/API |
 | `default` | Whether this is the default profile for the suite |
 | `extendsId` | ID of a parent profile to inherit from |
 | `launchable` | Whether this profile appears in the launch UI |
@@ -73,6 +83,10 @@ Profiles stored via the API expose:
 The `yaml` payload typically carries:
 
 ```yaml
+secretRefs:
+  - key: API_TOKEN
+    provider: Vault
+    ref: kv/service/api-token
 env:
   LOG_LEVEL: debug
   TELEMETRY_PROFILE: verbose
@@ -119,6 +133,6 @@ See [API](api.md) for the full route reference.
 
 ## Related Pages
 
-- [Profile Runtime Reference](profile-runtime.md) — workspace vs managed profiles in depth, runtime overlays, dependency profile flow
-- [Suites](suites.md) — how profiles relate to suite packages and launch options
-- [Dependency Manifests](dependencies.md) — how dependency `profile` and `inputs` travel with nested suites
+- [Profile Runtime Reference](profile-runtime.md) - workspace vs managed profiles in depth, runtime overlays, dependency profile flow
+- [Suites](suites.md) - how profiles relate to suite packages and launch options
+- [Dependency Manifests](dependencies.md) - how dependency `profile` and `inputs` travel with nested suites
