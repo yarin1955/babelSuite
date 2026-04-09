@@ -31,22 +31,15 @@ func defaultProfile(profiles []suites.ProfileOption) string {
 }
 
 func parseSuiteTopology(suiteStar string) ([]topologyNode, error) {
-	nodes := make([]topologyNode, 0)
-	for _, rawLine := range strings.Split(suiteStar, "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		node, ok := parseTopologyNode(line)
-		if !ok {
-			continue
-		}
-		node.Order = len(nodes)
-		nodes = append(nodes, node)
+	nodes, err := suites.ResolveTopology(suites.Definition{
+		ID:        "inline-suite",
+		Title:     "Inline Suite",
+		SuiteStar: suiteStar,
+	}, nil)
+	if err != nil {
+		return nil, topologyResolutionError{cause: err}
 	}
-
-	return resolveTopology(nodes)
+	return nodes, nil
 }
 
 func parseSuiteTopologyOrEmpty(suiteStar string) []topologyNode {
@@ -55,6 +48,18 @@ func parseSuiteTopologyOrEmpty(suiteStar string) []topologyNode {
 		return nil
 	}
 	return nodes
+}
+
+type topologyResolutionError struct {
+	cause error
+}
+
+func (e topologyResolutionError) Error() string {
+	return e.cause.Error()
+}
+
+func (e topologyResolutionError) Is(target error) bool {
+	return target == ErrInvalidTopology
 }
 
 func resolveTopology(nodes []topologyNode) ([]topologyNode, error) {
@@ -207,69 +212,6 @@ func findTopologyCycle(nodes []topologyNode, byID map[string]*topologyNode) []st
 	return nil
 }
 
-func parseTopologyNode(line string) (topologyNode, bool) {
-	match := topologyAssignmentPattern.FindStringSubmatch(line)
-	if len(match) == 0 {
-		return topologyNode{}, false
-	}
-
-	kind, ok := topologyKind(match[2])
-	if !ok {
-		return topologyNode{}, false
-	}
-
-	nameMatch := topologyNamePattern.FindStringSubmatch(match[3])
-	if len(nameMatch) == 0 {
-		return topologyNode{}, false
-	}
-
-	return topologyNode{
-		ID:        nameMatch[1],
-		Name:      nameMatch[1],
-		Kind:      kind,
-		DependsOn: topologyDependencies(match[3]),
-	}, true
-}
-
-func topologyKind(call string) (string, bool) {
-	switch strings.TrimSpace(call) {
-	case "container", "container.run", "container.create", "container.get":
-		return "container", true
-	case "mock", "mock.serve":
-		return "mock", true
-	case "service", "service.wiremock", "service.prism", "service.custom":
-		return "service", true
-	case "script", "script.file", "script.bash", "script.sql_migrate", "script.exec":
-		return "script", true
-	case "load", "load.http", "load.grpc", "load.locust", "load.jmx", "load.k6", "scenario", "scenario.go", "scenario.python", "scenario.http":
-		if strings.HasPrefix(strings.TrimSpace(call), "load.") {
-			return "load", true
-		}
-		if strings.HasPrefix(strings.TrimSpace(call), "scenario.") {
-			return "scenario", true
-		}
-		return strings.TrimSpace(call), true
-	default:
-		return "", false
-	}
-}
-
-func topologyDependencies(arguments string) []string {
-	match := topologyAfterPattern.FindStringSubmatch(arguments)
-	if len(match) == 0 || strings.TrimSpace(match[1]) == "" {
-		return nil
-	}
-
-	dependsOn := make([]string, 0)
-	for _, dependency := range strings.Split(match[1], ",") {
-		dependency = strings.TrimSpace(strings.ReplaceAll(dependency, "\"", ""))
-		if dependency != "" {
-			dependsOn = append(dependsOn, dependency)
-		}
-	}
-	return dependsOn
-}
-
 func buildHistoricalEvents(suite *suites.Definition, topology []topologyNode, status, profile string, meta suiteRuntimeMeta) []ExecutionEvent {
 	events := make([]ExecutionEvent, 0, len(topology)*2)
 	for _, node := range topology {
@@ -314,20 +256,19 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 	if item == nil {
 		return Snapshot{}, false
 	}
+	s.ensureStepStatusLocked(item)
 
-	topology := parseSuiteTopologyOrEmpty(item.record.Suite.SuiteStar)
-	statuses := make(map[string]string, len(topology))
-	for _, node := range topology {
-		statuses[node.ID] = "pending"
-	}
-	for _, event := range item.record.Events {
-		statuses[event.Source] = event.Status
+	topology := cloneExecutionTopology(item.record.Suite.Topology)
+	statuses := cloneStepStatuses(item.stepStatus)
+	if len(statuses) == 0 {
+		statuses, _ = buildStepStatus(item.record.Suite.Topology, item.record.Events)
 	}
 
 	steps := make([]StepSnapshot, 0, len(topology))
 	runningSteps := 0
 	healthySteps := 0
 	failedSteps := 0
+	skippedSteps := 0
 	pendingSteps := 0
 
 	for _, node := range topology {
@@ -339,6 +280,8 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 			healthySteps++
 		case "failed":
 			failedSteps++
+		case "skipped":
+			skippedSteps++
 		default:
 			pendingSteps++
 		}
@@ -349,12 +292,13 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 			Kind:      node.Kind,
 			Status:    status,
 			DependsOn: append([]string{}, node.DependsOn...),
+			Level:     node.Level,
 		})
 	}
 
 	progressRatio := 0.0
 	if len(steps) > 0 {
-		progressRatio = float64(healthySteps+runningSteps+failedSteps) / float64(len(steps))
+		progressRatio = float64(healthySteps+runningSteps+failedSteps+skippedSteps) / float64(len(steps))
 	}
 
 	return Snapshot{
@@ -373,6 +317,7 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 		RunningSteps:  runningSteps,
 		HealthySteps:  healthySteps,
 		FailedSteps:   failedSteps,
+		SkippedSteps:  skippedSteps,
 		PendingSteps:  pendingSteps,
 		ProgressRatio: progressRatio,
 		Steps:         steps,
@@ -382,17 +327,20 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 func buildStartMessage(node topologyNode, suite *suites.Definition, profile string) string {
 	switch node.Kind {
 	case "mock":
-		return fmt.Sprintf("[%s] Loading mock assets from mock/ for %s under %s.", node.Name, suite.Title, profile)
+		return fmt.Sprintf("[%s] Loading mock assets from api/ and mock/ for %s under %s.", node.Name, suite.Title, profile)
 	case "service":
-		return fmt.Sprintf("[%s] Starting an external compatibility service declared from compat/ under the %s profile.", node.Name, profile)
-	case "script":
-		return fmt.Sprintf("[%s] Executing bootstrap scripts declared in scripts/ before exposing dependent services.", node.Name)
-	case "load":
-		return fmt.Sprintf("[%s] Starting the load harness from load/ with the %s profile and collecting throughput thresholds.", node.Name, profile)
-	case "scenario":
-		return fmt.Sprintf("[%s] Executing scenario assertions from scenarios/ with the %s profile.", node.Name, profile)
+		if node.Variant == "service.prism" || node.Variant == "service.wiremock" || node.Variant == "service.custom" {
+			return fmt.Sprintf("[%s] Starting compatibility service assets from services/ under the %s profile.", node.Name, profile)
+		}
+		return fmt.Sprintf("[%s] Starting background service infrastructure declared in suite.star under the %s profile.", node.Name, profile)
+	case "task":
+		return fmt.Sprintf("[%s] Executing one-shot task assets from tasks/ before exposing dependent services.", node.Name)
+	case "traffic":
+		return fmt.Sprintf("[%s] Starting the traffic harness from traffic/ with the %s profile and collecting throughput thresholds.", node.Name, profile)
+	case "test":
+		return fmt.Sprintf("[%s] Executing verification assets from tests/ with the %s profile.", node.Name, profile)
 	default:
-		return fmt.Sprintf("[%s] Starting container and waiting for health checks from the parsed suite.star topology.", node.Name)
+		return fmt.Sprintf("[%s] Starting workload and waiting for health checks from the parsed suite.star topology.", node.Name)
 	}
 }
 
@@ -401,29 +349,38 @@ func buildHealthyMessage(node topologyNode, suite *suites.Definition, profile st
 	case "mock":
 		return fmt.Sprintf("[%s] Mock surface is healthy. Exchanges from api/ and mock/ are now routable for %s.", node.Name, suite.Title)
 	case "service":
-		return fmt.Sprintf("[%s] External compatibility service is healthy and reachable for downstream scenarios in the %s profile.", node.Name, profile)
-	case "script":
-		return fmt.Sprintf("[%s] Script completed successfully. Outputs were registered for the %s execution context.", node.Name, profile)
-	case "load":
-		return fmt.Sprintf("[%s] Load phase completed. Threshold budgets and synthetic-user ramps stayed within the %s profile.", node.Name, profile)
-	case "scenario":
-		return fmt.Sprintf("[%s] Scenario passed. Contract assertions and payload policies remained green.", node.Name)
+		if node.Variant == "service.prism" || node.Variant == "service.wiremock" || node.Variant == "service.custom" {
+			return fmt.Sprintf("[%s] Compatibility service is healthy and reachable for downstream checks in the %s profile.", node.Name, profile)
+		}
+		return fmt.Sprintf("[%s] Background service is healthy and reachable for downstream steps in the %s profile.", node.Name, profile)
+	case "task":
+		return fmt.Sprintf("[%s] Task completed successfully. Outputs were registered for the %s execution context.", node.Name, profile)
+	case "traffic":
+		return fmt.Sprintf("[%s] Traffic phase completed. Threshold budgets and synthetic-user ramps stayed within the %s profile.", node.Name, profile)
+	case "test":
+		return fmt.Sprintf("[%s] Test phase passed. Contract assertions and payload policies remained green.", node.Name)
 	default:
-		return fmt.Sprintf("[%s] Health check passed. Service is ready for downstream containers, load phases, and scenarios.", node.Name)
+		return fmt.Sprintf("[%s] Health check passed. Service is ready for downstream services, traffic phases, and tests.", node.Name)
 	}
 }
 
 func buildFailureMessage(node topologyNode, suite *suites.Definition) string {
-	if node.Kind == "scenario" {
+	if node.Kind == "test" {
 		return fmt.Sprintf("[%s] Assertion failed. Mock exchange drifted from api/ after replay.", node.Name)
 	}
-	if node.Kind == "load" {
-		return fmt.Sprintf("[%s] Load thresholds were exceeded while driving the %s topology under synthetic traffic.", node.Name, suite.Title)
+	if node.Kind == "traffic" {
+		return fmt.Sprintf("[%s] Traffic thresholds were exceeded while driving the %s topology under synthetic traffic.", node.Name, suite.Title)
 	}
 	if node.Kind == "service" {
-		return fmt.Sprintf("[%s] External compatibility service exited unexpectedly while supporting the %s topology.", node.Name, suite.Title)
+		if node.Variant == "service.prism" || node.Variant == "service.wiremock" || node.Variant == "service.custom" {
+			return fmt.Sprintf("[%s] Compatibility service exited unexpectedly while supporting the %s topology.", node.Name, suite.Title)
+		}
+		return fmt.Sprintf("[%s] Background service exited unexpectedly while supporting the %s topology.", node.Name, suite.Title)
 	}
-	return fmt.Sprintf("[%s] Container exited with a non-zero status while materializing the %s topology.", node.Name, suite.Title)
+	if node.Kind == "task" {
+		return fmt.Sprintf("[%s] Task exited with a non-zero status while preparing the %s topology.", node.Name, suite.Title)
+	}
+	return fmt.Sprintf("[%s] Workload exited with a non-zero status while materializing the %s topology.", node.Name, suite.Title)
 }
 
 func buildCommitHash(suiteID, executionID string) string {

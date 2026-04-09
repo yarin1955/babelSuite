@@ -3,7 +3,6 @@ package execution
 import (
 	"context"
 	"errors"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -22,12 +21,6 @@ var (
 	ErrBackendNotFound    = errors.New("backend not found")
 	ErrBackendUnavailable = errors.New("backend unavailable")
 	ErrInvalidTopology    = errors.New("invalid suite topology")
-)
-
-var (
-	topologyAssignmentPattern = regexp.MustCompile(`^([a-zA-Z_][\w]*)\s*=\s*([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)?)\((.*)\)$`)
-	topologyNamePattern       = regexp.MustCompile(`(?:^|,)\s*(?:name|name_or_id|id)\s*=\s*"([^"]+)"`)
-	topologyAfterPattern      = regexp.MustCompile(`(?:^|,)\s*after\s*=\s*\[([^\]]*)\]`)
 )
 
 type ProfileOption struct {
@@ -71,14 +64,16 @@ type ExecutionSummary struct {
 }
 
 type ExecutionSuite struct {
-	ID          string               `json:"id"`
-	Title       string               `json:"title"`
-	Repository  string               `json:"repository"`
-	SuiteStar   string               `json:"suiteStar"`
-	Profiles    []ProfileOption      `json:"profiles"`
-	Folders     []suites.FolderEntry `json:"folders"`
-	SourceFiles []suites.SourceFile  `json:"sourceFiles"`
-	APISurfaces []suites.APISurface  `json:"apiSurfaces"`
+	ID                   string                      `json:"id"`
+	Title                string                      `json:"title"`
+	Repository           string                      `json:"repository"`
+	SuiteStar            string                      `json:"suiteStar"`
+	Profiles             []ProfileOption             `json:"profiles"`
+	Folders              []suites.FolderEntry        `json:"folders"`
+	SourceFiles          []suites.SourceFile         `json:"sourceFiles"`
+	Topology             []suites.TopologyNode       `json:"topology,omitempty"`
+	ResolvedDependencies []suites.ResolvedDependency `json:"resolvedDependencies,omitempty"`
+	APISurfaces          []suites.APISurface         `json:"apiSurfaces"`
 }
 
 type ExecutionEvent struct {
@@ -90,22 +85,53 @@ type ExecutionEvent struct {
 	Level     string `json:"level"`
 }
 
+type ExecutionTestSummary struct {
+	Total           int     `json:"total"`
+	Passed          int     `json:"passed"`
+	Failures        int     `json:"failures"`
+	Errors          int     `json:"errors"`
+	Skipped         int     `json:"skipped"`
+	DurationSeconds float64 `json:"durationSeconds,omitempty"`
+}
+
+type ExecutionCoverageSummary struct {
+	LineRate        float64 `json:"lineRate,omitempty"`
+	BranchRate      float64 `json:"branchRate,omitempty"`
+	LinesCovered    int     `json:"linesCovered,omitempty"`
+	LinesValid      int     `json:"linesValid,omitempty"`
+	BranchesCovered int     `json:"branchesCovered,omitempty"`
+	BranchesValid   int     `json:"branchesValid,omitempty"`
+}
+
+type ExecutionArtifact struct {
+	ID              string                    `json:"id"`
+	StepID          string                    `json:"stepId"`
+	StepName        string                    `json:"stepName"`
+	Path            string                    `json:"path"`
+	Name            string                    `json:"name"`
+	On              string                    `json:"on,omitempty"`
+	Format          string                    `json:"format,omitempty"`
+	TestSummary     *ExecutionTestSummary     `json:"testSummary,omitempty"`
+	CoverageSummary *ExecutionCoverageSummary `json:"coverageSummary,omitempty"`
+}
+
 type ExecutionRecord struct {
-	ID        string           `json:"id"`
-	Suite     ExecutionSuite   `json:"suite"`
-	Profile   string           `json:"profile"`
-	BackendID string           `json:"backendId"`
-	Backend   string           `json:"backend"`
-	Trigger   string           `json:"trigger"`
-	Status    string           `json:"status"`
-	Duration  string           `json:"duration"`
-	StartedAt time.Time        `json:"startedAt"`
-	UpdatedAt time.Time        `json:"updatedAt"`
-	Author    string           `json:"author"`
-	Commit    string           `json:"commit"`
-	Branch    string           `json:"branch"`
-	Message   string           `json:"message"`
-	Events    []ExecutionEvent `json:"events"`
+	ID        string              `json:"id"`
+	Suite     ExecutionSuite      `json:"suite"`
+	Profile   string              `json:"profile"`
+	BackendID string              `json:"backendId"`
+	Backend   string              `json:"backend"`
+	Trigger   string              `json:"trigger"`
+	Status    string              `json:"status"`
+	Duration  string              `json:"duration"`
+	StartedAt time.Time           `json:"startedAt"`
+	UpdatedAt time.Time           `json:"updatedAt"`
+	Author    string              `json:"author"`
+	Commit    string              `json:"commit"`
+	Branch    string              `json:"branch"`
+	Message   string              `json:"message"`
+	Events    []ExecutionEvent    `json:"events"`
+	Artifacts []ExecutionArtifact `json:"artifacts,omitempty"`
 }
 
 type CreateRequest struct {
@@ -120,6 +146,7 @@ type StepSnapshot struct {
 	Kind      string   `json:"kind"`
 	Status    string   `json:"status"`
 	DependsOn []string `json:"dependsOn"`
+	Level     int      `json:"level"`
 }
 
 type Snapshot struct {
@@ -138,6 +165,7 @@ type Snapshot struct {
 	RunningSteps  int            `json:"runningSteps"`
 	HealthySteps  int            `json:"healthySteps"`
 	FailedSteps   int            `json:"failedSteps"`
+	SkippedSteps  int            `json:"skippedSteps,omitempty"`
 	PendingSteps  int            `json:"pendingSteps"`
 	ProgressRatio float64        `json:"progressRatio"`
 	Steps         []StepSnapshot `json:"steps"`
@@ -154,6 +182,7 @@ type Service struct {
 
 	suiteSource    suiteSource
 	platformSource platformSource
+	mockResetter   mockResetter
 	registry       *agent.Registry
 	coordinator    *agent.Coordinator
 	runtimeStore   RuntimeStore
@@ -179,6 +208,10 @@ type platformSource interface {
 	Load() (*platform.PlatformSettings, error)
 }
 
+type mockResetter interface {
+	ResetSuiteState(ctx context.Context, suiteID string) error
+}
+
 type suiteRuntimeMeta struct {
 	Author         string
 	Branch         string
@@ -187,14 +220,7 @@ type suiteRuntimeMeta struct {
 	DefaultTrigger string
 }
 
-type topologyNode struct {
-	ID        string
-	Name      string
-	Kind      string
-	DependsOn []string
-	Level     int
-	Order     int
-}
+type topologyNode = suites.TopologyNode
 
 type topologyDuplicateNodeError struct {
 	Node string
@@ -234,8 +260,10 @@ func (e *topologyCycleError) Is(target error) bool {
 }
 
 type executionState struct {
-	record    ExecutionRecord
-	total     int
-	completed int
-	monitor   *liveSpan
+	record      ExecutionRecord
+	total       int
+	completed   int
+	stepStatus  map[string]string
+	terminalErr error
+	monitor     *liveSpan
 }

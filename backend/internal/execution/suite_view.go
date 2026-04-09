@@ -34,14 +34,16 @@ func buildExecutionSuite(suite suites.Definition) ExecutionSuite {
 	}
 
 	return ExecutionSuite{
-		ID:          suite.ID,
-		Title:       suite.Title,
-		Repository:  suite.Repository,
-		SuiteStar:   suite.SuiteStar,
-		Profiles:    toExecutionProfiles(suite.Profiles),
-		Folders:     cloneExecutionFolders(suite.Folders),
-		SourceFiles: cloneExecutionSourceFiles(suite.SourceFiles),
-		APISurfaces: renderedSurfaces,
+		ID:                   suite.ID,
+		Title:                suite.Title,
+		Repository:           suite.Repository,
+		SuiteStar:            suite.SuiteStar,
+		Profiles:             toExecutionProfiles(suite.Profiles),
+		Folders:              cloneExecutionFolders(suite.Folders),
+		SourceFiles:          cloneExecutionSourceFiles(suite.SourceFiles),
+		Topology:             cloneExecutionTopology(suite.Topology),
+		ResolvedDependencies: cloneExecutionDependencies(suite.ResolvedDependencies),
+		APISurfaces:          renderedSurfaces,
 	}
 }
 
@@ -50,7 +52,25 @@ func cloneExecutionSuite(input ExecutionSuite) ExecutionSuite {
 	output.Profiles = append([]ProfileOption{}, input.Profiles...)
 	output.Folders = cloneExecutionFolders(input.Folders)
 	output.SourceFiles = cloneExecutionSourceFiles(input.SourceFiles)
+	output.Topology = cloneExecutionTopology(input.Topology)
+	output.ResolvedDependencies = cloneExecutionDependencies(input.ResolvedDependencies)
 	output.APISurfaces = cloneExecutionSurfaces(input.APISurfaces)
+	return output
+}
+
+func cloneExecutionArtifacts(input []ExecutionArtifact) []ExecutionArtifact {
+	output := make([]ExecutionArtifact, len(input))
+	for index, artifact := range input {
+		output[index] = artifact
+		if artifact.TestSummary != nil {
+			summary := *artifact.TestSummary
+			output[index].TestSummary = &summary
+		}
+		if artifact.CoverageSummary != nil {
+			summary := *artifact.CoverageSummary
+			output[index].CoverageSummary = &summary
+		}
+	}
 	return output
 }
 
@@ -67,6 +87,67 @@ func cloneExecutionSourceFiles(input []suites.SourceFile) []suites.SourceFile {
 	output := make([]suites.SourceFile, len(input))
 	copy(output, input)
 	return output
+}
+
+func cloneExecutionTopology(input []suites.TopologyNode) []suites.TopologyNode {
+	output := make([]suites.TopologyNode, len(input))
+	for index, node := range input {
+		output[index] = node
+		output[index].DependsOn = append([]string{}, node.DependsOn...)
+		output[index].ResetMocks = append([]string{}, node.ResetMocks...)
+		output[index].OnFailure = append([]string{}, node.OnFailure...)
+		output[index].ContinueOnFailure = node.ContinueOnFailure
+		output[index].Evaluation = cloneNodeEvaluation(node.Evaluation)
+		output[index].ArtifactExports = append([]suites.ArtifactExport{}, node.ArtifactExports...)
+		output[index].Load = suitesCloneLoadSpec(node.Load)
+		output[index].RuntimeEnv = cloneExecutionStringMap(node.RuntimeEnv)
+		output[index].RuntimeHeaders = cloneExecutionStringMap(node.RuntimeHeaders)
+	}
+	return output
+}
+
+func cloneExecutionDependencies(input []suites.ResolvedDependency) []suites.ResolvedDependency {
+	output := make([]suites.ResolvedDependency, len(input))
+	for index, dependency := range input {
+		output[index] = dependency
+		output[index].Inputs = cloneExecutionStringMap(dependency.Inputs)
+		output[index].SourceFiles = cloneExecutionSourceFiles(dependency.SourceFiles)
+	}
+	return output
+}
+
+func cloneExecutionStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
+
+func suitesCloneLoadSpec(input *suites.LoadSpec) *suites.LoadSpec {
+	if input == nil {
+		return nil
+	}
+
+	output := *input
+	output.Users = make([]suites.LoadUser, len(input.Users))
+	for userIndex, user := range input.Users {
+		output.Users[userIndex] = user
+		output.Users[userIndex].Tasks = make([]suites.LoadTask, len(user.Tasks))
+		for taskIndex, task := range user.Tasks {
+			output.Users[userIndex].Tasks[taskIndex] = task
+			output.Users[userIndex].Tasks[taskIndex].Checks = append([]suites.LoadThreshold{}, task.Checks...)
+			output.Users[userIndex].Tasks[taskIndex].Request.Headers = cloneExecutionStringMap(task.Request.Headers)
+			output.Users[userIndex].Tasks[taskIndex].Request.Checks = append([]suites.LoadThreshold{}, task.Request.Checks...)
+		}
+	}
+	output.Stages = append([]suites.LoadStage{}, input.Stages...)
+	output.Thresholds = append([]suites.LoadThreshold{}, input.Thresholds...)
+	return &output
 }
 
 func cloneExecutionSurfaces(input []suites.APISurface) []suites.APISurface {

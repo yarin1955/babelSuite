@@ -51,10 +51,18 @@ func (s *Service) restorePersistedExecutions() {
 		if item.Record.ID == "" {
 			continue
 		}
+		statuses, completed := buildStepStatus(item.Record.Suite.Topology, item.Record.Events)
 		state := &executionState{
-			record:    item.Record,
-			total:     item.Total,
-			completed: item.Completed,
+			record:     item.Record,
+			total:      item.Total,
+			completed:  completed,
+			stepStatus: statuses,
+		}
+		if state.total == 0 {
+			state.total = len(item.Record.Suite.Topology)
+		}
+		if state.completed == 0 && item.Completed > 0 {
+			state.completed = item.Completed
 		}
 		s.executions[item.Record.ID] = state
 		s.order = append(s.order, item.Record.ID)
