@@ -1,0 +1,225 @@
+package httpserver
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/babelsuite/babelsuite/internal/auth"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+)
+
+type Middleware func(http.Handler) http.Handler
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+type auditRecord struct {
+	Type        string `json:"type"`
+	RequestID   string `json:"requestId,omitempty"`
+	Method      string `json:"method"`
+	Route       string `json:"route,omitempty"`
+	Path        string `json:"path"`
+	Status      int    `json:"status"`
+	DurationMS  int64  `json:"durationMs"`
+	RemoteAddr  string `json:"remoteAddr,omitempty"`
+	UserID      string `json:"userId,omitempty"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
+}
+
+type HTTPMetrics struct {
+	requests  metric.Int64Counter
+	active    metric.Int64UpDownCounter
+	durations metric.Float64Histogram
+}
+
+func Chain(next http.Handler, middleware ...Middleware) http.Handler {
+	if next == nil {
+		next = http.NotFoundHandler()
+	}
+	for index := len(middleware) - 1; index >= 0; index-- {
+		next = middleware[index](next)
+	}
+	return next
+}
+
+func Handle(mux *http.ServeMux, pattern string, handler http.Handler, middleware ...Middleware) {
+	if mux == nil {
+		return
+	}
+	chain := append([]Middleware{routePatternMiddleware(pattern)}, middleware...)
+	mux.Handle(pattern, Chain(handler, chain...))
+}
+
+func HandleFunc(mux *http.ServeMux, pattern string, handler func(http.ResponseWriter, *http.Request), middleware ...Middleware) {
+	Handle(mux, pattern, http.HandlerFunc(handler), middleware...)
+}
+
+func NewHTTPMetrics() *HTTPMetrics {
+	meter := otel.Meter("github.com/babelsuite/babelsuite/internal/httpserver")
+	requests, _ := meter.Int64Counter("http.server.requests")
+	active, _ := meter.Int64UpDownCounter("http.server.active_requests")
+	durations, _ := meter.Float64Histogram("http.server.duration.ms")
+	return &HTTPMetrics{
+		requests:  requests,
+		active:    active,
+		durations: durations,
+	}
+}
+
+func (m *HTTPMetrics) Middleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		if next == nil {
+			next = http.NotFoundHandler()
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			startedAt := time.Now()
+			attrs := requestAttributes(r, http.StatusOK)
+
+			if m != nil {
+				m.active.Add(r.Context(), 1, metric.WithAttributes(attrs...))
+				defer m.active.Add(r.Context(), -1, metric.WithAttributes(attrs...))
+			}
+
+			next.ServeHTTP(recorder, r)
+
+			attrs = requestAttributes(r, recorder.status)
+			if m != nil {
+				m.requests.Add(r.Context(), 1, metric.WithAttributes(attrs...))
+				m.durations.Record(r.Context(), float64(time.Since(startedAt).Milliseconds()), metric.WithAttributes(attrs...))
+			}
+		})
+	}
+}
+
+func TraceContextMiddleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		if next == nil {
+			next = http.NotFoundHandler()
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			span := trace.SpanFromContext(r.Context())
+			if span.IsRecording() {
+				requestID := RequestIDFromContext(r.Context())
+				if requestID != "" {
+					span.SetAttributes(attribute.String("http.request_id", requestID))
+				}
+				if pattern := effectiveRoute(r); pattern != "" {
+					span.SetAttributes(attribute.String("http.route", pattern))
+				}
+				if claims, ok := auth.SessionFromContext(r.Context()); ok {
+					span.SetAttributes(
+						attribute.String("enduser.id", claims.UserID),
+						attribute.String("enduser.workspace_id", claims.WorkspaceID),
+						attribute.Bool("enduser.admin", claims.IsAdmin),
+					)
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func AuditMiddleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		if next == nil {
+			next = http.NotFoundHandler()
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			startedAt := time.Now()
+			next.ServeHTTP(recorder, r)
+
+			if !shouldAuditRequest(r) {
+				return
+			}
+
+			record := auditRecord{
+				Type:       "http.audit",
+				RequestID:  RequestIDFromContext(r.Context()),
+				Method:     r.Method,
+				Route:      effectiveRoute(r),
+				Path:       r.URL.Path,
+				Status:     recorder.status,
+				DurationMS: time.Since(startedAt).Milliseconds(),
+				RemoteAddr: strings.TrimSpace(r.RemoteAddr),
+			}
+			if claims, ok := auth.SessionFromContext(r.Context()); ok {
+				record.UserID = claims.UserID
+				record.WorkspaceID = claims.WorkspaceID
+			}
+
+			payload, err := json.Marshal(record)
+			if err != nil {
+				log.Printf("http audit marshal: %v", err)
+				return
+			}
+			log.Printf("%s", payload)
+		})
+	}
+}
+
+func (w *statusRecorder) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusRecorder) Write(payload []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	written, err := w.ResponseWriter.Write(payload)
+	w.bytes += written
+	return written, err
+}
+
+func (w *statusRecorder) Flush() {
+	flusher, ok := w.ResponseWriter.(http.Flusher)
+	if !ok {
+		return
+	}
+	flusher.Flush()
+}
+
+func requestAttributes(r *http.Request, status int) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("http.method", r.Method),
+		attribute.String("http.route", effectiveRoute(r)),
+		attribute.String("http.status_code", strconv.Itoa(status)),
+	}
+}
+
+func effectiveRoute(r *http.Request) string {
+	if pattern := strings.TrimSpace(RoutePatternFromContext(r.Context())); pattern != "" {
+		return pattern
+	}
+	if pattern := strings.TrimSpace(r.Pattern); pattern != "" {
+		return pattern
+	}
+	path := strings.TrimSpace(r.URL.Path)
+	if path == "" {
+		return "/"
+	}
+	return path
+}
+
+func shouldAuditRequest(r *http.Request) bool {
+	if r.Method == http.MethodOptions {
+		return false
+	}
+	path := strings.TrimSpace(r.URL.Path)
+	if path == "/healthz" || path == "/readyz" || strings.HasPrefix(path, "/readyz/") {
+		return false
+	}
+	return strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/auth/")
+}
