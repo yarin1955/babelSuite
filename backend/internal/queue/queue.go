@@ -139,6 +139,21 @@ func (m *Memory) CancelGroup(group string) {
 	m.signal()
 }
 
+func (m *Memory) CancelRunningGroup(group string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, id := range m.order {
+		item := m.entries[id]
+		if item == nil || item.Task.Group != group {
+			continue
+		}
+		if item.State == StateRunning && item.cancel != nil {
+			item.cancel()
+		}
+	}
+}
+
 func (m *Memory) Snapshot() []Entry {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -225,33 +240,21 @@ func (m *Memory) claim() (Task, bool) {
 			continue
 		}
 
-		dependencyFailed := false
 		dependenciesReady := true
 		for _, dependency := range item.Task.Dependencies {
 			dep := m.entries[dependency]
 			if dep == nil {
-				dependencyFailed = true
+				item.State = StateCanceled
+				item.CompletedAt = now
+				item.Err = errors.New("dependency missing")
+				dependenciesReady = false
 				break
 			}
 
 			switch dep.State {
-			case StateSucceeded:
-			case StateFailed, StateCanceled:
-				dependencyFailed = true
-			default:
+			case StatePending, StateRunning:
 				dependenciesReady = false
 			}
-
-			if dependencyFailed {
-				break
-			}
-		}
-
-		if dependencyFailed {
-			item.State = StateCanceled
-			item.CompletedAt = now
-			item.Err = errors.New("dependency failed")
-			continue
 		}
 		if !dependenciesReady {
 			continue

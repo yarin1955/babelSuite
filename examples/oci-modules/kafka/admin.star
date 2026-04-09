@@ -1,18 +1,14 @@
-load("@babelsuite/runtime", "container")
+load("@babelsuite/runtime", "task")
 load("_shared.star", "merge_dicts", "merge_after", "quoted", "sanitize_name")
 
 def admin_task(cluster, name, script_body, after = [], env = {}):
     task_env = merge_dicts(cluster["env"], env)
-    return container.run(
+    return task.run(
         name = name,
         image = cluster["admin_image"],
         after = merge_after(cluster, after),
         env = task_env,
-        command = [
-            "bash",
-            "-lc",
-            script_body,
-        ],
+        command = ["bash", "-lc", script_body],
     )
 
 def create_topic(cluster, topic, partitions = 1, replication_factor = 1, configs = {}, after = []):
@@ -66,6 +62,8 @@ def set_group_offset(cluster, group, topic, offset, partition = 0, after = []):
     )
 
 def disconnect(cluster):
-    broker = container.get(name_or_id = cluster["name"])
-    broker.stop(timeout = 5)
-    return broker
+    return admin_task(
+        cluster,
+        name = cluster["name"] + "-disconnect",
+        script_body = "kafka-server-stop.sh || true",
+    )

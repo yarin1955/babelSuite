@@ -160,7 +160,7 @@
           "fileName": "base.yaml",
           "description": "Canonical suite defaults shared by every execution context before local, CI, or staging overrides are layered in.",
           "scope": "Base",
-          "yaml": "env:\n  LOG_LEVEL: info\n  PAYMENTS_API_BASE_URL: http://payment-gateway.internal\n  FRAUD_STRATEGY: standard\nservices:\n  postgresURL: postgres://test:test@db:5432/payments\n  kafkaBroker: kafka:9092",
+          "yaml": "env:\n  LOG_LEVEL: info\n  PAYMENTS_API_BASE_URL: http://payment-gateway.internal\n  FRAUD_STRATEGY: standard\nservices:\n  payment_gateway:\n    env:\n      POSTGRES_URL: postgres://test:test@db:5432/payments\n  fraud_worker:\n    env:\n      KAFKA_BROKER: kafka:9092",
           "secretRefs": [
             {
               "key": "JWT_PRIVATE_KEY",
@@ -178,7 +178,7 @@
           "fileName": "local.yaml",
           "description": "Verbose logs, local secrets, and relaxed timeouts.",
           "scope": "Local",
-          "yaml": "env:\n  LOG_LEVEL: debug\n  FRAUD_STRATEGY: permissive\nservices:\n  apiPort: 18080\n  workerReplicaCount: 1",
+          "yaml": "env:\n  LOG_LEVEL: debug\n  FRAUD_STRATEGY: permissive\nservices:\n  payment_gateway:\n    env:\n      API_PORT: 18080\n      CHECKOUT_MODE: local-debug\n  fraud_worker:\n    env:\n      WORKER_REPLICA_COUNT: 1",
           "secretRefs": [
             {
               "key": "STRIPE_API_KEY",
@@ -195,9 +195,9 @@
           "id": "staging",
           "name": "Staging",
           "fileName": "staging.yaml",
-          "description": "Production-like service topology with Vault-backed references.",
+          "description": "Production-like service topology with settings-managed secret injection.",
           "scope": "Staging",
-          "yaml": "env:\n  PAYMENTS_API_BASE_URL: https://payments.staging.company.test\n  FRAUD_STRATEGY: strict\nservices:\n  workerReplicaCount: 3\n  apiPort: 8080",
+          "yaml": "env:\n  PAYMENTS_API_BASE_URL: https://payments.staging.company.test\n  FRAUD_STRATEGY: strict\nservices:\n  payment_gateway:\n    env:\n      API_PORT: 8080\n      ROUTING_MODE: staging\n  fraud_worker:\n    env:\n      WORKER_REPLICA_COUNT: 3\n      DECISION_MODE: strict",
           "secretRefs": [
             {
               "key": "DB_PASSWORD",
@@ -216,7 +216,7 @@
           "fileName": "year.yaml",
           "description": "Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.",
           "scope": "Year End",
-          "yaml": "env:\n  LEDGER_PERIOD: year_end\n  FRAUD_STRATEGY: settlement_review\nservices:\n  settlementBatchSize: 500\n  replayHistoricalCharges: true",
+          "yaml": "env:\n  LEDGER_PERIOD: year_end\n  FRAUD_STRATEGY: settlement_review\nservices:\n  payment_gateway:\n    env:\n      SETTLEMENT_BATCH_SIZE: 500\n  fraud_worker:\n    env:\n      REPLAY_HISTORICAL_CHARGES: true\n      LEDGER_CLOSE_MODE: year-end",
           "secretRefs": [
             {
               "key": "SETTLEMENT_SFTP_KEY",

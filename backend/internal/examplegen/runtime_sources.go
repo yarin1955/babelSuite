@@ -111,7 +111,7 @@ func renderLoadSource(suite suites.Definition, path string) string {
 			fmt.Sprintf("LOAD_ASSET = %q", base),
 			"",
 			"def main() -> None:",
-			fmt.Sprintf("    print(%q)", "running generic load asset"),
+			fmt.Sprintf("    print(%q)", "running generic traffic asset"),
 			"    print(Path('.').resolve())",
 			"",
 			`if __name__ == "__main__":`,
@@ -120,10 +120,10 @@ func renderLoadSource(suite suites.Definition, path string) string {
 	case "xml":
 		return strings.Join([]string{
 			`<?xml version="1.0" encoding="UTF-8"?>`,
-			"<loadPlan>",
+			"<trafficPlan>",
 			fmt.Sprintf("  <suite>%s</suite>", suite.ID),
 			fmt.Sprintf("  <asset>%s</asset>", base),
-			"</loadPlan>",
+			"</trafficPlan>",
 		}, "\n") + "\n"
 	case "yaml":
 		return strings.Join([]string{
@@ -136,7 +136,7 @@ func renderLoadSource(suite suites.Definition, path string) string {
 		}, "\n") + "\n"
 	default:
 		return strings.Join([]string{
-			fmt.Sprintf("# load asset for %s", suite.Title),
+			fmt.Sprintf("# traffic asset for %s", suite.Title),
 			fmt.Sprintf("name: %s", base),
 		}, "\n") + "\n"
 	}

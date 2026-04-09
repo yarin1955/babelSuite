@@ -27,15 +27,18 @@ func TestRunCreatesStarterSuiteTemplate(t *testing.T) {
 	}
 
 	expectedFiles := []string{
+		"metadata.yaml",
 		"suite.star",
 		"profiles/local.yaml",
 		"api/openapi.yaml",
 		"mock/catalog/get-item.cue",
 		"mock/catalog/get-item.metadata.yaml",
-		"scripts/bootstrap.sh",
-		"load/http_smoke.star",
-		"load/users.csv",
-		"scenarios/http/smoke.hurl",
+		"services/README.md",
+		"tasks/bootstrap.sh",
+		"traffic/smoke.star",
+		"tests/http/smoke.hurl",
+		"resources/data/README.md",
+		"resources/certs/README.md",
 		"docs/README.md",
 	}
 

@@ -23,8 +23,9 @@ type suiteReader interface {
 type Service struct {
 	suites suiteReader
 
-	mu    sync.RWMutex
-	state map[string]map[string]string
+	mu         sync.RWMutex
+	state      map[string]map[string]string
+	suiteState map[string]map[string]struct{}
 }
 
 type Result struct {

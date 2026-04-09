@@ -1,4 +1,4 @@
-load("@babelsuite/runtime", "container")
+load("@babelsuite/runtime", "service")
 load("_shared.star", "merge_dicts")
 
 def kafka(
@@ -23,7 +23,7 @@ def kafka(
         "ALLOW_PLAINTEXT_LISTENER": "yes",
     }, env)
 
-    broker = container.run(
+    broker = service.run(
         name = name,
         image = image,
         after = after,
@@ -32,7 +32,7 @@ def kafka(
     )
 
     return {
-        "container": broker,
+        "service": broker,
         "name": name,
         "host": host,
         "port": port,

@@ -58,6 +58,22 @@ func cloneExecutionSuite(input ExecutionSuite) ExecutionSuite {
 	return output
 }
 
+func cloneExecutionArtifacts(input []ExecutionArtifact) []ExecutionArtifact {
+	output := make([]ExecutionArtifact, len(input))
+	for index, artifact := range input {
+		output[index] = artifact
+		if artifact.TestSummary != nil {
+			summary := *artifact.TestSummary
+			output[index].TestSummary = &summary
+		}
+		if artifact.CoverageSummary != nil {
+			summary := *artifact.CoverageSummary
+			output[index].CoverageSummary = &summary
+		}
+	}
+	return output
+}
+
 func cloneExecutionFolders(input []suites.FolderEntry) []suites.FolderEntry {
 	output := make([]suites.FolderEntry, len(input))
 	for index, folder := range input {
@@ -78,6 +94,12 @@ func cloneExecutionTopology(input []suites.TopologyNode) []suites.TopologyNode {
 	for index, node := range input {
 		output[index] = node
 		output[index].DependsOn = append([]string{}, node.DependsOn...)
+		output[index].ResetMocks = append([]string{}, node.ResetMocks...)
+		output[index].OnFailure = append([]string{}, node.OnFailure...)
+		output[index].ContinueOnFailure = node.ContinueOnFailure
+		output[index].Evaluation = cloneNodeEvaluation(node.Evaluation)
+		output[index].ArtifactExports = append([]suites.ArtifactExport{}, node.ArtifactExports...)
+		output[index].Load = suitesCloneLoadSpec(node.Load)
 		output[index].RuntimeEnv = cloneExecutionStringMap(node.RuntimeEnv)
 		output[index].RuntimeHeaders = cloneExecutionStringMap(node.RuntimeHeaders)
 	}
@@ -104,6 +126,28 @@ func cloneExecutionStringMap(input map[string]string) map[string]string {
 		output[key] = value
 	}
 	return output
+}
+
+func suitesCloneLoadSpec(input *suites.LoadSpec) *suites.LoadSpec {
+	if input == nil {
+		return nil
+	}
+
+	output := *input
+	output.Users = make([]suites.LoadUser, len(input.Users))
+	for userIndex, user := range input.Users {
+		output.Users[userIndex] = user
+		output.Users[userIndex].Tasks = make([]suites.LoadTask, len(user.Tasks))
+		for taskIndex, task := range user.Tasks {
+			output.Users[userIndex].Tasks[taskIndex] = task
+			output.Users[userIndex].Tasks[taskIndex].Checks = append([]suites.LoadThreshold{}, task.Checks...)
+			output.Users[userIndex].Tasks[taskIndex].Request.Headers = cloneExecutionStringMap(task.Request.Headers)
+			output.Users[userIndex].Tasks[taskIndex].Request.Checks = append([]suites.LoadThreshold{}, task.Request.Checks...)
+		}
+	}
+	output.Stages = append([]suites.LoadStage{}, input.Stages...)
+	output.Thresholds = append([]suites.LoadThreshold{}, input.Thresholds...)
+	return &output
 }
 
 func cloneExecutionSurfaces(input []suites.APISurface) []suites.APISurface {

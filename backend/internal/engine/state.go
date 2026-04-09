@@ -26,6 +26,7 @@ type ExecutionState struct {
 	RunningSteps  int         `json:"runningSteps"`
 	HealthySteps  int         `json:"healthySteps"`
 	FailedSteps   int         `json:"failedSteps"`
+	SkippedSteps  int         `json:"skippedSteps,omitempty"`
 	PendingSteps  int         `json:"pendingSteps"`
 	ProgressRatio float64     `json:"progressRatio"`
 	Steps         []StepState `json:"steps"`

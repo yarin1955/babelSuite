@@ -1,14 +1,30 @@
 name: Staging
-description: Production-like service topology with Vault-backed references.
+description: Production-like service topology with settings-managed secret injection.
 default: false
 runtime:
   suite: payment-suite
   repository: localhost:5000/core-platform/payment-suite
   profileFile: staging.yaml
 modules:
-    - postgres
-    - kafka
+  - postgres
+  - kafka
 observability:
   logs: structured
   traces: enabled
   metrics: enabled
+secretRefs:
+  - key: DB_PASSWORD
+    provider: Vault
+    ref: kv/payment-suite/staging-db-password
+env:
+  PAYMENTS_API_BASE_URL: https://payments.staging.company.test
+  FRAUD_STRATEGY: strict
+services:
+  payment_gateway:
+    env:
+      API_PORT: 8080
+      ROUTING_MODE: staging
+  fraud_worker:
+    env:
+      WORKER_REPLICA_COUNT: 3
+      DECISION_MODE: strict

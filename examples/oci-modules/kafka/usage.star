@@ -1,5 +1,5 @@
 load("@babelsuite/kafka", "kafka", "create_topic", "delete_topic", "set_group_offset")
-load("@babelsuite/runtime", "container")
+load("@babelsuite/runtime", "service")
 
 broker = kafka(name="broker")
 
@@ -19,7 +19,7 @@ replay_offsets = set_group_offset(
     after=["broker-create-topic-payments-events"],
 )
 
-consumer = container.run(
+consumer = service.run(
     name="payments-consumer",
     image="ghcr.io/acme/payments-consumer:latest",
     env={

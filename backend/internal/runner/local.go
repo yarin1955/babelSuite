@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
@@ -38,17 +39,32 @@ func (l *Local) IsAvailable(context.Context) bool {
 }
 
 func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line)) error {
-	emit(line(step, "info", fmt.Sprintf("[%s] Local runner claimed the step on the host worker.", step.Node.Name)))
-	emit(line(step, "info", bootMessage(step)))
+	capturedLogs := make([]string, 0, 8)
+	emitLine := func(entry logstream.Line) {
+		if text := strings.TrimSpace(entry.Text); text != "" {
+			capturedLogs = append(capturedLogs, text)
+		}
+		emit(entry)
+	}
+
+	emitLine(line(step, "info", fmt.Sprintf("[%s] Local runner claimed the step on the host worker.", step.Node.Name)))
+	emitLine(line(step, "info", bootMessage(step)))
 	if len(step.Env) > 0 {
-		emit(line(step, "info", fmt.Sprintf("[%s] Injected %d runtime variables into the step context.", step.Node.Name, len(step.Env))))
+		emitLine(line(step, "info", fmt.Sprintf("[%s] Injected %d runtime variables into the step context.", step.Node.Name, len(step.Env))))
 	}
 	if step.Node.Kind == "mock" && len(step.Headers) > 0 {
-		emit(line(step, "info", fmt.Sprintf("[%s] Forwarded %d runtime headers into the mock context.", step.Node.Name, len(step.Headers))))
+		emitLine(line(step, "info", fmt.Sprintf("[%s] Forwarded %d runtime headers into the mock context.", step.Node.Name, len(step.Headers))))
 	}
-	if step.Node.Kind == "load" {
-		emit(line(step, "info", fmt.Sprintf("[%s] Resolving load assets from load/ before the ramp begins.", step.Node.Name)))
-		emit(line(step, "info", fmt.Sprintf("[%s] Applying the %s profile budgets for users, ramp-up, and latency thresholds.", step.Node.Name, effectiveProfile(step))))
+	if len(step.ArtifactExports) > 0 {
+		emitLine(line(step, "info", fmt.Sprintf("[%s] Registered %d artifact export rules for this step.", step.Node.Name, len(step.ArtifactExports))))
+	}
+	if step.Node.Kind == "traffic" && step.Load != nil {
+		emitLine(line(step, "info", fmt.Sprintf("[%s] Resolving %s assets from traffic/ before the run begins.", step.Node.Name, trafficProfileLabel(step.Node.Variant))))
+		emitLine(line(step, "info", fmt.Sprintf("[%s] Applying the %s profile budgets for users, pacing, and latency thresholds.", step.Node.Name, trafficProfileLabel(step.Node.Variant))))
+		if err := executeLoadStep(ctx, step, emitLine); err != nil {
+			return err
+		}
+		return evaluateStepExpectations(step, 0, capturedLogs, emitLine)
 	}
 
 	delay := nodeDelay(step.Node.Kind)
@@ -57,17 +73,17 @@ func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line
 
 	select {
 	case <-ctx.Done():
-		emit(line(step, "warn", fmt.Sprintf("[%s] Runner received cancellation before the step finished.", step.Node.Name)))
+		emitLine(line(step, "warn", fmt.Sprintf("[%s] Runner received cancellation before the step finished.", step.Node.Name)))
 		return context.Canceled
 	case <-timer.C:
 	}
 
-	if step.Node.Kind == "load" {
-		emit(line(step, "info", fmt.Sprintf("[%s] Synthetic traffic reached the target ramp and streamed aggregate counters back to the runner.", step.Node.Name)))
+	if step.Node.Kind == "traffic" {
+		emitLine(line(step, "info", fmt.Sprintf("[%s] Synthetic traffic reached the target ramp and streamed aggregate counters back to the runner.", step.Node.Name)))
 	}
-	emit(line(step, "info", probeMessage(step)))
-	emit(line(step, "info", fmt.Sprintf("[%s] Local runner reported the step healthy and released the lease cycle.", step.Node.Name)))
-	return nil
+	emitLine(line(step, "info", probeMessage(step)))
+	emitLine(line(step, "info", fmt.Sprintf("[%s] Local runner reported the step healthy and released the lease cycle.", step.Node.Name)))
+	return evaluateStepExpectations(step, 0, capturedLogs, emitLine)
 }
 
 func line(step StepSpec, level, text string) logstream.Line {
@@ -82,17 +98,20 @@ func line(step StepSpec, level, text string) logstream.Line {
 func bootMessage(step StepSpec) string {
 	switch step.Node.Kind {
 	case "mock":
-		return fmt.Sprintf("[%s] Hydrating mock assets for %s with the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
+		return fmt.Sprintf("[%s] Hydrating mock assets from api/ and mock/ for %s with the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
 	case "service":
-		return fmt.Sprintf("[%s] Starting external compatibility service assets for %s under the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
-	case "script":
-		return fmt.Sprintf("[%s] Executing bootstrap logic and preparing outputs for downstream steps under the %s profile.", step.Node.Name, effectiveProfile(step))
-	case "load":
-		return fmt.Sprintf("[%s] Starting load generators from the suite package and preparing threshold collectors.", step.Node.Name)
-	case "scenario":
-		return fmt.Sprintf("[%s] Running scenario assertions from the suite package under the %s profile.", step.Node.Name, effectiveProfile(step))
+		if step.Node.Variant == "service.prism" || step.Node.Variant == "service.wiremock" || step.Node.Variant == "service.custom" {
+			return fmt.Sprintf("[%s] Starting compatibility service assets for %s under the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
+		}
+		return fmt.Sprintf("[%s] Starting background service infrastructure for %s under the %s profile.", step.Node.Name, step.SuiteTitle, effectiveProfile(step))
+	case "task":
+		return fmt.Sprintf("[%s] Running one-shot task assets from tasks/ under the %s profile.", step.Node.Name, effectiveProfile(step))
+	case "traffic":
+		return fmt.Sprintf("[%s] Starting the %s profile and preparing threshold collectors.", step.Node.Name, trafficProfileLabel(step.Node.Variant))
+	case "test":
+		return fmt.Sprintf("[%s] Running verification assets from tests/ under the %s profile.", step.Node.Name, effectiveProfile(step))
 	default:
-		return fmt.Sprintf("[%s] Starting container workload under the local runner with the %s profile.", step.Node.Name, effectiveProfile(step))
+		return fmt.Sprintf("[%s] Starting workload under the local runner with the %s profile.", step.Node.Name, effectiveProfile(step))
 	}
 }
 
@@ -101,13 +120,16 @@ func probeMessage(step StepSpec) string {
 	case "mock":
 		return fmt.Sprintf("[%s] Dispatch table loaded and mock endpoint is answering health probes.", step.Node.Name)
 	case "service":
-		return fmt.Sprintf("[%s] External compatibility service answered readiness probes and exposed its local endpoint.", step.Node.Name)
-	case "script":
-		return fmt.Sprintf("[%s] Bootstrap script completed and published its derived outputs.", step.Node.Name)
-	case "load":
-		return fmt.Sprintf("[%s] Load thresholds passed and result summaries are ready for downstream checks.", step.Node.Name)
-	case "scenario":
-		return fmt.Sprintf("[%s] Scenario checks completed without violating contract assertions.", step.Node.Name)
+		if step.Node.Variant == "service.prism" || step.Node.Variant == "service.wiremock" || step.Node.Variant == "service.custom" {
+			return fmt.Sprintf("[%s] Compatibility service answered readiness probes and exposed its local endpoint.", step.Node.Name)
+		}
+		return fmt.Sprintf("[%s] Background service answered readiness probes and is available to downstream steps.", step.Node.Name)
+	case "task":
+		return fmt.Sprintf("[%s] Task completed successfully and published its derived outputs.", step.Node.Name)
+	case "traffic":
+		return fmt.Sprintf("[%s] %s thresholds passed and result summaries are ready for downstream checks.", step.Node.Name, trafficProfileLabel(step.Node.Variant))
+	case "test":
+		return fmt.Sprintf("[%s] Test checks completed without violating suite assertions.", step.Node.Name)
 	default:
 		return fmt.Sprintf("[%s] Health probe passed and downstream dependencies may proceed.", step.Node.Name)
 	}
@@ -115,15 +137,15 @@ func probeMessage(step StepSpec) string {
 
 func nodeDelay(kind string) time.Duration {
 	switch kind {
-	case "script":
+	case "task":
 		return 450 * time.Millisecond
 	case "mock":
 		return 550 * time.Millisecond
 	case "service":
 		return 650 * time.Millisecond
-	case "load":
+	case "traffic":
 		return 1100 * time.Millisecond
-	case "scenario":
+	case "test":
 		return 700 * time.Millisecond
 	default:
 		return 900 * time.Millisecond
@@ -135,4 +157,74 @@ func effectiveProfile(step StepSpec) string {
 		return step.RuntimeProfile
 	}
 	return step.Profile
+}
+
+func trafficProfileLabel(variant string) string {
+	switch variant {
+	case "traffic.smoke":
+		return "smoke traffic"
+	case "traffic.baseline":
+		return "baseline traffic"
+	case "traffic.stress":
+		return "stress traffic"
+	case "traffic.spike":
+		return "spike traffic"
+	case "traffic.soak":
+		return "soak traffic"
+	case "traffic.scalability":
+		return "scalability traffic"
+	case "traffic.step":
+		return "step traffic"
+	case "traffic.wave":
+		return "wave traffic"
+	case "traffic.staged":
+		return "staged traffic"
+	case "traffic.constant_throughput":
+		return "constant-throughput traffic"
+	case "traffic.constant_pacing":
+		return "constant-pacing traffic"
+	case "traffic.open_model":
+		return "open-model traffic"
+	default:
+		return "traffic"
+	}
+}
+
+func evaluateStepExpectations(step StepSpec, exitCode int, logs []string, emit func(logstream.Line)) error {
+	if step.Evaluation == nil {
+		return nil
+	}
+
+	if step.Evaluation.ExpectExit != nil && exitCode != *step.Evaluation.ExpectExit {
+		err := fmt.Errorf("evaluation failed: expected exit code %d, got %d", *step.Evaluation.ExpectExit, exitCode)
+		emit(line(step, "error", fmt.Sprintf("[%s] %v.", step.Node.Name, err)))
+		return err
+	}
+
+	joinedLogs := strings.Join(logs, "\n")
+	for _, expected := range step.Evaluation.ExpectLogs {
+		if expected == "" {
+			continue
+		}
+		if !strings.Contains(joinedLogs, expected) {
+			err := fmt.Errorf("evaluation failed: expected logs containing %q", expected)
+			emit(line(step, "error", fmt.Sprintf("[%s] %v.", step.Node.Name, err)))
+			return err
+		}
+	}
+	for _, forbidden := range step.Evaluation.FailOnLogs {
+		if forbidden == "" {
+			continue
+		}
+		if strings.Contains(joinedLogs, forbidden) {
+			err := fmt.Errorf("evaluation failed: encountered forbidden log match %q", forbidden)
+			emit(line(step, "error", fmt.Sprintf("[%s] %v.", step.Node.Name, err)))
+			return err
+		}
+	}
+
+	if step.Evaluation.ExpectExit != nil || len(step.Evaluation.ExpectLogs) > 0 || len(step.Evaluation.FailOnLogs) > 0 {
+		emit(line(step, "info", fmt.Sprintf("[%s] Evaluation controls passed for exit code and log assertions.", step.Node.Name)))
+	}
+	return nil
 }

@@ -112,72 +112,75 @@ func parseCreateRequest(args []string) (createRequest, bool, error) {
 
 func templateFiles(name string, title string) []apiclient.SuiteSourceFile {
 	return []apiclient.SuiteSourceFile{
+		{Path: "metadata.yaml", Language: "yaml", Content: renderMetadataYAML(name, title)},
 		{Path: "suite.star", Language: "starlark", Content: renderSuiteStar(name)},
 		{Path: "profiles/local.yaml", Language: "yaml", Content: renderLocalProfile(name, title)},
 		{Path: "api/openapi.yaml", Language: "yaml", Content: renderOpenAPI(title)},
 		{Path: "mock/catalog/get-item.cue", Language: "cue", Content: renderMockCue()},
 		{Path: "mock/catalog/get-item.metadata.yaml", Language: "yaml", Content: renderMockMetadata(name)},
-		{Path: "scripts/bootstrap.sh", Language: "bash", Content: renderBootstrapScript()},
-		{Path: "load/http_smoke.star", Language: "starlark", Content: renderLoadPlan()},
-		{Path: "load/users.csv", Language: "csv", Content: "user_id\nuser-1\nuser-2\n"},
-		{Path: "scenarios/http/smoke.hurl", Language: "hurl", Content: "GET {{BASE_URL}}/health\nHTTP 200\n"},
+		{Path: "services/README.md", Language: "markdown", Content: "# Services\n\nUse this folder for background infrastructure assets, compatibility sidecars, and service-specific support files.\n"},
+		{Path: "tasks/bootstrap.sh", Language: "bash", Content: renderBootstrapScript()},
+		{Path: "traffic/smoke.star", Language: "starlark", Content: renderLoadPlan()},
+		{Path: "tests/http/smoke.hurl", Language: "hurl", Content: "GET {{BASE_URL}}/health\nHTTP 200\n"},
 		{Path: "docs/README.md", Language: "markdown", Content: renderDocsReadme(name, title)},
-		{Path: "compat/README.md", Language: "markdown", Content: "# Compatibility Assets\n\nUse this folder for imported compatibility files such as Prism, WireMock, k6, locust, or jmx plans.\n"},
-		{Path: "fixtures/README.md", Language: "markdown", Content: "# Fixtures\n\nUse this folder for static payloads, dumps, images, or other large test inputs.\n"},
-		{Path: "artifacts/README.md", Language: "markdown", Content: "# Artifacts\n\nUse this folder for golden files, expected outputs, and captured baselines.\n"},
-		{Path: "policies/README.md", Language: "markdown", Content: "# Policies\n\nUse this folder for CUE or Rego validation rules that do not belong directly in mock behavior files.\n"},
-		{Path: "certs/README.md", Language: "markdown", Content: "# Certificates\n\nUse this folder for local non-secret certificates that support local TLS or mTLS flows.\n"},
-		{Path: "dashboards/README.md", Language: "markdown", Content: "# Dashboards\n\nUse this folder for observability dashboards and tracing UI presets.\n"},
+		{Path: "resources/data/README.md", Language: "markdown", Content: "# Data Assets\n\nUse this folder for passive datasets, payload samples, and large static blobs.\n"},
+		{Path: "resources/certs/README.md", Language: "markdown", Content: "# Certificates\n\nUse this folder for local non-secret certificates that support TLS and mTLS flows.\n"},
 	}
 }
 
 func renderSuiteStar(name string) string {
-	return `load("@babelsuite/runtime", "container", "mock", "script", "load", "scenario")
+	return `load("@babelsuite/runtime", "service", "task", "test", "traffic", "suite")
 
-db = container.run(
-    name="db",
+db = service.run(
     image="postgres:16",
 )
 
-api = container.run(
-    name="sample-api",
+api = service.run(
     image="ghcr.io/acme/sample-api:latest",
-    after=["db"],
+    after=[db],
     env={
         "DATABASE_URL": "postgres://postgres:postgres@db:5432/app",
     },
 )
 
-catalog = mock.serve(
-    name="catalog-mock",
-    source="./mock/catalog",
-    after=["api"],
+catalog = service.mock(
+    contract="api/openapi.yaml",
+    source="mock/catalog",
+    after=[api],
 )
 
-bootstrap = script.file(
-    name="bootstrap",
-    file_path="./scripts/bootstrap.sh",
-    interpreter="bash",
-    after=["api"],
+bootstrap = task.run(
+    file="bootstrap.sh",
+    image="bash:5.2",
+    after=[api],
 )
 
-smoke_load = load.http(
-    name="smoke-load",
-    plan="./load/http_smoke.star",
-    target="http://sample-api:8080",
-    after=["bootstrap"],
+smoke_traffic = traffic.smoke(
+    plan="smoke.star",
+    target="http://api:8080",
+    after=[bootstrap],
 )
 
-api_smoke = scenario.http(
-    name="api-smoke",
-    collection_path="./scenarios/http/smoke.hurl",
+api_smoke = test.run(
+    image="curlimages/curl:8.7.1",
+    file="http/smoke.hurl",
     env={
-        "BASE_URL": "http://sample-api:8080",
+        "BASE_URL": "http://api:8080",
     },
-    objectives=["health"],
-    tags=["starter", "` + name + `"],
-    after=["smoke-load", "catalog-mock"],
+    after=[smoke_traffic, catalog],
 )
+`
+}
+
+func renderMetadataYAML(name string, title string) string {
+	return `name: ` + name + `
+title: ` + title + `
+labels:
+  owner: platform
+  tier: starter
+tags:
+  - starter
+  - local
 `
 }
 
@@ -190,14 +193,14 @@ runtime:
   repository: localhost:5000/local/` + name + `
   profileFile: local.yaml
 env:
-  BASE_URL: http://sample-api:8080
+  BASE_URL: http://api:8080
   SUITE_MODE: local
 observability:
   logs: structured
   traces: enabled
   metrics: enabled
 services:
-  sample-api:
+  api:
     env:
       FEATURE_FLAG_SAMPLE: enabled
 `
@@ -274,35 +277,34 @@ func renderBootstrapScript() string {
 }
 
 func renderLoadPlan() string {
-	return `load("@babelsuite/runtime", "load")
+	return `load("@babelsuite/runtime", "traffic")
 
-probe = load.user(
+probe = traffic.user(
     name="probe",
     weight=1,
-    wait=load.constant(1),
+    wait=traffic.constant(1),
     tasks=[
-        load.task(
+        traffic.task(
             name="health",
-            request=load.get("/health", name="health"),
+            request=traffic.get("/health", name="health"),
             checks=[
-                load.threshold("status", "==", 200),
-                load.threshold("latency.p95_ms", "<", 500, sampler="health"),
+                traffic.threshold("status", "==", 200),
+                traffic.threshold("latency.p95_ms", "<", 500, sampler="health"),
             ],
         ),
     ],
 )
 
-load.plan(
+traffic.plan(
     users=[probe],
-    shape=load.stages([
-        load.stage(duration="30s", users=5, spawn_rate=2),
-        load.stage(duration="1m", users=10, spawn_rate=5),
-        load.stage(duration="90s", users=0, spawn_rate=5, stop=True),
+    shape=traffic.stages([
+        traffic.stage(duration="30s", users=5, spawn_rate=2),
+        traffic.stage(duration="1m", users=10, spawn_rate=5),
+        traffic.stage(duration="90s", users=0, spawn_rate=5, stop=True),
     ]),
-    data=[load.csv("./load/users.csv")],
     thresholds=[
-        load.threshold("http.error_rate", "<", 0.01),
-        load.threshold("http.p95_ms", "<", 500, sampler="health"),
+        traffic.threshold("http.error_rate", "<", 0.01),
+        traffic.threshold("http.p95_ms", "<", 500, sampler="health"),
     ],
 )
 `
@@ -315,19 +317,22 @@ This starter suite was generated by ` + "`babelctl create`" + `.
 
 ## What is included
 
+- ` + "`metadata.yaml`" + `: optional suite metadata, labels, and tags
 - ` + "`suite.star`" + `: the runtime topology
 - ` + "`profiles/local.yaml`" + `: a launch profile with runtime env
 - ` + "`api/`" + `: starter contract assets
 - ` + "`mock/`" + `: native mock behavior
-- ` + "`scripts/`" + `: bootstrap tasks
-- ` + "`load/`" + `: a native load plan
-- ` + "`scenarios/`" + `: a smoke scenario
+- ` + "`services/`" + `: background infrastructure assets
+- ` + "`tasks/`" + `: short-lived setup jobs
+- ` + "`tests/`" + `: verification assets
+- ` + "`traffic/`" + `: a native traffic plan
+- ` + "`resources/`" + `: passive certs and data assets
 
 ## Suggested next steps
 
 1. Replace the sample container image in ` + "`suite.star`" + `.
 2. Adjust the profile env values in ` + "`profiles/local.yaml`" + `.
-3. Replace the starter mock and scenario assets with your real suite behavior.
+3. Replace the starter mock and test assets with your real suite behavior.
 4. Run the suite with ` + "`babelctl run " + name + "`" + ` once the package is available in your environment.
 `
 }

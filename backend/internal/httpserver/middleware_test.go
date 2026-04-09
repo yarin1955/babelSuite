@@ -42,3 +42,26 @@ func TestHandleStoresRoutePatternInContext(t *testing.T) {
 		t.Fatalf("expected 204, got %d", response.Code)
 	}
 }
+
+func TestMiddlewarePreservesFlusherSupport(t *testing.T) {
+	handler := Chain(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := w.(http.Flusher); !ok {
+				t.Fatal("expected wrapped response writer to preserve http.Flusher")
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}),
+		RequestIDMiddleware(),
+		NewHTTPMetrics().Middleware(),
+		AuditMiddleware(),
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/executions/run-123/events", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", response.Code)
+	}
+}

@@ -8,7 +8,7 @@ Structure
 - `profiles/`: Launch profiles for local, canary, and peak-season refund traffic.
 - `api/`: OpenAPI and protobuf contracts for returns and refund pricing.
 - `mock/`: Mock payloads plus metadata that control dispatch, fallback, and state.
-- `scripts/`: Bootstrap hooks for Kafka topics and refund routing tables.
-- `scenarios/`: Smoke and manual-review scenarios for reverse logistics flows.
+- `tasks/`: Bootstrap hooks for Kafka topics and refund routing tables.
+- `tests/`: Smoke and manual-review verification flows for reverse logistics.
 - `fixtures/`: Seeded return cases and customer profiles.
 - `policies/`: Refund-limit and event-schema validation policies.

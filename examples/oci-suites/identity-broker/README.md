@@ -8,7 +8,7 @@ Structure
 - `profiles/`: Realm, issuer, and session-storage overrides by environment.
 - `api/`: OIDC bridge OpenAPI and SAML mapping definitions.
 - `mock/`: OIDC JWKS payloads and SAML assertion fixtures.
-- `scripts/`: Realm seeders and certificate bootstrap helpers.
-- `scenarios/`: Login smoke suites and expired-session validation.
+- `tasks/`: Realm seeders and certificate bootstrap helpers.
+- `tests/`: Login smoke suites and expired-session validation.
 - `fixtures/`: Realm definitions and claim payloads.
 - `policies/`: Cookie scope and token issuance validation.

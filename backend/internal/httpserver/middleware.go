@@ -183,6 +183,14 @@ func (w *statusRecorder) Write(payload []byte) (int, error) {
 	return written, err
 }
 
+func (w *statusRecorder) Flush() {
+	flusher, ok := w.ResponseWriter.(http.Flusher)
+	if !ok {
+		return
+	}
+	flusher.Flush()
+}
+
 func requestAttributes(r *http.Request, status int) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		attribute.String("http.method", r.Method),

@@ -11,6 +11,6 @@ spec:
     - 1.4.0
     - 1.3.2
     - latest
-  description: Pure Starlark Postgres module built on top of BabelSuite's built-in runtime containers.
+  description: Pure Starlark Postgres module built on top of BabelSuite's built-in runtime service and task primitives.
   pullCommand: babelctl run localhost:5000/babelsuite/postgres:1.4.0
   forkCommand: babelctl fork localhost:5000/babelsuite/postgres:1.4.0 ./stdlib-postgres

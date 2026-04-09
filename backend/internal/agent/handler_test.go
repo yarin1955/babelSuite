@@ -47,7 +47,7 @@ func TestGatewayRegistersAndHeartbeatsWorkers(t *testing.T) {
 		AgentID:      "worker-1",
 		Name:         "Worker",
 		HostURL:      "http://127.0.0.1:8091",
-		Capabilities: []string{"container"},
+		Capabilities: []string{"service"},
 	}); err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestControlPlaneClientClaimsReportsAndCompletesAssignments(t *testing.T) {
 		Node: StepNode{
 			ID:   "db",
 			Name: "db",
-			Kind: "container",
+			Kind: "service",
 		},
 	})
 	if err != nil {
@@ -163,7 +163,7 @@ func TestCoordinatorConfigureStoreRestoresAssignments(t *testing.T) {
 					Node: StepNode{
 						ID:   "db",
 						Name: "db",
-						Kind: "container",
+						Kind: "service",
 					},
 				},
 				Status: AssignmentPending,

@@ -15,6 +15,8 @@ const (
 
 var allowedSuiteRootFiles = map[string]struct{}{
 	"suite.star":             {},
+	"metadata.yaml":          {},
+	"metadata.yml":           {},
 	"README.md":              {},
 	"dependencies.yaml":      {},
 	"dependencies.yml":       {},
@@ -37,6 +39,11 @@ var allowedSuiteFolders = map[string]struct{}{
 	"scenarios":  {},
 	"scripts":    {},
 	"service":    {},
+	"services":   {},
+	"tasks":      {},
+	"tests":      {},
+	"traffic":    {},
+	"resources":  {},
 	"sql":        {},
 }
 

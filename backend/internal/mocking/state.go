@@ -1,6 +1,7 @@
 package mocking
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -65,13 +66,13 @@ func (s *Service) applyStateTransition(config *suites.MockState, lookupKey, exam
 			current, _ := strconv.Atoi(nextState[field])
 			nextState[field] = strconv.Itoa(current + delta)
 		}
-		s.storeState(key, nextState)
+		s.storeState(suite.ID, key, nextState)
 		result.Headers.Set("X-Babelsuite-State-Key", key)
 		return
 	}
 }
 
-func (s *Service) storeState(key string, value map[string]string) {
+func (s *Service) storeState(suiteID, key string, value map[string]string) {
 	if strings.TrimSpace(key) == "" {
 		return
 	}
@@ -79,6 +80,32 @@ func (s *Service) storeState(key string, value map[string]string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state[key] = cloneStringMap(value)
+	if strings.TrimSpace(suiteID) != "" {
+		if s.suiteState[suiteID] == nil {
+			s.suiteState[suiteID] = make(map[string]struct{})
+		}
+		s.suiteState[suiteID][key] = struct{}{}
+	}
+}
+
+func (s *Service) ResetSuiteState(_ context.Context, suiteID string) error {
+	suiteID = strings.TrimSpace(suiteID)
+	if suiteID == "" {
+		return nil
+	}
+	if _, err := s.suites.Get(suiteID); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	keys := s.suiteState[suiteID]
+	for key := range keys {
+		delete(s.state, key)
+	}
+	delete(s.suiteState, suiteID)
+	return nil
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

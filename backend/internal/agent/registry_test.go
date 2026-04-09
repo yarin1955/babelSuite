@@ -13,7 +13,7 @@ func TestRegistryPersistsRegistrationAndHeartbeat(t *testing.T) {
 		AgentID:      "worker-1",
 		Name:         "Worker 1",
 		HostURL:      "http://127.0.0.1:8091",
-		Capabilities: []string{"container", "scenario"},
+		Capabilities: []string{"service", "test"},
 	})
 	if record.AgentID != "worker-1" {
 		t.Fatalf("expected agent id to round-trip, got %q", record.AgentID)

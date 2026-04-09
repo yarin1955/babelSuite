@@ -35,6 +35,7 @@ func workspaceSuiteProfiles(definition suites.Definition) []Record {
 			Description: strings.TrimSpace(profile.Description),
 			Scope:       scopeFromFileName(profile.FileName),
 			YAML:        content,
+			SecretRefs:  ExtractSecretRefsFromYAML(content),
 			Default:     profile.Default,
 			Launchable:  true,
 			UpdatedAt:   time.Now().UTC(),

@@ -106,14 +106,22 @@ func generatedSourceContent(suite suites.Definition, path string) string {
 		return renderMockMetadataSource(suite, path)
 	case strings.HasPrefix(path, "mock/"):
 		return renderMockSource(suite, path)
+	case strings.HasPrefix(path, "services/"):
+		return renderScriptSource(suite, path)
+	case strings.HasPrefix(path, "tasks/"):
+		return renderScriptSource(suite, path)
 	case strings.HasPrefix(path, "scripts/"):
 		return renderScriptSource(suite, path)
-	case strings.HasPrefix(path, "load/"):
+	case strings.HasPrefix(path, "traffic/"):
 		return renderLoadSource(suite, path)
 	case strings.HasPrefix(path, "gateway/"):
 		return renderGatewaySource(suite, path)
+	case strings.HasPrefix(path, "tests/"):
+		return renderScenarioSource(suite, path)
 	case strings.HasPrefix(path, "scenarios/"):
 		return renderScenarioSource(suite, path)
+	case strings.HasPrefix(path, "resources/"):
+		return renderFixtureSource(suite, path)
 	case strings.HasPrefix(path, "fixtures/"):
 		return renderFixtureSource(suite, path)
 	case strings.HasPrefix(path, "policies/"):

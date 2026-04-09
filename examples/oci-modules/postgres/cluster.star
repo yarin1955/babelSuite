@@ -1,4 +1,4 @@
-load("@babelsuite/runtime", "container")
+load("@babelsuite/runtime", "service")
 load("_shared.star", "merge_dicts")
 
 def pg(
@@ -17,7 +17,7 @@ def pg(
         "POSTGRES_PASSWORD": password,
     }, env)
 
-    db = container.run(
+    db = service.run(
         name = name,
         image = image,
         after = after,
@@ -26,7 +26,7 @@ def pg(
     )
 
     return {
-        "container": db,
+        "service": db,
         "name": name,
         "host": name,
         "port": port,

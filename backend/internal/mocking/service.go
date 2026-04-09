@@ -14,8 +14,9 @@ import (
 
 func NewService(suiteService suiteReader) *Service {
 	return &Service{
-		suites: suiteService,
-		state:  make(map[string]map[string]string),
+		suites:     suiteService,
+		state:      make(map[string]map[string]string),
+		suiteState: make(map[string]map[string]struct{}),
 	}
 }
 

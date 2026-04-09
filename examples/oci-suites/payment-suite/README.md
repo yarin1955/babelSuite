@@ -1,14 +1,15 @@
 Payment Suite
 
-Bank-grade reference environment with Postgres, Kafka, Wiremock, and a full fraud worker topology.
+Bank-grade reference environment with Postgres, Kafka, Wiremock, and profiles ready for settings-managed secret injection.
 
 Structure
 
 - `suite.star`: declarative topology
-- `profiles/`: Environment variable toggles and runtime overrides.
-- `api/`: Immutable OpenAPI and protobuf contracts for the suite.
-- `mock/`: Wiremock mappings and scenario-specific stub bodies.
-- `scripts/`: Boot-time migrations and broker preparation scripts.
-- `scenarios/`: Smoke tests and attack-path executions.
-- `fixtures/`: Static input data for cards, merchants, and seeded accounts.
-- `policies/`: Rego payload validation and ledger invariants.
+- `api/`: Contracts and schemas shipped with the suite.
+- `fixtures/`: Static seed data and sample payloads.
+- `mock/`: Mock schemas, metadata, and compatibility assets.
+- `policies/`: Policy rules and invariants enforced by the suite.
+- `profiles/`: Environment-specific runtime overrides and launch profiles.
+- `tasks/`: Short-lived setup, seed, and migration jobs.
+- `tests/`: Verification, smoke, regression, and browser assertions.
+- `traffic/`: Native traffic plans and protocol-safe workload definitions.

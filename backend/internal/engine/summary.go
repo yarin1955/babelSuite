@@ -11,6 +11,7 @@ type OverviewSummary struct {
 	RunningSteps      int `json:"runningSteps"`
 	HealthySteps      int `json:"healthySteps"`
 	FailedSteps       int `json:"failedSteps"`
+	SkippedSteps      int `json:"skippedSteps,omitempty"`
 	PendingSteps      int `json:"pendingSteps"`
 }
 

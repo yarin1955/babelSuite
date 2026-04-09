@@ -2,6 +2,7 @@ package suites
 
 func cloneDefinition(input Definition) Definition {
 	output := input
+	output.Labels = cloneStringMap(input.Labels)
 	output.Tags = append([]string{}, input.Tags...)
 	output.Modules = append([]string{}, input.Modules...)
 	output.Contracts = append([]string{}, input.Contracts...)
@@ -41,6 +42,12 @@ func cloneTopology(input []TopologyNode) []TopologyNode {
 	for index, node := range input {
 		output[index] = node
 		output[index].DependsOn = append([]string{}, node.DependsOn...)
+		output[index].ResetMocks = append([]string{}, node.ResetMocks...)
+		output[index].OnFailure = append([]string{}, node.OnFailure...)
+		output[index].ContinueOnFailure = node.ContinueOnFailure
+		output[index].Evaluation = cloneStepEvaluation(node.Evaluation)
+		output[index].ArtifactExports = append([]ArtifactExport{}, node.ArtifactExports...)
+		output[index].Load = cloneLoadSpec(node.Load)
 		output[index].RuntimeEnv = cloneStringMap(node.RuntimeEnv)
 		output[index].RuntimeHeaders = cloneStringMap(node.RuntimeHeaders)
 	}

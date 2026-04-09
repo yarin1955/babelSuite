@@ -87,6 +87,7 @@ func buildOverview(state State) Overview {
 		overview.Summary.RunningSteps += execution.RunningSteps
 		overview.Summary.HealthySteps += execution.HealthySteps
 		overview.Summary.FailedSteps += execution.FailedSteps
+		overview.Summary.SkippedSteps += execution.SkippedSteps
 		overview.Summary.PendingSteps += execution.PendingSteps
 
 		switch execution.Status {
