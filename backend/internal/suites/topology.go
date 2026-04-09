@@ -360,6 +360,9 @@ func parseDependencyManifest(sourceFiles []SourceFile) (map[string]dependencyEnt
 }
 
 func parseRawTopology(suiteStar string) ([]rawTopologyNode, error) {
+	if nodes, err := evalStarlarkTopology(suiteStar); err == nil {
+		return nodes, nil
+	}
 	nodes := make([]rawTopologyNode, 0)
 	for _, line := range topologyStatements(suiteStar) {
 		node, ok, err := parseRawTopologyNode(line)

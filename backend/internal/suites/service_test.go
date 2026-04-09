@@ -75,6 +75,34 @@ func TestListLoadsWorkspaceSuitesWhenDemoDisabled(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSuitesRetainSeededMockMetadataWhenDemoDisabled(t *testing.T) {
+	configureExamplesRoot(t)
+	t.Setenv(demofs.EnableEnvVar, "false")
+
+	service := NewService()
+	suite, err := service.Get("payment-suite")
+	if err != nil {
+		t.Fatalf("get workspace suite: %v", err)
+	}
+
+	if len(suite.APISurfaces) == 0 {
+		t.Fatal("expected workspace suite to retain seeded api surfaces when demo is disabled")
+	}
+
+	operation := suite.APISurfaces[0].Operations[0]
+	if operation.MockMetadata.ResolverURL == "" {
+		t.Fatalf("expected resolver url on merged workspace operation, got %+v", operation.MockMetadata)
+	}
+
+	for _, file := range suite.SourceFiles {
+		if file.Path == "gateway/apisix.yaml" {
+			return
+		}
+	}
+
+	t.Fatal("expected merged workspace suite to expose generated gateway/apisix.yaml")
+}
+
 func TestStorefrontSuiteHydratesSourceFiles(t *testing.T) {
 	configureExamplesRoot(t)
 

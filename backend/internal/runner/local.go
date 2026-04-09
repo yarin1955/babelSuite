@@ -58,10 +58,19 @@ func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line
 	if len(step.ArtifactExports) > 0 {
 		emitLine(line(step, "info", fmt.Sprintf("[%s] Registered %d artifact export rules for this step.", step.Node.Name, len(step.ArtifactExports))))
 	}
+
 	if step.Node.Kind == "traffic" && step.Load != nil {
 		emitLine(line(step, "info", fmt.Sprintf("[%s] Resolving %s assets from traffic/ before the run begins.", step.Node.Name, trafficProfileLabel(step.Node.Variant))))
 		emitLine(line(step, "info", fmt.Sprintf("[%s] Applying the %s profile budgets for users, pacing, and latency thresholds.", step.Node.Name, trafficProfileLabel(step.Node.Variant))))
 		if err := executeLoadStep(ctx, step, emitLine); err != nil {
+			return err
+		}
+		return evaluateStepExpectations(step, 0, capturedLogs, emitLine)
+	}
+
+	if _, available := sharedDockerClient(); available && stepRequiresContainer(step) {
+		if err := runInDocker(ctx, step, emitLine); err != nil {
+			emitLine(line(step, "error", fmt.Sprintf("[%s] Container execution failed: %v", step.Node.Name, err)))
 			return err
 		}
 		return evaluateStepExpectations(step, 0, capturedLogs, emitLine)
@@ -84,6 +93,17 @@ func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line
 	emitLine(line(step, "info", probeMessage(step)))
 	emitLine(line(step, "info", fmt.Sprintf("[%s] Local runner reported the step healthy and released the lease cycle.", step.Node.Name)))
 	return evaluateStepExpectations(step, 0, capturedLogs, emitLine)
+}
+
+func stepRequiresContainer(step StepSpec) bool {
+	if step.Node.Image == "" {
+		return false
+	}
+	switch step.Node.Kind {
+	case "task", "test", "traffic", "service":
+		return true
+	}
+	return false
 }
 
 func line(step StepSpec, level, text string) logstream.Line {

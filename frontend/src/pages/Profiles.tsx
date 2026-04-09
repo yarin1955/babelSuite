@@ -1,7 +1,5 @@
-import type { ReactNode } from 'react'
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  FaChevronDown,
   FaCodeBranch,
   FaFloppyDisk,
   FaLayerGroup,
@@ -11,6 +9,7 @@ import {
   FaWandMagicSparkles,
 } from 'react-icons/fa6'
 import AppShell from '../components/AppShell'
+import { CollapsibleSection } from '../components/CollapsibleSection'
 import SlidingPanel from '../components/SlidingPanel'
 import {
   createSuiteProfile,
@@ -694,23 +693,6 @@ function toUpsertPayload(profile: ProfileRecord) {
     default: profile.default,
     extendsId: profile.extendsId ?? '',
   }
-}
-
-function CollapsibleSection(props: {
-  title: string
-  open: boolean
-  onToggle: () => void
-  children: ReactNode
-}) {
-  return (
-    <section className={`profiles-section${props.open ? ' profiles-section--open' : ''}`}>
-      <button type='button' className='profiles-section__header' onClick={props.onToggle}>
-        <span>{props.title}</span>
-        <FaChevronDown />
-      </button>
-      <div className='profiles-section__body'>{props.children}</div>
-    </section>
-  )
 }
 
 interface MergeRow {

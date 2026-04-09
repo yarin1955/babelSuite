@@ -19,13 +19,24 @@ type RenderedFile struct {
 
 func RenderWorkspaceFiles() []RenderedFile {
 	files := make([]RenderedFile, 0)
+	examplesRoot := examplefs.ResolveRoot()
 
 	service := suites.NewService()
 	for _, suite := range service.List() {
 		base := joinPath("oci-suites", suite.ID)
+		readmePath := joinPath(base, "README.md")
+		readmeContent := renderSuiteReadme(suite)
+		if content, ok := workspaceFileContent(examplesRoot, readmePath); ok {
+			readmeContent = ensureTrailingNewline(content)
+		}
+		suiteStarPath := joinPath(base, "suite.star")
+		suiteStarContent := ensureTrailingNewline(suite.SuiteStar)
+		if content, ok := workspaceFileContent(examplesRoot, suiteStarPath); ok {
+			suiteStarContent = ensureTrailingNewline(content)
+		}
 		files = append(files,
-			RenderedFile{Path: joinPath(base, "README.md"), Content: renderSuiteReadme(suite)},
-			RenderedFile{Path: joinPath(base, "suite.star"), Content: ensureTrailingNewline(suite.SuiteStar)},
+			RenderedFile{Path: readmePath, Content: readmeContent},
+			RenderedFile{Path: suiteStarPath, Content: suiteStarContent},
 		)
 		for _, file := range examplegen.GeneratedSourceFiles(suite) {
 			if !shouldWriteExampleSourceFile(file.Path) {
@@ -144,4 +155,16 @@ func ensureTrailingNewline(content string) string {
 
 func joinPath(parts ...string) string {
 	return filepath.ToSlash(filepath.Join(parts...))
+}
+
+func workspaceFileContent(examplesRoot, relativePath string) (string, bool) {
+	if strings.TrimSpace(examplesRoot) == "" {
+		return "", false
+	}
+
+	body, err := os.ReadFile(filepath.Join(examplesRoot, filepath.FromSlash(relativePath)))
+	if err != nil {
+		return "", false
+	}
+	return string(body), true
 }

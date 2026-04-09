@@ -9,6 +9,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/agent"
 	"github.com/babelsuite/babelsuite/internal/domain"
 	"github.com/babelsuite/babelsuite/internal/execution"
+	"github.com/babelsuite/babelsuite/internal/logstream"
 	"github.com/babelsuite/babelsuite/internal/store"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -21,6 +22,8 @@ type Store struct {
 	workspaces       *mongo.Collection
 	favoritePackages *mongo.Collection
 	runtimeDocuments *mongo.Collection
+	executions       *mongo.Collection
+	executionLogs    *mongo.Collection
 }
 
 func New(uri, dbName string) (*Store, error) {
@@ -42,6 +45,8 @@ func New(uri, dbName string) (*Store, error) {
 		workspaces:       db.Collection("workspaces"),
 		favoritePackages: db.Collection("favorite_packages"),
 		runtimeDocuments: db.Collection("runtime_documents"),
+		executions:       db.Collection("executions"),
+		executionLogs:    db.Collection("execution_logs"),
 	}
 
 	unique := options.Index().SetUnique(true)
@@ -55,6 +60,9 @@ func New(uri, dbName string) (*Store, error) {
 		Options: unique,
 	})
 	_, _ = st.runtimeDocuments.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "key", Value: 1}}, Options: unique})
+	_, _ = st.executions.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "execution_id", Value: 1}}, Options: unique})
+	_, _ = st.executions.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "started_at", Value: -1}}})
+	_, _ = st.executionLogs.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "execution_id", Value: 1}}})
 
 	return st, nil
 }
@@ -204,22 +212,119 @@ func (s *Store) SaveAssignmentRuntime(ctx context.Context, snapshots []agent.Ass
 }
 
 func (s *Store) LoadExecutionRuntime(ctx context.Context) ([]execution.PersistedExecution, error) {
-	var persisted []execution.PersistedExecution
-	ok, err := s.loadRuntimeDocument(ctx, "execution-runtime", &persisted)
+	cursor, err := s.executions.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "started_at", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		return []execution.PersistedExecution{}, nil
+	defer cursor.Close(ctx)
+
+	var docs []persistedExecutionDoc
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
 	}
-	return persisted, nil
+
+	if len(docs) == 0 {
+		return s.migrateFromBlobStore(ctx)
+	}
+
+	out := make([]execution.PersistedExecution, 0, len(docs))
+	for _, doc := range docs {
+		logs, _ := s.loadExecutionLogs(ctx, doc.ExecutionID)
+		out = append(out, execution.PersistedExecution{
+			Record:    doc.Record,
+			Total:     doc.Total,
+			Completed: doc.Completed,
+			Logs:      logs,
+		})
+	}
+	return out, nil
 }
 
 func (s *Store) SaveExecutionRuntime(ctx context.Context, persisted []execution.PersistedExecution) error {
-	if persisted == nil {
-		persisted = []execution.PersistedExecution{}
+	if len(persisted) == 0 {
+		return nil
 	}
-	return s.saveRuntimeDocument(ctx, "execution-runtime", persisted)
+	for _, item := range persisted {
+		if item.Record.ID == "" {
+			continue
+		}
+		doc := persistedExecutionDoc{
+			ExecutionID: item.Record.ID,
+			StartedAt:   item.Record.StartedAt,
+			Record:      item.Record,
+			Total:       item.Total,
+			Completed:   item.Completed,
+		}
+		_, err := s.executions.UpdateOne(ctx,
+			bson.M{"execution_id": item.Record.ID},
+			bson.M{"$set": doc},
+			options.UpdateOne().SetUpsert(true),
+		)
+		if err != nil {
+			return err
+		}
+		if err := s.saveExecutionLogs(ctx, item.Record.ID, item.Logs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type persistedExecutionDoc struct {
+	ExecutionID string                   `bson:"execution_id"`
+	StartedAt   interface{}              `bson:"started_at"`
+	Record      execution.ExecutionRecord `bson:"record"`
+	Total       int                      `bson:"total"`
+	Completed   int                      `bson:"completed"`
+}
+
+type executionLogDoc struct {
+	ExecutionID string      `bson:"execution_id"`
+	Payload     string      `bson:"payload"`
+}
+
+func (s *Store) loadExecutionLogs(ctx context.Context, executionID string) ([]logstream.Line, error) {
+	var doc executionLogDoc
+	err := s.executionLogs.FindOne(ctx, bson.M{"execution_id": executionID}).Decode(&doc)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil || doc.Payload == "" {
+		return nil, err
+	}
+	var lines []logstream.Line
+	if err := json.Unmarshal([]byte(doc.Payload), &lines); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func (s *Store) saveExecutionLogs(ctx context.Context, executionID string, lines []logstream.Line) error {
+	payload, err := json.Marshal(lines)
+	if err != nil {
+		return err
+	}
+	_, err = s.executionLogs.UpdateOne(ctx,
+		bson.M{"execution_id": executionID},
+		bson.M{"$set": bson.M{
+			"execution_id": executionID,
+			"payload":      string(payload),
+		}},
+		options.UpdateOne().SetUpsert(true),
+	)
+	return err
+}
+
+func (s *Store) migrateFromBlobStore(ctx context.Context) ([]execution.PersistedExecution, error) {
+	var persisted []execution.PersistedExecution
+	ok, err := s.loadRuntimeDocument(ctx, "execution-runtime", &persisted)
+	if err != nil || !ok || len(persisted) == 0 {
+		return []execution.PersistedExecution{}, err
+	}
+	if saveErr := s.SaveExecutionRuntime(ctx, persisted); saveErr == nil {
+		s.runtimeDocuments.DeleteOne(ctx, bson.M{"key": "execution-runtime"})
+	}
+	return persisted, nil
 }
 
 func (s *Store) loadRuntimeDocument(ctx context.Context, key string, target any) (bool, error) {

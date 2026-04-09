@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,9 +27,10 @@ const (
 )
 
 type repositoryTag struct {
-	Repository string
-	Tag        string
-	Kind       string
+	Repository  string
+	Tag         string
+	Kind        string
+	SourceFiles []suites.SourceFile
 }
 
 type catalogResponse struct {
@@ -95,7 +98,21 @@ func newPublisher(raw string) (*publisher, error) {
 }
 
 func (p *publisher) publish(reference repositoryTag) error {
-	configBody, configDigest, err := imageConfig(reference)
+	var layerBlob []byte
+	var layerDigest, diffID string
+
+	if len(reference.SourceFiles) > 0 {
+		var err error
+		layerBlob, layerDigest, diffID, err = buildLayer(reference.SourceFiles)
+		if err != nil {
+			return fmt.Errorf("build layer: %w", err)
+		}
+		if err := p.ensureBlob(reference.Repository, layerDigest, layerBlob); err != nil {
+			return err
+		}
+	}
+
+	configBody, configDigest, err := imageConfig(reference, diffID)
 	if err != nil {
 		return err
 	}
@@ -103,7 +120,7 @@ func (p *publisher) publish(reference repositoryTag) error {
 		return err
 	}
 
-	manifestBody, err := imageManifest(reference, configDigest, len(configBody))
+	manifestBody, err := imageManifest(reference, configDigest, len(configBody), layerDigest, len(layerBlob))
 	if err != nil {
 		return err
 	}
@@ -226,7 +243,11 @@ func (p *publisher) endpoint(path string) string {
 	return resolved.String()
 }
 
-func imageConfig(reference repositoryTag) ([]byte, string, error) {
+func imageConfig(reference repositoryTag, diffID string) ([]byte, string, error) {
+	diffIDs := []string{}
+	if diffID != "" {
+		diffIDs = []string{diffID}
+	}
 	config := map[string]any{
 		"created":      time.Now().UTC().Format(time.RFC3339Nano),
 		"architecture": "amd64",
@@ -241,7 +262,7 @@ func imageConfig(reference repositoryTag) ([]byte, string, error) {
 		},
 		"rootfs": map[string]any{
 			"type":     "layers",
-			"diff_ids": []string{},
+			"diff_ids": diffIDs,
 		},
 	}
 
@@ -252,7 +273,17 @@ func imageConfig(reference repositoryTag) ([]byte, string, error) {
 	return body, digest(body), nil
 }
 
-func imageManifest(reference repositoryTag, configDigest string, configSize int) ([]byte, error) {
+func imageManifest(reference repositoryTag, configDigest string, configSize int, layerDigest string, layerSize int) ([]byte, error) {
+	layers := []any{}
+	if layerDigest != "" && layerSize > 0 {
+		layers = []any{
+			map[string]any{
+				"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+				"size":      layerSize,
+				"digest":    layerDigest,
+			},
+		}
+	}
 	manifest := map[string]any{
 		"schemaVersion": 2,
 		"mediaType":     ociImageManifestMediaType,
@@ -261,7 +292,7 @@ func imageManifest(reference repositoryTag, configDigest string, configSize int)
 			"size":      configSize,
 			"digest":    configDigest,
 		},
-		"layers": []any{},
+		"layers": layers,
 		"annotations": map[string]string{
 			"io.babelsuite.seed":               "true",
 			"org.opencontainers.image.title":   reference.Repository,
@@ -271,6 +302,52 @@ func imageManifest(reference repositoryTag, configDigest string, configSize int)
 	return json.Marshal(manifest)
 }
 
+// buildLayer tars the suite source files and gzip-compresses them into an OCI
+// layer blob. Returns the compressed blob, its sha256 digest (for the manifest
+// layers array), and the uncompressed digest (diff_id for the image config).
+func buildLayer(files []suites.SourceFile) (blob []byte, layerDigest, diffID string, err error) {
+	// Build the uncompressed tar first so we can capture the diff_id.
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	for _, f := range files {
+		content := []byte(f.Content)
+		hdr := &tar.Header{
+			Name:     f.Path,
+			Mode:     0o644,
+			Size:     int64(len(content)),
+			Typeflag: tar.TypeReg,
+			ModTime:  time.Unix(0, 0).UTC(),
+		}
+		if err = tw.WriteHeader(hdr); err != nil {
+			return
+		}
+		if _, err = tw.Write(content); err != nil {
+			return
+		}
+	}
+	if err = tw.Close(); err != nil {
+		return
+	}
+
+	rawSum := sha256.Sum256(tarBuf.Bytes())
+	diffID = "sha256:" + hex.EncodeToString(rawSum[:])
+
+	// Gzip-compress for the actual layer blob.
+	var gzBuf bytes.Buffer
+	gw := gzip.NewWriter(&gzBuf)
+	if _, err = io.Copy(gw, &tarBuf); err != nil {
+		return
+	}
+	if err = gw.Close(); err != nil {
+		return
+	}
+
+	blob = gzBuf.Bytes()
+	gzSum := sha256.Sum256(blob)
+	layerDigest = "sha256:" + hex.EncodeToString(gzSum[:])
+	return
+}
+
 func seedReferences(includeModules bool) []repositoryTag {
 	seen := make(map[string]struct{})
 	references := make([]repositoryTag, 0)
@@ -278,7 +355,7 @@ func seedReferences(includeModules bool) []repositoryTag {
 	for _, suiteDefinition := range suites.NewService().List() {
 		repository := repositoryPath(suiteDefinition.Repository)
 		for _, tag := range suiteDefinition.Tags {
-			references = appendReference(references, seen, repository, tag, "suite")
+			references = appendReference(references, seen, repository, tag, "suite", suiteDefinition.SourceFiles)
 		}
 	}
 
@@ -286,7 +363,7 @@ func seedReferences(includeModules bool) []repositoryTag {
 		for _, module := range catalog.SeedStdlibPackages() {
 			repository := repositoryPath(module.Repository)
 			for _, tag := range module.Tags {
-				references = appendReference(references, seen, repository, tag, "stdlib")
+				references = appendReference(references, seen, repository, tag, "stdlib", nil)
 			}
 		}
 	}
@@ -300,7 +377,7 @@ func seedReferences(includeModules bool) []repositoryTag {
 	return references
 }
 
-func appendReference(references []repositoryTag, seen map[string]struct{}, repository, tag, kind string) []repositoryTag {
+func appendReference(references []repositoryTag, seen map[string]struct{}, repository, tag, kind string, sourceFiles []suites.SourceFile) []repositoryTag {
 	repository = strings.Trim(repository, "/")
 	tag = strings.TrimSpace(tag)
 	if repository == "" || tag == "" {
@@ -312,9 +389,10 @@ func appendReference(references []repositoryTag, seen map[string]struct{}, repos
 	}
 	seen[key] = struct{}{}
 	return append(references, repositoryTag{
-		Repository: repository,
-		Tag:        tag,
-		Kind:       kind,
+		Repository:  repository,
+		Tag:         tag,
+		Kind:        kind,
+		SourceFiles: sourceFiles,
 	})
 }
 

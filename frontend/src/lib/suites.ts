@@ -262,6 +262,7 @@ function canonicalTrafficCall(call: string): string {
   return trimmed
 }
 
+
 function readCallArguments(expression: string, openIndex: number): { args: string; nextIndex: number } | null {
   if (openIndex < 0 || openIndex >= expression.length || expression[openIndex] !== '(') {
     return null
