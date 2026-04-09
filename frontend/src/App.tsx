@@ -14,7 +14,7 @@ import Agents from './pages/settings/Agents'
 import Registries from './pages/settings/Registries'
 import Secrets from './pages/settings/Secrets'
 import SignIn from './pages/SignIn'
-import SignUp from './pages/SignUp'
+import SignUp from './pages/Signup'
 import Suites from './pages/Suites'
 
 function Guard({ children }: { children: ReactNode }) {

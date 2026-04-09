@@ -361,7 +361,7 @@ export default function Agents() {
                 <input
                   value={runtimeCapabilities.join(', ')}
                   onChange={(e) => updatePanelAgent('runtimeCapabilities', splitList(e.target.value))}
-                  placeholder='container, mock, script, scenario'
+                  placeholder='service, mock, task, test'
                 />
               </div>
               <div className='bs-form-checks'>

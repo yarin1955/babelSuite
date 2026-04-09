@@ -11,7 +11,7 @@ import {
 } from 'react-icons/fa6'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
-import { createExecution, type ExecutionLogLine } from '../lib/api'
+import { createExecution, type ExecutionArtifactRecord, type ExecutionLogLine } from '../lib/api'
 import { useExecutionStream } from '../hooks/useExecutionStream'
 import {
   deriveRuntimeStatus,
@@ -45,7 +45,13 @@ export default function LiveExecution() {
   const logRef = useRef<HTMLDivElement | null>(null)
 
   const topology = useMemo(
-    () => execution ? groupTopologyByLevel(parseSuiteTopology(execution.suite.suiteStar)) : [],
+    () => execution
+      ? groupTopologyByLevel(
+          (execution.suite.topology?.length
+            ? execution.suite.topology
+            : parseSuiteTopology(execution.suite.suiteStar)) as ReturnType<typeof parseSuiteTopology>,
+        )
+      : [],
     [execution],
   )
   const flatTopology = useMemo(() => topology.flat(), [topology])
@@ -74,6 +80,7 @@ export default function LiveExecution() {
     )),
     [execution?.suite.apiSurfaces],
   )
+  const artifacts = execution?.artifacts ?? []
 
   useEffect(() => {
     if (!logRef.current || paused) return
@@ -124,10 +131,11 @@ export default function LiveExecution() {
   const readyNodes = flatTopology.filter((n) => statusMap[n.id] === 'healthy').length
   const activeNodes = flatTopology.filter((n) => statusMap[n.id] === 'running').length
   const failedNodes = flatTopology.filter((n) => statusMap[n.id] === 'failed').length
+  const skippedNodes = flatTopology.filter((n) => statusMap[n.id] === 'skipped').length
   const pendingNodes = flatTopology.filter((n) => statusMap[n.id] === 'pending').length
   const progress = flatTopology.length === 0
     ? (execution.status === 'Healthy' ? 100 : 0)
-    : Math.round(((readyNodes + activeNodes) / flatTopology.length) * 100)
+    : Math.round(((readyNodes + activeNodes + failedNodes + skippedNodes) / flatTopology.length) * 100)
 
   const alert = notice || actionError || error
   const activeMockPreview = mockPreviews.find((preview) => preview.id === selectedMockPreviewId) ?? mockPreviews[0]
@@ -298,6 +306,22 @@ export default function LiveExecution() {
                 <StreamPill state={executionStreamState} paused={paused} label='events' />
               </div>
             </div>
+            {artifacts.length > 0 && (
+              <section className='exec-artifacts'>
+                <div className='exec-artifacts__header'>
+                  <div>
+                    <p className='exec-artifacts__eyebrow'>Artifacts</p>
+                    <h3>Structured Results</h3>
+                  </div>
+                  <span className='exec-artifacts__count'>{artifacts.length}</span>
+                </div>
+                <div className='exec-artifacts__grid'>
+                  {artifacts.map((artifact) => (
+                    <ArtifactCard key={artifact.id} artifact={artifact} />
+                  ))}
+                </div>
+              </section>
+            )}
             {mockPreviews.length > 0 && (
               <section className='exec-source-preview'>
                 <div className='exec-source-preview__header'>
@@ -406,6 +430,10 @@ export default function LiveExecution() {
               <div className='exec-stat'>
                 <strong data-color='failed'>{failedNodes}</strong>
                 <small>failed</small>
+              </div>
+              <div className='exec-stat'>
+                <strong data-color='skipped'>{skippedNodes}</strong>
+                <small>skipped</small>
               </div>
               <div className='exec-stat'>
                 <strong>{pendingNodes}</strong>
@@ -523,6 +551,74 @@ function LogLine({
 
 /* ── DAG overlay ────────────────────────────────────────── */
 
+function ArtifactCard({ artifact }: { artifact: ExecutionArtifactRecord }) {
+  const format = (artifact.format ?? 'raw').toUpperCase()
+
+  return (
+    <article className='exec-artifact-card'>
+      <div className='exec-artifact-card__header'>
+        <div>
+          <p className='exec-artifact-card__title'>{artifact.name}</p>
+          <p className='exec-artifact-card__path'>{artifact.path}</p>
+        </div>
+        <span className='exec-artifact-card__badge'>{format}</span>
+      </div>
+
+      <div className='exec-artifact-card__meta'>
+        <span>{artifact.stepName}</span>
+        {artifact.on && <span>on {artifact.on}</span>}
+      </div>
+
+      {artifact.testSummary && (
+        <div className='exec-artifact-card__stats'>
+          <ArtifactStat label='passed' value={artifact.testSummary.passed} tone='healthy' />
+          <ArtifactStat label='failed' value={artifact.testSummary.failures} tone='failed' />
+          <ArtifactStat label='errors' value={artifact.testSummary.errors} tone='failed' />
+          <ArtifactStat label='skipped' value={artifact.testSummary.skipped} tone='muted' />
+        </div>
+      )}
+
+      {artifact.coverageSummary ? (
+        <div className='exec-artifact-card__coverage'>
+          <ArtifactCoverage label='Line coverage' value={artifact.coverageSummary.lineRate} />
+          <ArtifactCoverage label='Branch coverage' value={artifact.coverageSummary.branchRate} />
+        </div>
+      ) : artifact.format === 'cobertura' ? (
+        <p className='exec-artifact-card__hint'>
+          Coverage summaries will appear when report content is collected for this export.
+        </p>
+      ) : null}
+    </article>
+  )
+}
+
+function ArtifactStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: 'healthy' | 'failed' | 'muted'
+}) {
+  return (
+    <div className='exec-artifact-card__stat'>
+      <strong data-tone={tone}>{value}</strong>
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function ArtifactCoverage({ label, value }: { label: string; value?: number }) {
+  const percent = typeof value === 'number' ? `${Math.round(value * 100)}%` : 'n/a'
+  return (
+    <div className='exec-artifact-card__coverage-item'>
+      <span>{label}</span>
+      <strong>{percent}</strong>
+    </div>
+  )
+}
+
 const DAG_NODE_W = 180
 const DAG_NODE_H = 62
 const DAG_COL_GAP = 110
@@ -612,6 +708,9 @@ function ExecutionDag({
               <marker id='dag-arrow-failed'   markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
                 <path d='M0,0 L6,3 L0,6 Z' fill='#E96D76' />
               </marker>
+              <marker id='dag-arrow-skipped'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
+                <path d='M0,0 L6,3 L0,6 Z' fill='#7c8b98' />
+              </marker>
             </defs>
 
             {edges.map(({ fromId, toId, status }) => {
@@ -627,6 +726,7 @@ function ExecutionDag({
                 status === 'healthy' ? '#18BE94'
                 : status === 'running' ? '#0DADEA'
                 : status === 'failed'  ? '#E96D76'
+                : status === 'skipped' ? '#7c8b98'
                 : '#1e3a4e'
               return (
                 <path

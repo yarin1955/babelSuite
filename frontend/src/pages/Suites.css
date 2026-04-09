@@ -264,11 +264,14 @@
   background: #f5f8fa;
   border: 1px solid rgba(18, 40, 58, 0.08);
 }
-.suite-node--container { border-color: rgba(31, 126, 168, 0.22); }
+.suite-node--service   { border-color: rgba(31, 126, 168, 0.22); }
 .suite-node--mock      { border-color: rgba(239, 124, 61, 0.24); }
+.suite-node--task      { border-color: rgba(106, 140, 92, 0.24); }
+.suite-node--traffic   { border-color: rgba(214, 173, 46, 0.28); }
+.suite-node--test      { border-color: rgba(117, 92, 150, 0.24); }
 .suite-node--script    { border-color: rgba(106, 140, 92, 0.24); }
-.suite-node--load      { border-color: rgba(214, 173, 46, 0.28); }
 .suite-node--scenario  { border-color: rgba(117, 92, 150, 0.24); }
+.suite-node--container { border-color: rgba(31, 126, 168, 0.22); }
 .suite-node__header {
   display: flex;
   justify-content: space-between;
