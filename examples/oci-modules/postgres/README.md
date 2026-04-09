@@ -1,6 +1,6 @@
 @babelsuite/postgres
 
-Pure Starlark Postgres module built on top of BabelSuite's built-in runtime containers.
+Pure Starlark Postgres module built on top of BabelSuite's built-in runtime service and task primitives.
 
 Details
 

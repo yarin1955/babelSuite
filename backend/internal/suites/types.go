@@ -24,23 +24,43 @@ type SourceFile struct {
 	Content  string `json:"content"`
 }
 
+type ArtifactExport struct {
+	Path   string `json:"path"`
+	Name   string `json:"name,omitempty"`
+	On     string `json:"on,omitempty"`
+	Format string `json:"format,omitempty"`
+}
+
+type StepEvaluation struct {
+	ExpectExit *int     `json:"expectExit,omitempty"`
+	ExpectLogs []string `json:"expectLogs,omitempty"`
+	FailOnLogs []string `json:"failOnLogs,omitempty"`
+}
+
 type TopologyNode struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name"`
-	Kind             string            `json:"kind"`
-	DependsOn        []string          `json:"dependsOn"`
-	Level            int               `json:"level"`
-	SourceSuiteID    string            `json:"sourceSuiteId,omitempty"`
-	SourceSuiteTitle string            `json:"sourceSuiteTitle,omitempty"`
-	SourceRepository string            `json:"sourceRepository,omitempty"`
-	SourceVersion    string            `json:"sourceVersion,omitempty"`
-	DependencyAlias  string            `json:"dependencyAlias,omitempty"`
-	ResolvedRef      string            `json:"resolvedRef,omitempty"`
-	Digest           string            `json:"digest,omitempty"`
-	RuntimeProfile   string            `json:"runtimeProfile,omitempty"`
-	RuntimeEnv       map[string]string `json:"runtimeEnv,omitempty"`
-	RuntimeHeaders   map[string]string `json:"runtimeHeaders,omitempty"`
-	Order            int               `json:"-"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Kind              string            `json:"kind"`
+	Variant           string            `json:"variant,omitempty"`
+	Load              *LoadSpec         `json:"traffic,omitempty"`
+	DependsOn         []string          `json:"dependsOn"`
+	ResetMocks        []string          `json:"resetMocks,omitempty"`
+	OnFailure         []string          `json:"onFailure,omitempty"`
+	ContinueOnFailure bool              `json:"continueOnFailure,omitempty"`
+	Evaluation        *StepEvaluation   `json:"evaluation,omitempty"`
+	ArtifactExports   []ArtifactExport  `json:"artifactExports,omitempty"`
+	Level             int               `json:"level"`
+	SourceSuiteID     string            `json:"sourceSuiteId,omitempty"`
+	SourceSuiteTitle  string            `json:"sourceSuiteTitle,omitempty"`
+	SourceRepository  string            `json:"sourceRepository,omitempty"`
+	SourceVersion     string            `json:"sourceVersion,omitempty"`
+	DependencyAlias   string            `json:"dependencyAlias,omitempty"`
+	ResolvedRef       string            `json:"resolvedRef,omitempty"`
+	Digest            string            `json:"digest,omitempty"`
+	RuntimeProfile    string            `json:"runtimeProfile,omitempty"`
+	RuntimeEnv        map[string]string `json:"runtimeEnv,omitempty"`
+	RuntimeHeaders    map[string]string `json:"runtimeHeaders,omitempty"`
+	Order             int               `json:"-"`
 }
 
 type ResolvedDependency struct {
@@ -156,6 +176,7 @@ type Definition struct {
 	Owner                string               `json:"owner"`
 	Provider             string               `json:"provider"`
 	Version              string               `json:"version"`
+	Labels               map[string]string    `json:"labels,omitempty"`
 	Tags                 []string             `json:"tags"`
 	Description          string               `json:"description"`
 	Modules              []string             `json:"modules"`

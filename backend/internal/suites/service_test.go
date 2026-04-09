@@ -1,6 +1,7 @@
 package suites
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -307,6 +308,63 @@ func TestSuitesGenerateAPISIXGatewayWithEmbeddedGRPCProto(t *testing.T) {
 	t.Fatal("expected returns-control-plane source files to include generated gateway/apisix.yaml")
 }
 
+func TestWorkspaceSuiteMetadataYamlAddsTagsAndLabels(t *testing.T) {
+	root := t.TempDir()
+	suiteRoot := filepath.Join(root, "oci-suites", "metadata-suite")
+	mustWriteWorkspaceFile(t, filepath.Join(suiteRoot, "suite.star"), `api = service.run(name="api")`)
+	mustWriteWorkspaceFile(t, filepath.Join(suiteRoot, "README.md"), "# Metadata Suite\n\nWorkspace metadata coverage.")
+	mustWriteWorkspaceFile(t, filepath.Join(suiteRoot, "metadata.yaml"), strings.TrimSpace(`
+name: metadata-suite
+title: Metadata Suite
+description: Metadata file overrides the fallback description.
+labels:
+  owner: Platform Team
+  tier: gold
+tags:
+  - starter
+  - local
+`))
+	mustWriteWorkspaceFile(t, filepath.Join(suiteRoot, "profiles", "local.yaml"), strings.TrimSpace(`
+name: Local
+description: Local profile
+default: true
+runtime:
+  suite: metadata-suite
+  repository: localhost:5000/core/metadata-suite
+  profileFile: local.yaml
+`))
+
+	t.Setenv(examplefs.RootEnvVar, root)
+	t.Setenv(demofs.EnableEnvVar, "false")
+
+	service := NewService()
+	suite, err := service.Get("metadata-suite")
+	if err != nil {
+		t.Fatalf("get workspace suite: %v", err)
+	}
+
+	if suite.Description != "Metadata file overrides the fallback description." {
+		t.Fatalf("expected metadata description override, got %q", suite.Description)
+	}
+	if suite.Owner != "Platform Team" {
+		t.Fatalf("expected metadata owner label, got %q", suite.Owner)
+	}
+	if suite.Labels["tier"] != "gold" {
+		t.Fatalf("expected metadata label tier=gold, got %v", suite.Labels)
+	}
+	if len(suite.Tags) != 3 || suite.Tags[0] != "workspace" {
+		t.Fatalf("expected workspace tag plus metadata tags, got %v", suite.Tags)
+	}
+
+	for _, file := range suite.SourceFiles {
+		if file.Path == "metadata.yaml" {
+			return
+		}
+	}
+
+	t.Fatal("expected metadata.yaml to be exposed as a root source file")
+}
+
 func configureExamplesRoot(t *testing.T) {
 	t.Helper()
 
@@ -317,4 +375,15 @@ func configureExamplesRoot(t *testing.T) {
 
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", ".."))
 	t.Setenv(examplefs.RootEnvVar, filepath.Join(repoRoot, "examples"))
+}
+
+func mustWriteWorkspaceFile(t *testing.T, path string, content string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(content+"\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
 }

@@ -12,12 +12,12 @@
       "0.8.3",
       "latest"
     ],
-    "description": "Built-in suite runtime library exposing container.run/create/get, mock.serve, service.wiremock/prism/custom, script, load, and scenario entry points for topology orchestration.",
+    "description": "Built-in suite runtime library exposing service.run/mock, task.run, test.run, traffic profiles, and suite composition entry points for topology orchestration.",
     "modules": [
       "container lifecycle",
       "native mocks",
       "compat services",
-      "load plans",
+      "traffic plans",
       "topology steps",
       "debug helpers"
     ],

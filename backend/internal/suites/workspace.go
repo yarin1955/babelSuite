@@ -22,6 +22,15 @@ type workspaceProfileDocument struct {
 	Modules []string `yaml:"modules"`
 }
 
+type workspaceMetadataDocument struct {
+	Name        string            `yaml:"name"`
+	Title       string            `yaml:"title"`
+	Description string            `yaml:"description"`
+	Owner       string            `yaml:"owner"`
+	Labels      map[string]string `yaml:"labels"`
+	Tags        []string          `yaml:"tags"`
+}
+
 func loadWorkspaceSuites() map[string]Definition {
 	root := filepath.Join(examplefs.ResolveRoot(), "oci-suites")
 	entries, err := os.ReadDir(root)
@@ -52,19 +61,27 @@ func loadWorkspaceSuite(root, suiteID string) (Definition, bool) {
 
 	profiles, repository, modules := loadWorkspaceProfiles(base)
 	title, description := loadWorkspaceReadme(base, suiteID)
+	metadata := loadWorkspaceMetadata(base)
+	title = firstWorkspaceNonEmpty(strings.TrimSpace(metadata.Title), title)
+	description = firstWorkspaceNonEmpty(strings.TrimSpace(metadata.Description), description)
 	rootSources := loadWorkspaceRootSourceFiles(base)
 	if repository == "" {
 		repository = "workspace/" + suiteID
+	}
+	owner := ownerFromRepository(repository)
+	if value := firstWorkspaceNonEmpty(strings.TrimSpace(metadata.Owner), strings.TrimSpace(metadata.Labels["owner"])); value != "" {
+		owner = value
 	}
 
 	definition := Definition{
 		ID:          suiteID,
 		Title:       title,
 		Repository:  repository,
-		Owner:       ownerFromRepository(repository),
+		Owner:       owner,
 		Provider:    "Workspace",
 		Version:     "workspace",
-		Tags:        []string{"workspace"},
+		Labels:      cloneStringMap(metadata.Labels),
+		Tags:        mergeWorkspaceTags(metadata.Tags),
 		Description: description,
 		Modules:     modules,
 		Status:      "Installed",
@@ -79,6 +96,23 @@ func loadWorkspaceSuite(root, suiteID string) (Definition, bool) {
 	}
 
 	return definition, true
+}
+
+func loadWorkspaceMetadata(base string) workspaceMetadataDocument {
+	path := filepath.Join(base, "metadata.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return workspaceMetadataDocument{}
+	}
+
+	var metadata workspaceMetadataDocument
+	if err := yaml.Unmarshal(data, &metadata); err != nil {
+		return workspaceMetadataDocument{}
+	}
+	if metadata.Labels == nil {
+		metadata.Labels = map[string]string{}
+	}
+	return metadata
 }
 
 func loadWorkspaceProfiles(base string) ([]ProfileOption, string, []string) {
@@ -283,12 +317,24 @@ func folderRole(name string) string {
 		return "Contracts"
 	case "mock":
 		return "Mocking"
+	case "services":
+		return "Infrastructure"
+	case "tasks":
+		return "Operations"
+	case "tests":
+		return "Verification"
+	case "resources":
+		return "Assets"
 	case "scripts":
-		return "Setup"
+		return "Operations"
+	case "traffic":
+		return "Performance"
 	case "scenarios":
-		return "Validation"
+		return "Verification"
 	case "fixtures":
 		return "Data"
+	case "certs":
+		return "Assets"
 	case "policies":
 		return "Policy"
 	default:
@@ -304,12 +350,24 @@ func folderDescription(name string) string {
 		return "Contracts and schemas shipped with the suite."
 	case "mock":
 		return "Mock schemas, metadata, and compatibility assets."
+	case "services":
+		return "Background infrastructure assets and compatibility service files."
+	case "tasks":
+		return "Short-lived setup, seed, and migration jobs."
+	case "tests":
+		return "Verification, smoke, regression, and browser assertions."
+	case "resources":
+		return "Passive static assets such as certificates, datasets, and large blobs."
 	case "scripts":
-		return "Short-lived setup and migration scripts."
+		return "Legacy short-lived setup and migration jobs."
+	case "traffic":
+		return "Native traffic plans and protocol-safe workload definitions."
 	case "scenarios":
-		return "Executable smoke, regression, and attack-path tests."
+		return "Legacy smoke, regression, and attack-path tests."
 	case "fixtures":
 		return "Static seed data and sample payloads."
+	case "certs":
+		return "Static certificates and supporting trust material."
 	case "policies":
 		return "Policy rules and invariants enforced by the suite."
 	default:
@@ -377,4 +435,24 @@ func workspaceForkCommand(repository string) string {
 		name = parts[len(parts)-1]
 	}
 	return "babelctl fork " + strings.TrimSpace(repository) + ":" + version + " ./" + name
+}
+
+func mergeWorkspaceTags(tags []string) []string {
+	seen := map[string]struct{}{
+		"workspace": {},
+	}
+	merged := []string{"workspace"}
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		merged = append(merged, trimmed)
+	}
+	sort.Strings(merged[1:])
+	return merged
 }

@@ -429,7 +429,7 @@ export default function PlatformSettings() {
                       <input
                         value={selectedAgent.runtimeCapabilities.join(', ')}
                         onChange={(e) => updateAgent('runtimeCapabilities', splitList(e.target.value))}
-                        placeholder='container, mock, script, scenario'
+                        placeholder='service, task, test, traffic, suite'
                       />
                     </label>
                   </div>

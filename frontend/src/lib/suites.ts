@@ -1,27 +1,32 @@
-export type RuntimeKind = 'container' | 'mock' | 'service' | 'script' | 'load' | 'scenario'
-export type RuntimeStatus = 'pending' | 'running' | 'healthy' | 'failed'
+export type RuntimeKind = 'mock' | 'service' | 'task' | 'test' | 'traffic' | 'suite'
+export type RuntimeStatus = 'pending' | 'running' | 'healthy' | 'failed' | 'skipped'
+
+export interface ArtifactExport {
+  path: string
+  name?: string
+  on?: string
+  format?: string
+}
 
 export interface TopologyNode {
   id: string
   name: string
   kind: RuntimeKind
+  variant?: string
   dependsOn: string[]
+  resetMocks?: string[]
+  artifactExports?: ArtifactExport[]
   level: number
 }
 
-const ASSIGNMENT_PATTERN = /^([a-zA-Z_][\w]*)\s*=\s*([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)?)\((.*)\)$/
-const NAME_PATTERN = /(?:^|,)\s*(?:name|name_or_id|id)\s*=\s*"([^"]+)"/
-const AFTER_PATTERN = /(?:^|,)\s*after\s*=\s*\[([^\]]*)\]/
+interface ParsedTopologyNode extends TopologyNode {
+  assignment: string
+}
 
 export function parseSuiteTopology(suiteStar: string): TopologyNode[] {
-  const nodes: TopologyNode[] = []
+  const nodes: ParsedTopologyNode[] = []
 
-  for (const rawLine of suiteStar.split('\n')) {
-    const line = rawLine.trim()
-    if (!line || line.startsWith('#')) {
-      continue
-    }
-
+  for (const line of topologyStatements(suiteStar)) {
     const node = parseTopologyLine(line)
     if (!node) {
       continue
@@ -32,46 +37,516 @@ export function parseSuiteTopology(suiteStar: string): TopologyNode[] {
   return resolveTopology(nodes)
 }
 
-function parseTopologyLine(line: string): TopologyNode | null {
-  const match = line.match(ASSIGNMENT_PATTERN)
-  if (!match) {
+function parseTopologyLine(line: string): ParsedTopologyNode | null {
+  const assignment = parseTopologyAssignment(line)
+  if (!assignment) {
     return null
   }
 
-  const [, , rawCall, rawArgs] = match
-  const kind = topologyKind(rawCall)
+  const invocation = parseTopologyInvocation(assignment.expression)
+  if (!invocation) {
+    return null
+  }
+
+  const canonicalCall = canonicalRuntimeCall(invocation.call)
+  const kind = topologyKind(canonicalCall)
   if (!kind) {
     return null
   }
 
-  const nameMatch = rawArgs.match(NAME_PATTERN)
-  if (!nameMatch) {
-    return null
-  }
-
-  const afterMatch = rawArgs.match(AFTER_PATTERN)
+  const name = topologyNamedStringArgument(invocation.args, 'name', 'name_or_id', 'id') ?? assignment.name
+  const afterDependencies = topologyDependencies(invocation.args, 'after')
+  const failureDependencies = topologyDependencies(invocation.args, 'on_failure')
+  const resetMocks = topologyDependencies(invocation.args, 'reset_mocks')
   return {
-    id: nameMatch[1],
-    name: nameMatch[1],
+    id: name,
+    name,
     kind,
-    dependsOn: afterMatch
-      ? afterMatch[1]
-          .split(',')
-          .map((item) => item.trim().replaceAll('"', ''))
-          .filter(Boolean)
-          .filter((item, index, items) => items.indexOf(item) === index)
-      : [],
+    variant: canonicalCall,
+    dependsOn: Array.from(new Set([...afterDependencies, ...failureDependencies])),
+    resetMocks: resetMocks.length > 0 ? resetMocks : undefined,
+    artifactExports: invocation.artifactExports.length > 0 ? invocation.artifactExports : undefined,
     level: 0,
+    assignment: assignment.name,
   }
 }
 
-function resolveTopology(nodes: TopologyNode[]): TopologyNode[] {
+function parseTopologyAssignment(line: string): { name: string; expression: string } | null {
+  const separator = findTopologyAssignmentSeparator(line)
+  if (separator <= 0) {
+    return null
+  }
+
+  const name = line.slice(0, separator).trim()
+  const expression = line.slice(separator + 1).trim()
+  if (!isTopologyIdentifier(name) || !expression) {
+    return null
+  }
+  return { name, expression }
+}
+
+function findTopologyAssignmentSeparator(line: string): number {
+  let depthParen = 0
+  let depthBracket = 0
+  let depthBrace = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '(') {
+      depthParen += 1
+      continue
+    }
+    if (char === ')') {
+      depthParen = Math.max(0, depthParen - 1)
+      continue
+    }
+    if (char === '[') {
+      depthBracket += 1
+      continue
+    }
+    if (char === ']') {
+      depthBracket = Math.max(0, depthBracket - 1)
+      continue
+    }
+    if (char === '{') {
+      depthBrace += 1
+      continue
+    }
+    if (char === '}') {
+      depthBrace = Math.max(0, depthBrace - 1)
+      continue
+    }
+    if (char === '=' && depthParen === 0 && depthBracket === 0 && depthBrace === 0) {
+      return index
+    }
+  }
+
+  return -1
+}
+
+function topologyStatements(suiteStar: string): string[] {
+  const statements: string[] = []
+  let current = ''
+
+  const flush = () => {
+    const statement = current.trim()
+    if (statement) {
+      statements.push(statement)
+    }
+    current = ''
+  }
+
+  for (const rawLine of suiteStar.split('\n')) {
+    let line = rawLine.trim()
+    if (!line || line.startsWith('#')) {
+      continue
+    }
+
+    const continued = line.endsWith('\\')
+    if (continued) {
+      line = line.slice(0, -1).trim()
+    }
+    if (!line) {
+      continue
+    }
+
+    current = current ? `${current} ${line}` : line
+    if (!continued) {
+      flush()
+    }
+  }
+
+  flush()
+  return statements
+}
+
+function parseTopologyInvocation(
+  expression: string,
+): { call: string; args: string; artifactExports: ArtifactExport[] } | null {
+  const openIndex = expression.indexOf('(')
+  if (openIndex <= 0) {
+    return null
+  }
+
+  const call = expression.slice(0, openIndex).trim()
+  if (!isTopologyCallPath(call)) {
+    return null
+  }
+
+  const base = readCallArguments(expression, openIndex)
+  if (!base) {
+    return null
+  }
+
+  const invocation = {
+    call,
+    args: base.args,
+    artifactExports: [] as ArtifactExport[],
+  }
+
+  let rest = expression.slice(base.nextIndex).trim()
+  while (rest) {
+    if (!rest.startsWith('.')) {
+      return null
+    }
+
+    rest = rest.slice(1).trim()
+    const methodOpenIndex = rest.indexOf('(')
+    if (methodOpenIndex <= 0) {
+      return null
+    }
+
+    const method = rest.slice(0, methodOpenIndex).trim()
+    const chained = readCallArguments(rest, methodOpenIndex)
+    if (!chained || method !== 'export') {
+      return null
+    }
+
+    const artifactExport = parseArtifactExport(chained.args)
+    if (!artifactExport) {
+      return null
+    }
+    invocation.artifactExports.push(artifactExport)
+    rest = rest.slice(chained.nextIndex).trim()
+  }
+
+  return invocation
+}
+
+function isTopologyCallPath(value: string): boolean {
+  if (!value) {
+    return false
+  }
+  return value.split('.').every((part) => isTopologyIdentifier(part))
+}
+
+function canonicalRuntimeCall(call: string): string {
+  const trimmed = call.trim()
+  if (trimmed.startsWith('load.')) {
+    return `traffic.${trimmed.slice('load.'.length)}`
+  }
+  switch (trimmed) {
+    case 'mock.serve':
+      return 'service.mock'
+    default:
+      return trimmed
+  }
+}
+
+function canonicalTrafficCall(call: string): string {
+  const trimmed = canonicalRuntimeCall(call)
+  if (trimmed.startsWith('traffic.')) {
+    return trimmed
+  }
+  return trimmed
+}
+
+function readCallArguments(expression: string, openIndex: number): { args: string; nextIndex: number } | null {
+  if (openIndex < 0 || openIndex >= expression.length || expression[openIndex] !== '(') {
+    return null
+  }
+
+  let depth = 1
+  let inString = false
+  let escaped = false
+  for (let index = openIndex + 1; index < expression.length; index += 1) {
+    const char = expression[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '(') {
+      depth += 1
+      continue
+    }
+    if (char === ')') {
+      depth -= 1
+      if (depth === 0) {
+        return {
+          args: expression.slice(openIndex + 1, index),
+          nextIndex: index + 1,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function parseArtifactExport(argumentText: string): ArtifactExport | null {
+  const artifactExport: ArtifactExport = { path: '', on: 'success' }
+
+  for (const [index, rawPart] of splitTopLevel(argumentText).entries()) {
+    const part = rawPart.trim()
+    if (!part) {
+      continue
+    }
+
+    if (part.includes('=')) {
+      const separatorIndex = part.indexOf('=')
+      const key = part.slice(0, separatorIndex).trim()
+      const value = unquoteTopologyString(part.slice(separatorIndex + 1).trim())
+      if (value == null) {
+        return null
+      }
+      if (key === 'path') {
+        artifactExport.path = value
+        continue
+      }
+      if (key === 'name') {
+        artifactExport.name = value
+        continue
+      }
+      if (key === 'on') {
+        artifactExport.on = value
+        continue
+      }
+      if (key === 'format') {
+        artifactExport.format = value.toLowerCase()
+        continue
+      }
+      return null
+    }
+
+    if (index > 0 || artifactExport.path) {
+      return null
+    }
+    const value = unquoteTopologyString(part)
+    if (value == null) {
+      return null
+    }
+    artifactExport.path = value
+  }
+
+  if (!artifactExport.path) {
+    return null
+  }
+  if (!['success', 'failure', 'always'].includes(artifactExport.on ?? 'success')) {
+    return null
+  }
+  return artifactExport
+}
+
+function topologyNamedStringArgument(argumentText: string, ...keys: string[]): string | null {
+  const rawValue = topologyNamedArgument(argumentText, ...keys)
+  if (!rawValue) {
+    return null
+  }
+  return unquoteTopologyString(rawValue)
+}
+
+function topologyNamedArgument(argumentText: string, ...keys: string[]): string | null {
+  const keySet = new Set(keys.map((key) => key.trim()))
+  for (const part of splitTopLevel(argumentText)) {
+    const separatorIndex = part.indexOf('=')
+    if (separatorIndex <= 0) {
+      continue
+    }
+    const key = part.slice(0, separatorIndex).trim()
+    if (!keySet.has(key)) {
+      continue
+    }
+    return part.slice(separatorIndex + 1).trim()
+  }
+  return null
+}
+
+function topologyDependencies(argumentText: string, ...keys: string[]): string[] {
+  const keyList = keys.length > 0 ? keys : ['after']
+  const values = keyList
+    .map((key) => topologyNamedArgument(argumentText, key))
+    .filter((value): value is string => Boolean(value))
+  if (values.length === 0) {
+    return []
+  }
+
+  const dependencies = values.flatMap((rawValue) => {
+  if (!rawValue) {
+      return []
+  }
+
+  const trimmed = rawValue.trim()
+  if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+      return []
+  }
+
+    return splitTopLevel(trimmed.slice(1, -1))
+    .map((item) => {
+      const trimmedItem = item.trim()
+      if (!trimmedItem) {
+        return ''
+      }
+      if (trimmedItem.startsWith('"')) {
+        return unquoteTopologyString(trimmedItem) ?? ''
+      }
+      return trimmedItem
+    })
+    .filter(Boolean)
+  })
+
+  return dependencies.filter((item, index, items) => items.indexOf(item) === index)
+}
+
+function splitTopLevel(argumentText: string): string[] {
+  const parts: string[] = []
+  let current = ''
+  let depthParen = 0
+  let depthBracket = 0
+  let depthBrace = 0
+  let inString = false
+  let escaped = false
+
+  const flush = () => {
+    const part = current.trim()
+    if (part) {
+      parts.push(part)
+    }
+    current = ''
+  }
+
+  for (const char of argumentText) {
+    if (inString) {
+      current += char
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      current += char
+      continue
+    }
+    if (char === '(') {
+      depthParen += 1
+      current += char
+      continue
+    }
+    if (char === ')') {
+      depthParen = Math.max(0, depthParen - 1)
+      current += char
+      continue
+    }
+    if (char === '[') {
+      depthBracket += 1
+      current += char
+      continue
+    }
+    if (char === ']') {
+      depthBracket = Math.max(0, depthBracket - 1)
+      current += char
+      continue
+    }
+    if (char === '{') {
+      depthBrace += 1
+      current += char
+      continue
+    }
+    if (char === '}') {
+      depthBrace = Math.max(0, depthBrace - 1)
+      current += char
+      continue
+    }
+    if (char === ',' && depthParen === 0 && depthBracket === 0 && depthBrace === 0) {
+      flush()
+      continue
+    }
+    current += char
+  }
+
+  flush()
+  return parts
+}
+
+function unquoteTopologyString(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) {
+    return null
+  }
+
+  try {
+    return JSON.parse(trimmed) as string
+  } catch {
+    return null
+  }
+}
+
+function isTopologyIdentifier(value: string): boolean {
+  if (!value) {
+    return false
+  }
+
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index]
+    const isAlpha = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+    const isDigit = char >= '0' && char <= '9'
+    if (index === 0) {
+      if (!(isAlpha || char === '_')) {
+        return false
+      }
+      continue
+    }
+    if (!(isAlpha || isDigit || char === '_')) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function resolveTopology(nodes: ParsedTopologyNode[]): TopologyNode[] {
   if (nodes.length === 0) {
     return []
   }
 
-  const byId = new Map<string, TopologyNode>()
+  const byId = new Map<string, ParsedTopologyNode>()
   const order = new Map<string, number>()
+  const assignmentToID = new Map<string, string>()
 
   for (const [index, node] of nodes.entries()) {
     if (byId.has(node.id)) {
@@ -79,13 +554,15 @@ function resolveTopology(nodes: TopologyNode[]): TopologyNode[] {
     }
     byId.set(node.id, node)
     order.set(node.id, index)
+    assignmentToID.set(node.assignment, node.id)
   }
 
   const indegree = new Map<string, number>()
   const dependants = new Map<string, string[]>()
   for (const node of nodes) {
-    indegree.set(node.id, node.dependsOn.length)
-    for (const dependency of node.dependsOn) {
+    const normalizedDependencies = node.dependsOn.map((dependency) => assignmentToID.get(dependency) ?? dependency)
+    indegree.set(node.id, normalizedDependencies.length)
+    for (const dependency of normalizedDependencies) {
       if (!byId.has(dependency)) {
         return []
       }
@@ -93,6 +570,7 @@ function resolveTopology(nodes: TopologyNode[]): TopologyNode[] {
       children.push(node.id)
       dependants.set(dependency, children)
     }
+    node.dependsOn = normalizedDependencies
   }
 
   let ready = nodes.filter((node) => (indegree.get(node.id) ?? 0) === 0).map((node) => node.id)
@@ -136,46 +614,34 @@ function resolveTopology(nodes: TopologyNode[]): TopologyNode[] {
 }
 
 function topologyKind(rawCall: string): RuntimeKind | null {
-  const call = rawCall.trim()
+  const call = canonicalRuntimeCall(rawCall.trim())
   switch (call) {
-    case 'container':
-    case 'container.run':
-    case 'container.create':
-    case 'container.get':
-      return 'container'
-    case 'mock':
-    case 'mock.serve':
+    case 'service.mock':
       return 'mock'
-    case 'service':
+    case 'service.run':
     case 'service.wiremock':
     case 'service.prism':
     case 'service.custom':
       return 'service'
-    case 'script':
-    case 'script.file':
-    case 'script.bash':
-    case 'script.sql_migrate':
-    case 'script.exec':
-      return 'script'
-    case 'load':
-    case 'load.http':
-    case 'load.grpc':
-    case 'load.locust':
-    case 'load.jmx':
-    case 'load.k6':
-    case 'scenario':
-    case 'scenario.go':
-    case 'scenario.python':
-    case 'scenario.http':
-    case 'suite':
+    case 'task.run':
+      return 'task'
+    case 'test.run':
+      return 'test'
+    case 'traffic.smoke':
+    case 'traffic.baseline':
+    case 'traffic.stress':
+    case 'traffic.spike':
+    case 'traffic.soak':
+    case 'traffic.scalability':
+    case 'traffic.step':
+    case 'traffic.wave':
+    case 'traffic.staged':
+    case 'traffic.constant_throughput':
+    case 'traffic.constant_pacing':
+    case 'traffic.open_model':
+      return 'traffic'
     case 'suite.run':
-      if (call.startsWith('load.')) {
-        return 'load'
-      }
-      if (call.startsWith('scenario.')) {
-        return 'scenario'
-      }
-      return call === 'suite' || call === 'suite.run' ? 'container' : call
+      return 'suite'
     default:
       return null
   }

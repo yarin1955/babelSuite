@@ -1,9 +1,9 @@
-load("@babelsuite/runtime", "container")
+load("@babelsuite/runtime", "task")
 load("_shared.star", "merge_after", "merge_dicts", "quoted", "sanitize_name", "sql_predicate", "sql_value")
 
 def query_task(database, name, sql, after = [], env = {}):
     task_env = merge_dicts(database["env"], env)
-    return container.run(
+    return task.run(
         name = name,
         image = database["client_image"],
         after = merge_after(database, after),

@@ -757,7 +757,7 @@ function renderStarLine(line: string): ReactNode[] {
   const code = ci >= 0 ? line.slice(0, ci) : line
   const comment = ci >= 0 ? line.slice(ci) : ''
   const out: ReactNode[] = []
-  const pat = /"[^"]*"|\b(load|container|mock|script|scenario|suite)\b|@[a-zA-Z0-9/_-]+/g
+  const pat = /"[^"]*"|\b(load|service|task|test|traffic|suite|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
   let cur = 0
   for (const m of code.matchAll(pat)) {
     const v = m[0]

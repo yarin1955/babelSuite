@@ -822,7 +822,7 @@ function renderHighlightedLine(line: string): ReactNode[] {
   const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line
   const comment = commentIndex >= 0 ? line.slice(commentIndex) : ''
   const fragments: ReactNode[] = []
-  const pattern = /"[^"]*"|\b(load|container|mock|script|scenario|suite)\b|@[a-zA-Z0-9/_-]+/g
+  const pattern = /"[^"]*"|\b(load|service|task|test|traffic|suite|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
   let cursor = 0
 
   for (const match of code.matchAll(pattern)) {

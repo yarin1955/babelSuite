@@ -1,6 +1,6 @@
 @babelsuite/kafka
 
-Pure Starlark Kafka module built on top of BabelSuite's built-in runtime containers.
+Pure Starlark Kafka module built on top of BabelSuite's built-in runtime service and task primitives.
 
 Details
 

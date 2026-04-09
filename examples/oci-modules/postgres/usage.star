@@ -1,5 +1,5 @@
 load("@babelsuite/postgres", "pg", "connect", "insert", "select", "delete", "upsert")
-load("@babelsuite/runtime", "container")
+load("@babelsuite/runtime", "service")
 
 db = pg(name="payments-db", database="payments")
 
@@ -34,7 +34,7 @@ read_merchant = select(
     after=["payments-db-upsert-merchants"],
 )
 
-api = container.run(
+api = service.run(
     name="payments-api",
     image="ghcr.io/acme/payments-api:latest",
     env={
