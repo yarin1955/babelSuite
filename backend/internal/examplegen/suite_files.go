@@ -12,24 +12,35 @@ import (
 func GeneratedSourceFiles(suite suites.Definition) []suites.SourceFile {
 	files := make([]suites.SourceFile, 0)
 	seen := make(map[string]struct{})
+	appendFile := func(path string) {
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+
+		content, ok := explicitSourceContent(suite.SeedSources, path)
+		if !ok {
+			content = generatedSourceContent(suite, path)
+		}
+		files = append(files, suites.SourceFile{
+			Path:     path,
+			Language: detectSourceLanguage(path),
+			Content:  content,
+		})
+	}
+
+	for _, file := range suite.SeedSources {
+		path := strings.Trim(strings.TrimSpace(file.Path), "/")
+		if path == "" || strings.Contains(path, "/") {
+			continue
+		}
+		appendFile(path)
+	}
 
 	for _, folder := range suite.Folders {
 		for _, file := range folder.Files {
 			path := normalizeSourcePath(folder.Name, file)
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-
-			content, ok := explicitSourceContent(suite.SeedSources, path)
-			if !ok {
-				content = generatedSourceContent(suite, path)
-			}
-			files = append(files, suites.SourceFile{
-				Path:     path,
-				Language: detectSourceLanguage(path),
-				Content:  content,
-			})
+			appendFile(path)
 		}
 	}
 
@@ -95,14 +106,22 @@ func generatedSourceContent(suite suites.Definition, path string) string {
 		return renderMockMetadataSource(suite, path)
 	case strings.HasPrefix(path, "mock/"):
 		return renderMockSource(suite, path)
+	case strings.HasPrefix(path, "services/"):
+		return renderScriptSource(suite, path)
+	case strings.HasPrefix(path, "tasks/"):
+		return renderScriptSource(suite, path)
 	case strings.HasPrefix(path, "scripts/"):
 		return renderScriptSource(suite, path)
-	case strings.HasPrefix(path, "load/"):
+	case strings.HasPrefix(path, "traffic/"):
 		return renderLoadSource(suite, path)
 	case strings.HasPrefix(path, "gateway/"):
 		return renderGatewaySource(suite, path)
+	case strings.HasPrefix(path, "tests/"):
+		return renderScenarioSource(suite, path)
 	case strings.HasPrefix(path, "scenarios/"):
 		return renderScenarioSource(suite, path)
+	case strings.HasPrefix(path, "resources/"):
+		return renderFixtureSource(suite, path)
 	case strings.HasPrefix(path, "fixtures/"):
 		return renderFixtureSource(suite, path)
 	case strings.HasPrefix(path, "policies/"):
