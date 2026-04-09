@@ -23,9 +23,10 @@ func (s *Service) List() []Definition {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	catalog := suiteCatalog(s.suites)
 	result := make([]Definition, 0, len(s.suites))
-	for _, suite := range s.suites {
-		result = append(result, cloneDefinition(suite))
+	for _, suite := range catalog {
+		result = append(result, cloneDefinition(ResolveDefinitionTopology(suite, catalog)))
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -43,15 +44,29 @@ func (s *Service) Get(id string) (*Definition, error) {
 		return nil, ErrNotFound
 	}
 
-	clone := cloneDefinition(suite)
+	catalog := suiteCatalog(s.suites)
+	clone := cloneDefinition(ResolveDefinitionTopology(suite, catalog))
 	return &clone, nil
 }
 
+func suiteCatalog(items map[string]Definition) []Definition {
+	result := make([]Definition, 0, len(items))
+	for _, suite := range items {
+		result = append(result, suite)
+	}
+	return result
+}
+
 func loadDemoSuites() map[string]Definition {
-	if !demofs.Enabled() {
-		return loadWorkspaceSuites()
+	demoSuites := loadSeedSuites()
+	if demofs.Enabled() {
+		return demoSuites
 	}
 
+	return mergeWorkspaceSuites(loadWorkspaceSuites(), demoSuites)
+}
+
+func loadSeedSuites() map[string]Definition {
 	manifest, err := demofs.LoadManifest()
 	if err != nil {
 		return map[string]Definition{}
@@ -67,4 +82,41 @@ func loadDemoSuites() map[string]Definition {
 		result[strings.TrimSpace(definition.ID)] = definition
 	}
 	return result
+}
+
+func mergeWorkspaceSuites(workspace, seeded map[string]Definition) map[string]Definition {
+	if len(workspace) == 0 {
+		return map[string]Definition{}
+	}
+
+	result := make(map[string]Definition, len(workspace))
+	for id, definition := range workspace {
+		if seededDefinition, ok := seeded[id]; ok {
+			definition = mergeWorkspaceDefinition(definition, seededDefinition)
+		}
+		result[id] = definition
+	}
+	return result
+}
+
+func mergeWorkspaceDefinition(workspace, seeded Definition) Definition {
+	merged := workspace
+
+	if len(merged.APISurfaces) == 0 && len(seeded.APISurfaces) > 0 {
+		merged.APISurfaces = cloneSurfaces(seeded.APISurfaces)
+	}
+	if len(merged.Contracts) == 0 && len(seeded.Contracts) > 0 {
+		merged.Contracts = append([]string{}, seeded.Contracts...)
+	}
+	if strings.TrimSpace(merged.Description) == "" {
+		merged.Description = seeded.Description
+	}
+	if strings.TrimSpace(merged.Owner) == "" {
+		merged.Owner = seeded.Owner
+	}
+	if len(merged.Labels) == 0 && len(seeded.Labels) > 0 {
+		merged.Labels = cloneStringMap(seeded.Labels)
+	}
+
+	return merged
 }
