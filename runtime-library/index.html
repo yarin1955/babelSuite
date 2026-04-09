@@ -1,0 +1,1887 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Control plane, suite model, execution, CLI, API, and operations documentation for BabelSuite.">
+      
+      
+      
+      
+        <link rel="prev" href="../modules/">
+      
+      
+        <link rel="next" href="../mocking/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.44">
+    
+    
+      
+        <title>Runtime Library Reference - BabelSuite</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.0253249f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#runtime-library-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="BabelSuite" class="md-header__button md-logo" aria-label="BabelSuite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            BabelSuite
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Runtime Library Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="blue"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/babelsuite/babelsuite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    babelsuite/babelsuite
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  Core
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../auth/" class="md-tabs__link">
+          
+  
+  Interfaces
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../examples/" class="md-tabs__link">
+        
+  
+    
+  
+  Examples
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../development/" class="md-tabs__link">
+        
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../operations/" class="md-tabs__link">
+        
+  
+    
+  
+  Operations
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="BabelSuite" class="md-nav__button md-logo" aria-label="BabelSuite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    BabelSuite
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/babelsuite/babelsuite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    babelsuite/babelsuite
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Core
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Core
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../control-plane/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Control Plane
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Platform Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../catalog/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Catalog
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../suites/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Suites
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../suite-authoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Suite Authoring
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dependencies/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dependency Manifests
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../profiles/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Profiles
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../profile-runtime/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Profile Runtime
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Modules
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Runtime Library
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Runtime Library
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-runtime-library-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      What The Runtime Library Is
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-parser-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How The Parser Works
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#load-statements" class="md-nav__link">
+    <span class="md-ellipsis">
+      load() Statements
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-families" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Families
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Families">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#service" class="md-nav__link">
+    <span class="md-ellipsis">
+      service
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#servicemock" class="md-nav__link">
+    <span class="md-ellipsis">
+      service.mock
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task" class="md-nav__link">
+    <span class="md-ellipsis">
+      task
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test" class="md-nav__link">
+    <span class="md-ellipsis">
+      test
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#traffic" class="md-nav__link">
+    <span class="md-ellipsis">
+      traffic
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      suite
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resolver-argument-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resolver Argument Extraction
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#artifact-exports" class="md-nav__link">
+    <span class="md-ellipsis">
+      Artifact Exports
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Controls
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authoring-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Authoring Rules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-modules-vs-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Modules vs Runtime
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mocking/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Mocking
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mocking-reference/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Mocking Reference
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../execution/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Execution
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Agents
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../environments/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Environments
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Interfaces
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Interfaces
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Authentication
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    API
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CLI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Examples
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Development
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Operations
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-runtime-library-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      What The Runtime Library Is
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-parser-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How The Parser Works
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#load-statements" class="md-nav__link">
+    <span class="md-ellipsis">
+      load() Statements
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-families" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Families
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Families">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#service" class="md-nav__link">
+    <span class="md-ellipsis">
+      service
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#servicemock" class="md-nav__link">
+    <span class="md-ellipsis">
+      service.mock
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task" class="md-nav__link">
+    <span class="md-ellipsis">
+      task
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test" class="md-nav__link">
+    <span class="md-ellipsis">
+      test
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#traffic" class="md-nav__link">
+    <span class="md-ellipsis">
+      traffic
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      suite
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resolver-argument-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resolver Argument Extraction
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#artifact-exports" class="md-nav__link">
+    <span class="md-ellipsis">
+      Artifact Exports
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Controls
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authoring-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Authoring Rules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-modules-vs-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Modules vs Runtime
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="runtime-library-reference">Runtime Library Reference<a class="headerlink" href="#runtime-library-reference" title="Permanent link">&para;</a></h1>
+<p><a href="../">Back to index</a></p>
+<h2 id="what-the-runtime-library-is">What The Runtime Library Is<a class="headerlink" href="#what-the-runtime-library-is" title="Permanent link">&para;</a></h2>
+<p>The runtime library is BabelSuite's built-in topology surface. It defines the node families that <code>suite.star</code> can assemble into a topology graph.</p>
+<p>This is separate from the checked-in example OCI modules such as <code>kafka</code> or <code>postgres</code>.</p>
+<h2 id="how-the-parser-works">How The Parser Works<a class="headerlink" href="#how-the-parser-works" title="Permanent link">&para;</a></h2>
+<p><code>suite.star</code> is processed by an assignment-based topology scanner, not a full Starlark interpreter. The parser scans each logical statement for this shape:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>&lt;variable&gt; = &lt;family&gt;(&lt;arguments&gt;)
+</span></code></pre></div>
+<p>Only statements that match this assignment shape are recognized as topology nodes. <code>load()</code> statements, comments, and blank lines are ignored by the topology resolver.</p>
+<p>Backslash continuations are supported for chained <code>.export(...)</code> calls, but the parser still follows the same assignment-driven model.</p>
+<h2 id="load-statements"><code>load()</code> Statements<a class="headerlink" href="#load-statements" title="Permanent link">&para;</a></h2>
+<p><code>load()</code> statements appear at the top of every example <code>suite.star</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">load</span><span class="p">(</span><span class="s2">&quot;@babelsuite/runtime&quot;</span><span class="p">,</span> <span class="s2">&quot;service&quot;</span><span class="p">,</span> <span class="s2">&quot;task&quot;</span><span class="p">,</span> <span class="s2">&quot;test&quot;</span><span class="p">,</span> <span class="s2">&quot;traffic&quot;</span><span class="p">,</span> <span class="s2">&quot;suite&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>The topology parser ignores these lines. Their job is different:</p>
+<ul>
+<li>the workspace loader reads <code>load("...")</code> lines to extract module path strings such as <code>@babelsuite/runtime</code> and <code>@babelsuite/kafka</code></li>
+<li>those paths are stored as the suite's contracts/module references</li>
+<li>the imported names are a documentation and authoring convention, not parse-time bindings</li>
+</ul>
+<p>In short: write <code>load()</code> lines to declare intent and populate the contracts surface. The topology resolver does not need them to recognize node calls.</p>
+<h2 id="core-families">Core Families<a class="headerlink" href="#core-families" title="Permanent link">&para;</a></h2>
+<h3 id="service"><code>service</code><a class="headerlink" href="#service" title="Permanent link">&para;</a></h3>
+<p>Long-lived background infrastructure in the suite graph.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>service.run</code></td>
+<td><code>service</code></td>
+</tr>
+<tr>
+<td><code>service.wiremock</code></td>
+<td><code>service</code></td>
+</tr>
+<tr>
+<td><code>service.prism</code></td>
+<td><code>service</code></td>
+</tr>
+<tr>
+<td><code>service.custom</code></td>
+<td><code>service</code></td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">db</span>  <span class="o">=</span> <span class="n">service</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">api</span> <span class="o">=</span> <span class="n">service</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">db</span><span class="p">])</span>
+</span></code></pre></div>
+<p>Use <code>service.run</code> for first-party background dependencies such as databases, APIs, caches, and workers.</p>
+<p><code>service(...)</code> is intentionally rejected. Use one of the explicit <code>service.*</code> forms.</p>
+<h3 id="servicemock"><code>service.mock</code><a class="headerlink" href="#servicemock" title="Permanent link">&para;</a></h3>
+<p>Native suite-defined mock surfaces.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>service.mock</code></td>
+<td><code>mock</code></td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">service</span><span class="o">.</span><span class="n">mock</span><span class="p">(</span><span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">api</span><span class="p">])</span>
+</span></code></pre></div>
+<p><code>service.mock</code> is the runtime entrypoint for mocks backed by the suite's <code>api/</code> and <code>mock/</code> folders.</p>
+<p>Compatibility aliases still parse:</p>
+<ul>
+<li><code>mock.serve</code></li>
+</ul>
+<h3 id="task"><code>task</code><a class="headerlink" href="#task" title="Permanent link">&para;</a></h3>
+<p>Short-lived jobs: setup, seeding, migrations, and one-off operations.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task.run</code></td>
+<td><code>task</code></td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">migrate</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;migrate.py&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;python:3.12&quot;</span><span class="p">,</span> <span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">db</span><span class="p">])</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">seed</span>    <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;seed.sh&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;bash:5.2&quot;</span><span class="p">,</span> <span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">migrate</span><span class="p">])</span>
+</span></code></pre></div>
+<p><code>task(...)</code> is intentionally rejected. Use <code>task.run(...)</code>.</p>
+<p><code>task.run</code> resolves <code>file=</code> relative to <code>tasks/</code>, so <code>file="seed.sh"</code> means <code>./tasks/seed.sh</code>.</p>
+<h3 id="test"><code>test</code><a class="headerlink" href="#test" title="Permanent link">&para;</a></h3>
+<p>Verification, smoke checks, browser assertions, and pass/fail validation.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test.run</code></td>
+<td><code>test</code></td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">smoke</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;go/smoke_test.go&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;golang:1.24&quot;</span><span class="p">,</span> <span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">api</span><span class="p">])</span>
+</span></code></pre></div>
+<p><code>test(...)</code> is intentionally rejected. Use <code>test.run(...)</code>.</p>
+<p><code>test.run</code> resolves <code>file=</code> relative to <code>tests/</code>, so <code>file="go/smoke_test.go"</code> means <code>./tests/go/smoke_test.go</code>.</p>
+<h3 id="traffic"><code>traffic</code><a class="headerlink" href="#traffic" title="Permanent link">&para;</a></h3>
+<p>Throughput, concurrency, and latency testing.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>traffic.smoke</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.baseline</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.stress</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.spike</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.soak</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.scalability</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.step</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.wave</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.staged</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.constant_throughput</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.constant_pacing</code></td>
+<td><code>traffic</code></td>
+</tr>
+<tr>
+<td><code>traffic.open_model</code></td>
+<td><code>traffic</code></td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">perf</span> <span class="o">=</span> <span class="n">traffic</span><span class="o">.</span><span class="n">smoke</span><span class="p">(</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">plan</span><span class="o">=</span><span class="s2">&quot;smoke.star&quot;</span><span class="p">,</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">target</span><span class="o">=</span><span class="s2">&quot;http://api:8080&quot;</span><span class="p">,</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">api</span><span class="p">],</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">)</span>
+</span></code></pre></div>
+<p><code>traffic(...)</code> is intentionally rejected. Use one of the explicit <code>traffic.*</code> forms.</p>
+<p>Each <code>traffic.*</code> node must declare:</p>
+<ul>
+<li><code>plan="..."</code> pointing at a file under <code>traffic/</code></li>
+<li><code>target="..."</code> as an absolute base URL for the native HTTP executor</li>
+</ul>
+<p>Recommended meanings:</p>
+<ul>
+<li><code>traffic.smoke</code>: a tiny preflight run before heavier profiles</li>
+<li><code>traffic.baseline</code>: normal expected concurrent user load</li>
+<li><code>traffic.stress</code>: push beyond normal operating range</li>
+<li><code>traffic.spike</code>: sudden step up in user count</li>
+<li><code>traffic.soak</code>: long-running endurance pressure</li>
+<li><code>traffic.scalability</code>: multi-agent or multi-backend expansion checks</li>
+<li><code>traffic.step</code>: increase traffic in discrete blocks</li>
+<li><code>traffic.wave</code>: oscillating high/low cycles</li>
+<li><code>traffic.staged</code>: several named phases with different targets</li>
+<li><code>traffic.constant_throughput</code>: cap requests per second independently of user count</li>
+<li><code>traffic.constant_pacing</code>: fixed interval between iterations per user</li>
+<li><code>traffic.open_model</code>: fixed arrival-rate style workload independent of response time</li>
+</ul>
+<p>These suite-facing entrypoints work with the native traffic plan builders inside <code>traffic/*.star</code>, including:</p>
+<ul>
+<li><code>traffic.plan</code></li>
+<li><code>traffic.user</code></li>
+<li><code>traffic.task</code></li>
+<li><code>traffic.get</code></li>
+<li><code>traffic.post</code></li>
+<li><code>traffic.stage</code></li>
+<li><code>traffic.stages</code></li>
+<li><code>traffic.constant</code></li>
+<li><code>traffic.between</code></li>
+<li><code>traffic.pacing</code></li>
+<li><code>traffic.threshold</code></li>
+</ul>
+<p>Current behavior:</p>
+<ul>
+<li>the selected traffic profile is preserved in topology metadata and execution step payloads</li>
+<li><code>plan=</code> and <code>target=</code> are parsed into a structured traffic spec on the topology node</li>
+<li>the native plan builders define concrete users, tasks, waits, stages, and thresholds</li>
+<li>the native runner executes real guarded HTTP traffic for supported profiles instead of only emitting synthetic traffic logs</li>
+<li>the native runner now reports richer latency and throughput summaries, including <code>min</code>, <code>avg</code>, <code>max</code>, <code>p50</code>, <code>p90</code>, <code>p95</code>, <code>p99</code>, per-stage summaries, compact throughput timelines, and latency histograms</li>
+</ul>
+<p>Native threshold metrics currently supported:</p>
+<ul>
+<li><code>http.error_rate</code></li>
+<li><code>http.min_ms</code></li>
+<li><code>http.avg_ms</code></li>
+<li><code>http.max_ms</code></li>
+<li><code>http.p50_ms</code></li>
+<li><code>http.p90_ms</code></li>
+<li><code>http.p95_ms</code></li>
+<li><code>http.p99_ms</code></li>
+<li><code>latency.min_ms</code></li>
+<li><code>latency.avg_ms</code></li>
+<li><code>latency.max_ms</code></li>
+<li><code>latency.p50_ms</code></li>
+<li><code>latency.p90_ms</code></li>
+<li><code>latency.p95_ms</code></li>
+<li><code>latency.p99_ms</code></li>
+<li><code>throughput.avg_rps</code></li>
+<li><code>throughput.peak_rps</code></li>
+</ul>
+<p>Current limit:</p>
+<ul>
+<li>the native executor currently supports HTTP <code>traffic.get(...)</code> and <code>traffic.post(...)</code> tasks only</li>
+<li><code>traffic.scalability</code> still requires a distributed executor and is rejected by the native runner</li>
+<li>strict safety caps keep the control plane from self-harming with oversized traffic plans</li>
+</ul>
+<h3 id="suite"><code>suite</code><a class="headerlink" href="#suite" title="Permanent link">&para;</a></h3>
+<p>Imports another suite via <code>dependencies.yaml</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suite.run</code></td>
+<td><code>suite</code></td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">payments</span> <span class="o">=</span> <span class="n">suite</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">ref</span><span class="o">=</span><span class="s2">&quot;payments-module&quot;</span><span class="p">,</span> <span class="n">after</span><span class="o">=</span><span class="p">[</span><span class="n">db</span><span class="p">])</span>
+</span></code></pre></div>
+<p><code>suite(...)</code> is intentionally rejected. Use <code>suite.run(...)</code>.</p>
+<p>For nested suite manifests, see <a href="../dependencies/">Dependency Manifests</a>.</p>
+<h2 id="resolver-argument-extraction">Resolver Argument Extraction<a class="headerlink" href="#resolver-argument-extraction" title="Permanent link">&para;</a></h2>
+<p>The parser extracts these topology fields from recognized statements:</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>left-hand assignment (<code>db = ...</code>)</td>
+<td>default node identity</td>
+</tr>
+<tr>
+<td><code>name="..."</code> or <code>id="..."</code> or <code>name_or_id="..."</code></td>
+<td>optional identity override</td>
+</tr>
+<tr>
+<td><code>after=[db, api]</code></td>
+<td>dependency edges</td>
+</tr>
+<tr>
+<td><code>on_failure=[smoke]</code></td>
+<td>failure-trigger ordering edge</td>
+</tr>
+<tr>
+<td><code>file="..."</code></td>
+<td>task/test asset path</td>
+</tr>
+<tr>
+<td><code>plan="..."</code></td>
+<td>traffic plan file</td>
+</tr>
+<tr>
+<td><code>target="..."</code></td>
+<td>native traffic target</td>
+</tr>
+<tr>
+<td><code>ref="..."</code></td>
+<td>nested suite alias for <code>suite.run</code></td>
+</tr>
+<tr>
+<td><code>expect_exit=0</code></td>
+<td>expected process exit code</td>
+</tr>
+<tr>
+<td><code>expect_logs="..."</code> or <code>expect_logs=["...", "..."]</code></td>
+<td>required log/output matches</td>
+</tr>
+<tr>
+<td><code>fail_on_logs="..."</code> or <code>fail_on_logs=["...", "..."]</code></td>
+<td>forbidden log/output matches</td>
+</tr>
+<tr>
+<td><code>continue_on_failure=true</code></td>
+<td>mark the node failed but let normal downstream nodes continue</td>
+</tr>
+</tbody>
+</table>
+<p>The variable name is the default node ID. Use <code>name=</code> or <code>id=</code> only when you need an explicit override.</p>
+<h2 id="artifact-exports">Artifact Exports<a class="headerlink" href="#artifact-exports" title="Permanent link">&para;</a></h2>
+<p>Nodes can attach artifact export rules with chained <code>.export(...)</code> calls:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">smoke</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;go/smoke_test.go&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;golang:1.24&quot;</span><span class="p">)</span> \
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  <span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;coverage/*.xml&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;go-coverage&quot;</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;always&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;cobertura&quot;</span><span class="p">)</span> \
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  <span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;reports/junit.xml&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;go-tests&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;junit&quot;</span><span class="p">)</span> \
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  <span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;logs/crash.dump&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;crash-debug&quot;</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;failure&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Supported export arguments:</p>
+<ul>
+<li>first positional string or <code>path="..."</code> for the artifact path or glob</li>
+<li><code>name="..."</code> for the exported artifact label</li>
+<li><code>on="success" | "failure" | "always"</code> to control when the export should run</li>
+<li><code>format="junit" | "cobertura"</code> for structured test and coverage summaries in the execution UI</li>
+</ul>
+<p>Current behavior:</p>
+<ul>
+<li>export rules are parsed into topology metadata</li>
+<li>export rules flow into execution step payloads</li>
+<li>the local runner registers and reports the rules in step logs</li>
+<li><code>format="junit"</code> exports are summarized into pass/fail counts in the live execution view</li>
+<li><code>format="cobertura"</code> exports are recognized now, and coverage summaries appear once report content is collected</li>
+</ul>
+<p>Current limit:</p>
+<ul>
+<li>this is still not a full artifact collector yet, so raw files from real workloads are not harvested today</li>
+<li>JUnit summaries are synthesized from the step result until a real collector is attached</li>
+</ul>
+<h2 id="evaluation-controls">Evaluation Controls<a class="headerlink" href="#evaluation-controls" title="Permanent link">&para;</a></h2>
+<p><code>task.run(...)</code>, <code>test.run(...)</code>, and other runnable nodes can declare explicit success/failure expectations:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">seed</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">file</span><span class="o">=</span><span class="s2">&quot;seed.sh&quot;</span><span class="p">,</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;bash:5.2&quot;</span><span class="p">,</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">expect_exit</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">expect_logs</span><span class="o">=</span><span class="s2">&quot;Task completed successfully&quot;</span><span class="p">,</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">fail_on_logs</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;FATAL ERROR&quot;</span><span class="p">,</span> <span class="s2">&quot;panic:&quot;</span><span class="p">],</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Supported controls:</p>
+<ul>
+<li><code>expect_exit=&lt;int&gt;</code></li>
+<li><code>expect_logs="..."</code></li>
+<li><code>expect_logs=["...", "..."]</code></li>
+<li><code>fail_on_logs="..."</code></li>
+<li><code>fail_on_logs=["...", "..."]</code></li>
+<li><code>continue_on_failure=true</code></li>
+<li><code>on_failure=[primary]</code></li>
+<li><code>reset_mocks=[billing_mock]</code></li>
+</ul>
+<p>Current behavior:</p>
+<ul>
+<li>exit-code expectations are checked after the runner finishes the step</li>
+<li>log assertions are matched against the emitted step log stream</li>
+<li><code>traffic.*</code> steps still use threshold metrics for latency and error budgets</li>
+<li><code>continue_on_failure=true</code> keeps the suite running even when the node itself finishes as <code>failed</code></li>
+<li><code>on_failure=[primary]</code> activates rollback or contingency nodes only when one of the referenced nodes fails</li>
+<li><code>reset_mocks=[billing_mock]</code> clears persisted mock state before a <code>test.run(...)</code> step starts</li>
+<li>once a hard failure happens, unrelated branches are skipped while activated failure-path branches continue</li>
+</ul>
+<p>Current limit:</p>
+<ul>
+<li>the local and orchestrated runners still use BabelSuite's current simulated task/test execution path, so log assertions match the step log stream rather than a full streamed process stdout/stderr capture</li>
+</ul>
+<h2 id="authoring-rules">Authoring Rules<a class="headerlink" href="#authoring-rules" title="Permanent link">&para;</a></h2>
+<ul>
+<li>one node assignment per logical statement</li>
+<li>backslash continuations are supported for chained <code>.export(...)</code> calls</li>
+<li>the left-hand assignment becomes the default node ID</li>
+<li>use <code>after=[db, api]</code> to declare ordering; omitting it means the node has no dependencies</li>
+<li>use <code>on_failure=[primary]</code> for rollback or contingency branches</li>
+<li>quoted <code>after=["db"]</code> still parses, but identifier references are the preferred style</li>
+<li><code>task.run(file="...")</code> resolves from <code>tasks/</code></li>
+<li><code>test.run(file="...")</code> resolves from <code>tests/</code></li>
+<li><code>traffic.*(plan="...")</code> resolves from <code>traffic/</code></li>
+<li><code>ref=</code> is required for <code>suite.run</code>; the parser errors if it is missing</li>
+<li>duplicate <code>after</code> entries are deduplicated automatically</li>
+<li>dependency targets that do not exist in the graph produce a resolver error</li>
+<li>cycles are rejected</li>
+</ul>
+<h2 id="example-modules-vs-runtime">Example Modules vs Runtime<a class="headerlink" href="#example-modules-vs-runtime" title="Permanent link">&para;</a></h2>
+<p>The runtime library is compiled into BabelSuite. The checked-in example modules under <code>examples/oci-modules/</code> are separate pure Starlark packages built on top of this surface:</p>
+<ul>
+<li><code>examples/oci-modules/kafka</code> -&gt; <code>@babelsuite/kafka</code></li>
+<li><code>examples/oci-modules/postgres</code> -&gt; <code>@babelsuite/postgres</code></li>
+</ul>
+<p>See <a href="../modules/">Modules</a> for those package details.</p>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../modules/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Modules">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Modules
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../mocking/" class="md-footer__link md-footer__link--next" aria-label="Next: Mocking">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Mocking
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.instant", "navigation.tracking", "navigation.footer", "content.code.copy", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.83f73b43.min.js"></script>
+      
+    
+  </body>
+</html>
