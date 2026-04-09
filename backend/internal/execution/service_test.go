@@ -30,6 +30,10 @@ type stubRuntimeStore struct {
 	executions []PersistedExecution
 }
 
+type stubMockResetter struct {
+	suiteIDs []string
+}
+
 func (s stubPlatformSource) Load() (*platform.PlatformSettings, error) {
 	return s.settings, s.err
 }
@@ -40,6 +44,11 @@ func (s *stubRuntimeStore) LoadExecutionRuntime(_ context.Context) ([]PersistedE
 
 func (s *stubRuntimeStore) SaveExecutionRuntime(_ context.Context, executions []PersistedExecution) error {
 	s.executions = append([]PersistedExecution{}, executions...)
+	return nil
+}
+
+func (s *stubMockResetter) ResetSuiteState(_ context.Context, suiteID string) error {
+	s.suiteIDs = append(s.suiteIDs, suiteID)
 	return nil
 }
 
@@ -264,7 +273,7 @@ func TestCreateExecutionRejectsInvalidTopology(t *testing.T) {
 			"broken-suite": {
 				ID:        "broken-suite",
 				Title:     "Broken Suite",
-				SuiteStar: "api = container.run(name=\"api\", after=[\"db\"])\n",
+				SuiteStar: "api = service.run(name=\"api\", after=[\"db\"])\n",
 				Profiles: []suites.ProfileOption{
 					{FileName: "local.yaml", Default: true},
 				},
@@ -293,9 +302,9 @@ func TestCreateExecutionExpandsNestedSuiteTopology(t *testing.T) {
 				Repository: "localhost:5000/core/child-suite",
 				Version:    "workspace",
 				SuiteStar: strings.Join([]string{
-					`db = container.run(name="db")`,
-					`stub = mock.serve(name="stub", after=["db"])`,
-					`api = container.run(name="api", after=["stub"])`,
+					`db = service.run(name="db")`,
+					`stub = service.mock(name="stub", after=["db"])`,
+					`api = service.run(name="api", after=["stub"])`,
 				}, "\n"),
 				Profiles: []suites.ProfileOption{
 					{FileName: "local.yaml", Default: true},
@@ -322,9 +331,9 @@ services:
 				Repository: "localhost:5000/core/parent-suite",
 				Version:    "workspace",
 				SuiteStar: strings.Join([]string{
-					`global = container.run(name="global-db")`,
+					`global = service.run(name="global-db")`,
 					`auth = suite.run(ref="auth-module", after=["global-db"])`,
-					`smoke = scenario.go(name="smoke", after=["auth"])`,
+					`smoke = test.run(name="smoke", file="smoke_test.py", image="python:3.12", after=["auth"])`,
 				}, "\n"),
 				Profiles: []suites.ProfileOption{
 					{FileName: "local.yaml", Default: true},
@@ -437,7 +446,7 @@ func TestRunNodePassesDependencyRuntimeToBackend(t *testing.T) {
 	node := topologyNode{
 		ID:               "auth/api",
 		Name:             "auth/api",
-		Kind:             "container",
+		Kind:             "service",
 		SourceSuiteID:    "child-suite",
 		SourceSuiteTitle: "Child Suite",
 		SourceRepository: "localhost:5000/core/child-suite",
@@ -478,6 +487,305 @@ func TestRunNodePassesDependencyRuntimeToBackend(t *testing.T) {
 	}
 }
 
+func TestRunNodePassesTrafficSpecToBackend(t *testing.T) {
+	service := NewService(suites.NewService())
+	defer service.Close()
+
+	backend := &captureBackend{}
+	suite := &suites.Definition{
+		ID:    "traffic-suite",
+		Title: "Traffic Suite",
+		Topology: []suites.TopologyNode{
+			{ID: "baseline"},
+		},
+	}
+	node := topologyNode{
+		ID:      "baseline",
+		Name:    "baseline",
+		Kind:    "traffic",
+		Variant: "traffic.baseline",
+		Load: &suites.LoadSpec{
+			Variant:  "traffic.baseline",
+			PlanPath: "traffic/smoke.star",
+			Target:   "http://127.0.0.1:18080",
+			Users: []suites.LoadUser{
+				{
+					Name: "probe",
+					Tasks: []suites.LoadTask{
+						{
+							Name: "health",
+							Request: suites.LoadRequest{
+								Method: "GET",
+								Path:   "/health",
+								Name:   "health",
+							},
+						},
+					},
+				},
+			},
+			Stages: []suites.LoadStage{
+				{Duration: time.Second, Users: 1, SpawnRate: 1},
+			},
+		},
+	}
+
+	if err := service.runNode(context.Background(), "run-traffic", suite, "local.yaml", backend, node); err != nil {
+		t.Fatalf("run node: %v", err)
+	}
+	if backend.spec.Load == nil {
+		t.Fatal("expected traffic spec to reach the backend")
+	}
+	if backend.spec.Load.Target != "http://127.0.0.1:18080" {
+		t.Fatalf("expected traffic target to round-trip, got %q", backend.spec.Load.Target)
+	}
+	if backend.spec.Load.PlanPath != "traffic/smoke.star" {
+		t.Fatalf("expected traffic plan path to round-trip, got %q", backend.spec.Load.PlanPath)
+	}
+}
+
+func TestRunNodePassesEvaluationControlsToBackend(t *testing.T) {
+	service := NewService(suites.NewService())
+	defer service.Close()
+
+	backend := &captureBackend{}
+	suite := &suites.Definition{
+		ID:    "evaluation-suite",
+		Title: "Evaluation Suite",
+		Topology: []suites.TopologyNode{
+			{ID: "smoke"},
+		},
+	}
+	expectExit := 0
+	node := topologyNode{
+		ID:      "smoke",
+		Name:    "smoke",
+		Kind:    "test",
+		Variant: "test.run",
+		Evaluation: &suites.StepEvaluation{
+			ExpectExit: &expectExit,
+			ExpectLogs: []string{"Test checks completed"},
+			FailOnLogs: []string{"FATAL ERROR"},
+		},
+	}
+
+	if err := service.runNode(context.Background(), "run-evaluation", suite, "local.yaml", backend, node); err != nil {
+		t.Fatalf("run node: %v", err)
+	}
+	if backend.spec.Evaluation == nil || backend.spec.Evaluation.ExpectExit == nil || *backend.spec.Evaluation.ExpectExit != 0 {
+		t.Fatalf("expected evaluation controls to reach backend, got %+v", backend.spec.Evaluation)
+	}
+	if len(backend.spec.Evaluation.ExpectLogs) != 1 || backend.spec.Evaluation.ExpectLogs[0] != "Test checks completed" {
+		t.Fatalf("expected expect_logs to round-trip, got %+v", backend.spec.Evaluation)
+	}
+	if len(backend.spec.Evaluation.FailOnLogs) != 1 || backend.spec.Evaluation.FailOnLogs[0] != "FATAL ERROR" {
+		t.Fatalf("expected fail_on_logs to round-trip, got %+v", backend.spec.Evaluation)
+	}
+}
+
+func TestCreateExecutionMaterializesJUnitArtifactSummary(t *testing.T) {
+	source := staticSuiteSource{
+		items: map[string]suites.Definition{
+			"artifact-suite": {
+				ID:    "artifact-suite",
+				Title: "Artifact Suite",
+				SuiteStar: strings.Join([]string{
+					`smoke = test.run(file="smoke.py", image="python:3.12").export(path="reports/junit.xml", name="smoke-results", format="junit", on="always")`,
+				}, "\n"),
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+			},
+		},
+	}
+
+	service := NewService(source)
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "artifact-suite",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	waitForExecutionTerminal(t, service, execution.ID)
+
+	record, err := service.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+	if len(record.Artifacts) != 1 {
+		t.Fatalf("expected 1 artifact, got %d", len(record.Artifacts))
+	}
+	if record.Artifacts[0].Format != "junit" {
+		t.Fatalf("expected junit format, got %+v", record.Artifacts[0])
+	}
+	if record.Artifacts[0].TestSummary == nil {
+		t.Fatalf("expected junit summary, got %+v", record.Artifacts[0])
+	}
+	if record.Artifacts[0].TestSummary.Total != 1 || record.Artifacts[0].TestSummary.Passed != 1 {
+		t.Fatalf("expected passing junit summary, got %+v", record.Artifacts[0].TestSummary)
+	}
+}
+
+func TestCreateExecutionContinueOnFailureAllowsDownstreamSteps(t *testing.T) {
+	source := staticSuiteSource{
+		items: map[string]suites.Definition{
+			"continue-suite": {
+				ID:    "continue-suite",
+				Title: "Continue Suite",
+				SuiteStar: strings.Join([]string{
+					`lint = test.run(file="lint.sh", image="bash:5.2", expect_logs="THIS STRING DOES NOT EXIST", continue_on_failure=true)`,
+					`deploy = task.run(file="deploy.sh", image="bash:5.2", after=[lint])`,
+				}, "\n"),
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+			},
+		},
+	}
+
+	service := NewService(source)
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "continue-suite",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	snapshot := waitForExecutionTerminal(t, service, execution.ID)
+	if snapshot.Status != "Healthy" {
+		t.Fatalf("expected healthy execution with continue_on_failure, got %q", snapshot.Status)
+	}
+
+	statuses := map[string]string{}
+	for _, step := range snapshot.Steps {
+		statuses[step.ID] = step.Status
+	}
+	if statuses["lint"] != "failed" {
+		t.Fatalf("expected lint to fail softly, got %q", statuses["lint"])
+	}
+	if statuses["deploy"] != "healthy" {
+		t.Fatalf("expected deploy to continue and succeed, got %q", statuses["deploy"])
+	}
+
+	record, err := service.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+	if !containsExecutionEventText(record.Events, "continue_on_failure is enabled") {
+		t.Fatalf("expected continue_on_failure event in %+v", record.Events)
+	}
+}
+
+func TestCreateExecutionRunsFailureHooksAndSkipsNormalDownstreamSteps(t *testing.T) {
+	source := staticSuiteSource{
+		items: map[string]suites.Definition{
+			"rollback-suite": {
+				ID:    "rollback-suite",
+				Title: "Rollback Suite",
+				SuiteStar: strings.Join([]string{
+					`primary = task.run(file="deploy.sh", image="bash:5.2", expect_logs="THIS STRING DOES NOT EXIST")`,
+					`health = test.run(file="verify.sh", image="bash:5.2", after=[primary])`,
+					`rollback = task.run(file="rollback.sh", image="bash:5.2", on_failure=[primary])`,
+					`notify = task.run(file="notify.sh", image="bash:5.2", after=[rollback])`,
+				}, "\n"),
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+			},
+		},
+	}
+
+	service := NewService(source)
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "rollback-suite",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	snapshot := waitForExecutionTerminal(t, service, execution.ID)
+	if snapshot.Status != "Failed" {
+		t.Fatalf("expected failed execution, got %q", snapshot.Status)
+	}
+
+	statuses := map[string]string{}
+	for _, step := range snapshot.Steps {
+		statuses[step.ID] = step.Status
+	}
+	if statuses["primary"] != "failed" {
+		t.Fatalf("expected primary to fail, got %q", statuses["primary"])
+	}
+	if statuses["health"] != "skipped" {
+		t.Fatalf("expected health to be skipped, got %q", statuses["health"])
+	}
+	if statuses["rollback"] != "healthy" {
+		t.Fatalf("expected rollback to run, got %q", statuses["rollback"])
+	}
+	if statuses["notify"] != "healthy" {
+		t.Fatalf("expected notify to run after rollback, got %q", statuses["notify"])
+	}
+	if snapshot.SkippedSteps != 1 {
+		t.Fatalf("expected 1 skipped step, got %d", snapshot.SkippedSteps)
+	}
+}
+
+func TestCreateExecutionResetsMockStateBeforeTestRun(t *testing.T) {
+	source := staticSuiteSource{
+		items: map[string]suites.Definition{
+			"reset-suite": {
+				ID:    "reset-suite",
+				Title: "Reset Suite",
+				SuiteStar: strings.Join([]string{
+					`billing_mock = service.mock()`,
+					`dirty_task = task.run(file="mess_up_state.sh", image="bash:5.2", after=[billing_mock])`,
+					`clean_test = test.run(file="verify_billing.py", image="python:3.12", reset_mocks=[billing_mock], after=[dirty_task])`,
+				}, "\n"),
+				Profiles: []suites.ProfileOption{
+					{FileName: "local.yaml", Default: true},
+				},
+			},
+		},
+	}
+
+	service := NewService(source)
+	resetter := &stubMockResetter{}
+	service.ConfigureMockResetter(resetter)
+	defer service.Close()
+
+	execution, err := service.CreateExecution(context.Background(), CreateRequest{
+		SuiteID: "reset-suite",
+		Profile: "local.yaml",
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	snapshot := waitForExecutionTerminal(t, service, execution.ID)
+	if snapshot.Status != "Healthy" {
+		t.Fatalf("expected healthy execution, got %q", snapshot.Status)
+	}
+	if len(resetter.suiteIDs) != 1 || resetter.suiteIDs[0] != "reset-suite" {
+		t.Fatalf("expected mock reset for reset-suite, got %+v", resetter.suiteIDs)
+	}
+
+	record, err := service.GetExecution(execution.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+	if !containsExecutionEventText(record.Events, "Resetting mock state") {
+		t.Fatalf("expected reset_mocks event in %+v", record.Events)
+	}
+}
+
 func TestCreateExecutionUsesPersistedSuiteProfileSet(t *testing.T) {
 	profileService := profiles.NewService(suites.NewService(), profiles.NewMemoryStore())
 	if _, err := profileService.CreateProfile("payment-suite", profiles.UpsertRequest{
@@ -513,6 +821,32 @@ func containsTopologyDependency(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func containsExecutionEventText(events []ExecutionEvent, needle string) bool {
+	for _, event := range events {
+		if strings.Contains(event.Text, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForExecutionTerminal(t *testing.T, service *Service, executionID string) Snapshot {
+	t.Helper()
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, ok := service.snapshotExecution(executionID)
+		if ok && snapshot.RunningSteps == 0 && snapshot.PendingSteps == 0 && snapshot.Status != "Booting" {
+			return snapshot
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+
+	snapshot, _ := service.snapshotExecution(executionID)
+	t.Fatalf("timed out waiting for execution %s to finish; last snapshot: %+v", executionID, snapshot)
+	return Snapshot{}
 }
 
 func TestCreateExecutionSyncsObservers(t *testing.T) {
@@ -647,20 +981,20 @@ func TestStorefrontExecutionUsesScenarioOnlyTopology(t *testing.T) {
 	for {
 		select {
 		case snapshot := <-observer.events:
-			foundScenario := false
+			foundTest := false
 			for _, step := range snapshot.Steps {
-				if step.Kind == "load" {
-					t.Fatal("did not expect storefront execution to include a load step")
+				if step.Kind == "traffic" {
+					t.Fatal("did not expect storefront execution to include a traffic step")
 				}
-				if step.Kind == "scenario" && step.ID == "playwright-checkout" {
-					foundScenario = true
+				if step.Kind == "test" && step.ID == "playwright_checkout" {
+					foundTest = true
 				}
 			}
-			if foundScenario {
+			if foundTest {
 				return
 			}
 		case <-deadline:
-			t.Fatal("timed out waiting for storefront scenario step to appear in execution snapshot")
+			t.Fatal("timed out waiting for storefront test step to appear in execution snapshot")
 		}
 	}
 }

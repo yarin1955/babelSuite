@@ -50,6 +50,7 @@ func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger
 
 	startedAt := time.Now().UTC().Add(-startedAgo)
 	events := buildHistoricalEvents(suite, topology, status, profile, meta)
+	stepStatus, completed := buildStepStatus(topology, events)
 
 	state := &executionState{
 		record: ExecutionRecord{
@@ -68,12 +69,9 @@ func (s *Service) seedHistoricalExecution(executionID, suiteID, profile, trigger
 			Message:   meta.Message,
 			Events:    events,
 		},
-		total:     len(topology),
-		completed: len(topology),
-	}
-
-	if status == "Failed" {
-		state.completed = max(len(topology)-1, 0)
+		total:      len(topology),
+		completed:  completed,
+		stepStatus: stepStatus,
 	}
 
 	s.executions[executionID] = state

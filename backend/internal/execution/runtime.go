@@ -20,6 +20,12 @@ func NewService(source suiteSource, observers ...Observer) *Service {
 	return NewServiceWithPlatform(source, nil, observers...)
 }
 
+func (s *Service) ConfigureMockResetter(resetter mockResetter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mockResetter = resetter
+}
+
 func (s *Service) Close() {
 	if s.signals != nil {
 		s.signals.shutdown()
@@ -76,6 +82,7 @@ func (s *Service) GetExecution(executionID string) (*ExecutionRecord, error) {
 	record := item.record
 	record.Duration = s.durationLocked(item)
 	record.Events = append([]ExecutionEvent{}, item.record.Events...)
+	record.Artifacts = cloneExecutionArtifacts(item.record.Artifacts)
 	record.Suite = cloneExecutionSuite(item.record.Suite)
 	return &record, nil
 }
@@ -132,9 +139,14 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 			Branch:    meta.Branch,
 			Message:   meta.Message,
 			Events:    []ExecutionEvent{},
+			Artifacts: []ExecutionArtifact{},
 		},
+		stepStatus: make(map[string]string, len(resolved.Nodes)),
 	}
 	state.total = len(resolved.Nodes)
+	for _, node := range resolved.Nodes {
+		state.stepStatus[node.ID] = "pending"
+	}
 
 	s.mu.Lock()
 	s.executions[executionID] = state
@@ -197,6 +209,15 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 func (s *Service) runNode(ctx context.Context, executionID string, suite *suites.Definition, profile string, backend runner.Backend, node topologyNode) error {
 	stepCtx, stepSpan, stepStartedAt := s.beginStepObservation(s.stepContext(executionID), executionID, suite, profile, node)
 
+	if reason, skip := s.shouldSkipNode(executionID, suite, node); skip {
+		finished := s.markNodeSkipped(executionID, node.ID, reason)
+		s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, nil)
+		if finished {
+			s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
+		}
+		return nil
+	}
+
 	s.appendEvent(executionID, ExecutionEvent{
 		ID:        node.ID + "-start",
 		Source:    node.ID,
@@ -205,6 +226,27 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		Status:    "running",
 		Level:     "info",
 	})
+
+	if err := s.resetMockState(stepCtx, executionID, suite, node); err != nil {
+		message := fmt.Sprintf("[%s] Mock reset failed: %v", node.Name, err)
+		finished := s.markNodeFailed(executionID, node.ID, message, !node.ContinueOnFailure)
+		s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, err)
+		if finished {
+			s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
+		}
+		if node.ContinueOnFailure {
+			s.appendEvent(executionID, ExecutionEvent{
+				ID:        node.ID + "-continued",
+				Source:    node.ID,
+				Timestamp: s.nextTimestamp(executionID),
+				Text:      fmt.Sprintf("[%s] continue_on_failure is enabled; downstream nodes may continue.", node.Name),
+				Status:    "failed",
+				Level:     "warn",
+			})
+			return nil
+		}
+		return err
+	}
 
 	err := backend.Run(stepCtx, runner.StepSpec{
 		ExecutionID:      executionID,
@@ -229,43 +271,98 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		StepIndex:        node.Order,
 		TotalSteps:       len(suite.Topology),
 		LeaseTTL:         8 * time.Second,
+		Load:             suitesCloneLoadSpec(node.Load),
+		Evaluation:       cloneNodeEvaluation(node.Evaluation),
+		OnFailure:        append([]string{}, node.OnFailure...),
+		ArtifactExports:  cloneNodeArtifactExports(node.ArtifactExports),
 		Node: runner.StepNode{
 			ID:        node.ID,
 			Name:      node.Name,
 			Kind:      node.Kind,
+			Variant:   node.Variant,
 			DependsOn: append([]string{}, node.DependsOn...),
 		},
 	}, func(line logstream.Line) {
 		s.appendRunnerLog(executionID, node.ID, line)
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) && s.executionHasFailed(executionID) && !s.nodeBelongsToFailurePath(executionID, suite, node.ID) {
+			finished := s.markNodeSkipped(executionID, node.ID, fmt.Sprintf("[%s] Canceled after a fatal failure in another node.", node.Name))
+			s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, nil)
+			if finished {
+				s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
+			}
+			return nil
+		}
 		if errors.Is(err, context.Canceled) {
-			s.failExecution(executionID, node.ID, fmt.Sprintf("[%s] Execution canceled before the node became healthy.", node.Name))
+			finished := s.markNodeFailed(executionID, node.ID, fmt.Sprintf("[%s] Execution canceled before the node became healthy.", node.Name), true)
 			s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, context.Canceled)
-			s.finishExecutionObservation(executionID, context.Canceled)
+			if finished {
+				s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
+			}
 			return context.Canceled
 		}
-		s.failExecution(executionID, node.ID, fmt.Sprintf("[%s] Runner failed: %v", node.Name, err))
+		message := fmt.Sprintf("[%s] Runner failed: %v", node.Name, err)
+		finished := s.markNodeFailed(executionID, node.ID, message, !node.ContinueOnFailure)
+		s.registerStepArtifacts(executionID, node, "failed")
 		s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, err)
-		s.finishExecutionObservation(executionID, err)
+		if finished {
+			s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
+		}
+		if node.ContinueOnFailure {
+			s.appendEvent(executionID, ExecutionEvent{
+				ID:        node.ID + "-continued",
+				Source:    node.ID,
+				Timestamp: s.nextTimestamp(executionID),
+				Text:      fmt.Sprintf("[%s] continue_on_failure is enabled; downstream nodes may continue.", node.Name),
+				Status:    "failed",
+				Level:     "warn",
+			})
+			return nil
+		}
 		return err
 	}
 
-	finished := s.markNodeComplete(executionID)
-	s.appendEvent(executionID, ExecutionEvent{
-		ID:        node.ID + "-healthy",
-		Source:    node.ID,
-		Timestamp: s.nextTimestamp(executionID),
-		Text:      buildHealthyMessage(node, suite, profile),
-		Status:    "healthy",
-		Level:     "info",
-	})
+	finished := s.markNodeHealthy(executionID, node.ID, buildHealthyMessage(node, suite, profile))
+	s.registerStepArtifacts(executionID, node, "healthy")
 	s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, nil)
 	if finished {
-		s.finishExecutionObservation(executionID, nil)
+		s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
 	}
 
 	return nil
+}
+
+func cloneNodeArtifactExports(input []suites.ArtifactExport) []runner.ArtifactExport {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make([]runner.ArtifactExport, len(input))
+	for index, item := range input {
+		output[index] = runner.ArtifactExport{
+			Path:   item.Path,
+			Name:   item.Name,
+			On:     item.On,
+			Format: item.Format,
+		}
+	}
+	return output
+}
+
+func cloneNodeEvaluation(input *suites.StepEvaluation) *suites.StepEvaluation {
+	if input == nil {
+		return nil
+	}
+
+	output := *input
+	output.ExpectLogs = append([]string{}, input.ExpectLogs...)
+	output.FailOnLogs = append([]string{}, input.FailOnLogs...)
+	if input.ExpectExit != nil {
+		value := *input.ExpectExit
+		output.ExpectExit = &value
+	}
+	return &output
 }
 
 func cloneRuntimeMap(input map[string]string) map[string]string {
@@ -286,6 +383,12 @@ func (s *Service) appendEvent(executionID string, event ExecutionEvent) {
 	if item == nil {
 		s.mu.Unlock()
 		return
+	}
+	s.ensureStepStatusLocked(item)
+	if source := strings.TrimSpace(event.Source); source != "" && isKnownStepStatus(event.Status) {
+		if _, exists := item.stepStatus[source]; exists {
+			item.stepStatus[source] = event.Status
+		}
 	}
 
 	item.record.Events = append(item.record.Events, event)
@@ -318,67 +421,6 @@ func (s *Service) nextTimestamp(executionID string) string {
 
 	second := len(item.record.Events)
 	return fmt.Sprintf("%02d:%02d", second/60, second%60)
-}
-
-func (s *Service) markNodeComplete(executionID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.executions[executionID]
-	if item == nil {
-		return false
-	}
-
-	item.completed++
-	item.record.UpdatedAt = time.Now().UTC()
-	if item.completed >= item.total {
-		item.record.Status = "Healthy"
-		go s.persistExecutionRuntime()
-		return true
-	}
-	go s.persistExecutionRuntime()
-	return false
-}
-
-func (s *Service) failExecution(executionID, source, message string) {
-	s.mu.Lock()
-	item := s.executions[executionID]
-	if item == nil {
-		s.mu.Unlock()
-		return
-	}
-	if item.record.Status == "Failed" {
-		s.mu.Unlock()
-		return
-	}
-
-	item.record.Status = "Failed"
-	item.record.UpdatedAt = time.Now().UTC()
-	event := ExecutionEvent{
-		ID:        source + "-failed",
-		Source:    source,
-		Timestamp: fmt.Sprintf("%02d:%02d", len(item.record.Events)/60, len(item.record.Events)%60),
-		Text:      message,
-		Status:    "failed",
-		Level:     "error",
-	}
-	item.record.Events = append(item.record.Events, event)
-	streamEvent := StreamEvent{
-		ID:              len(item.record.Events),
-		ExecutionID:     executionID,
-		ExecutionStatus: item.record.Status,
-		Duration:        s.durationLocked(item),
-		UpdatedAt:       item.record.UpdatedAt,
-		Event:           event,
-	}
-	subscribers := collectSubscribers(s.subs[executionID])
-	s.mu.Unlock()
-
-	s.queue.CancelGroup(executionID)
-	s.publish(streamEvent, subscribers)
-	s.appendLog(executionID, event)
-	s.persistExecutionRuntime()
-	s.syncObservers(executionID)
 }
 
 func (s *Service) syncObservers(executionID string) {

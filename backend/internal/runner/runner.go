@@ -5,13 +5,22 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
+	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 type StepNode struct {
 	ID        string
 	Name      string
 	Kind      string
+	Variant   string
 	DependsOn []string
+}
+
+type ArtifactExport struct {
+	Path   string
+	Name   string
+	On     string
+	Format string
 }
 
 type StepSpec struct {
@@ -37,6 +46,10 @@ type StepSpec struct {
 	StepIndex        int
 	TotalSteps       int
 	LeaseTTL         time.Duration
+	Load             *suites.LoadSpec
+	Evaluation       *suites.StepEvaluation
+	OnFailure        []string
+	ArtifactExports  []ArtifactExport
 	Node             StepNode
 }
 

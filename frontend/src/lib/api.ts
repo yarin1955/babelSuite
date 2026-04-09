@@ -233,7 +233,7 @@ export interface ExecutionOverviewStep {
   id: string
   name: string
   kind: string
-  status: 'pending' | 'running' | 'healthy' | 'failed'
+  status: 'pending' | 'running' | 'healthy' | 'failed' | 'skipped'
   dependsOn: string[]
   level: number
 }
@@ -254,6 +254,7 @@ export interface ExecutionOverviewItem {
   runningSteps: number
   healthySteps: number
   failedSteps: number
+  skippedSteps: number
   pendingSteps: number
   progressRatio: number
   steps: ExecutionOverviewStep[]
@@ -270,6 +271,7 @@ export interface ExecutionOverview {
     runningSteps: number
     healthySteps: number
     failedSteps: number
+    skippedSteps: number
     pendingSteps: number
   }
   executions: ExecutionOverviewItem[]
@@ -280,8 +282,38 @@ export interface ExecutionEventRecord {
   source: string
   timestamp: string
   text: string
-  status: 'pending' | 'running' | 'healthy' | 'failed'
+  status: 'pending' | 'running' | 'healthy' | 'failed' | 'skipped'
   level: 'info' | 'warn' | 'error'
+}
+
+export interface ExecutionArtifactTestSummary {
+  total: number
+  passed: number
+  failures: number
+  errors: number
+  skipped: number
+  durationSeconds?: number
+}
+
+export interface ExecutionArtifactCoverageSummary {
+  lineRate?: number
+  branchRate?: number
+  linesCovered?: number
+  linesValid?: number
+  branchesCovered?: number
+  branchesValid?: number
+}
+
+export interface ExecutionArtifactRecord {
+  id: string
+  stepId: string
+  stepName: string
+  path: string
+  name: string
+  on?: string
+  format?: string
+  testSummary?: ExecutionArtifactTestSummary
+  coverageSummary?: ExecutionArtifactCoverageSummary
 }
 
 export interface ExecutionRecord {
@@ -310,6 +342,7 @@ export interface ExecutionRecord {
   branch: string
   message: string
   events: ExecutionEventRecord[]
+  artifacts?: ExecutionArtifactRecord[]
 }
 
 export interface SuiteFolderEntry {
@@ -329,7 +362,10 @@ export interface SuiteTopologyNode {
   id: string
   name: string
   kind: string
+  variant?: string
   dependsOn: string[]
+  resetMocks?: string[]
+  artifactExports?: Array<{ path: string; name?: string; on?: string; format?: string }>
   level: number
 }
 
@@ -421,6 +457,7 @@ export interface SuiteDefinition {
   owner: string
   provider: string
   version: string
+  labels?: Record<string, string>
   tags: string[]
   description: string
   modules: string[]

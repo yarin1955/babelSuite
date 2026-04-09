@@ -114,7 +114,8 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 	}
 
 	suiteHandler := suites.NewHandler(profileService, jwtSvc)
-	mockingHandler := mocking.NewHandler(mocking.NewService(suiteService))
+	mockingService := mocking.NewService(suiteService)
+	mockingHandler := mocking.NewHandler(mockingService)
 	profileHandler := profiles.NewHandler(profileService, jwtSvc)
 	catalogReader := catalog.WithRedis(
 		catalog.NewService(suiteService, platformStore),
@@ -127,6 +128,7 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 	agentRegistry := agent.NewRegistry(agentRuntimeStore)
 	executionWatcher := enginewatchers.NewExecutionWatcher(engineStore)
 	executionService := execution.NewServiceWithPlatform(profileService, platformStore, executionWatcher)
+	executionService.ConfigureMockResetter(mockingService)
 	if runtimeStore, ok := primaryStore.(execution.RuntimeStore); ok {
 		executionService.ConfigureRuntimeStore(runtimeStore)
 	}
