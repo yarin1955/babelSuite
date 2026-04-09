@@ -21,7 +21,7 @@
     "score": 88,
     "pullCommand": "babelctl run localhost:5000/platform/fleet-control-room:v1.8.0",
     "forkCommand": "babelctl fork localhost:5000/platform/fleet-control-room:v1.8.0 ./fleet-lab",
-    "suiteStar": "load(\"@babelsuite/redis\", \"redis\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nredis_cache = container.run(name=\"redis-cache\")\ntelemetry_mock = mock(name=\"telemetry-mock\", after=[\"redis-cache\"])\nseed_routes = script(name=\"seed-routes\", after=[\"redis-cache\"])\ndispatcher_api = container.run(name=\"dispatcher-api\", after=[\"redis-cache\", \"seed-routes\"])\nplanner = container.run(name=\"route-planner\", after=[\"dispatcher-api\"])\ncontrol_room = container.run(name=\"control-room-ui\", after=[\"dispatcher-api\", \"route-planner\"])\nfleet_smoke = scenario(name=\"fleet-smoke\", after=[\"control-room-ui\", \"telemetry-mock\"])",
+    "suiteStar": "load(\"@babelsuite/redis\", \"redis\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nredis_cache = service.run()\ntelemetry_mock = service.mock(after=[redis_cache])\nseed_routes = task.run(file=\"seed_routes.sh\", image=\"bash:5.2\", after=[redis_cache])\ndispatcher_api = service.run(after=[redis_cache, seed_routes])\nplanner = service.run(after=[dispatcher_api])\ncontrol_room = service.run(after=[dispatcher_api, planner])\nfleet_smoke = test.run(file=\"fleet_smoke.py\", image=\"python:3.12\", after=[control_room, telemetry_mock])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -74,7 +74,7 @@
         ]
       },
       {
-        "name": "scripts",
+        "name": "tasks",
         "role": "Core",
         "description": "Redis seeders and topology bootstrap hooks.",
         "files": [
@@ -83,7 +83,7 @@
         ]
       },
       {
-        "name": "scenarios",
+        "name": "tests",
         "role": "Core",
         "description": "Control room smoke runs and degraded GPS scenarios.",
         "files": [
@@ -190,22 +190,22 @@
         "content": "name: Staging\ndescription: Shared staging identities and realistic routing backends.\ndefault: false\nruntime:\n  suite: fleet-control-room\n  repository: localhost:5000/platform/fleet-control-room\n  profileFile: staging.yaml\nmodules:\n    - redis\n    - grpc\n    - prometheus\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
       },
       {
-        "path": "scenarios/fleet_smoke.py",
+        "path": "tests/fleet_smoke.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
       },
       {
-        "path": "scenarios/route_degradation.py",
+        "path": "tests/route_degradation.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
       },
       {
-        "path": "scripts/prime_cache.py",
+        "path": "tasks/prime_cache.py",
         "language": "python",
         "content": "from pathlib import Path\n\nSUITE_ID = \"fleet-control-room\"\nSCRIPT_NAME = \"prime_cache.py\"\n\ndef main() -\u003e None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
       },
       {
-        "path": "scripts/seed_routes.sh",
+        "path": "tasks/seed_routes.sh",
         "language": "bash",
         "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_routes.sh for Fleet Control Room\"\necho \"resolved modules: redis, grpc, prometheus\"\n"
       }
@@ -358,7 +358,7 @@
     "score": 91,
     "pullCommand": "babelctl run localhost:5000/security/identity-broker:v3.0.2",
     "forkCommand": "babelctl fork localhost:5000/security/identity-broker:v3.0.2 ./identity-broker-local",
-    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nbroker_db = container.run(name=\"broker-db\")\noidc_mock = mock(name=\"oidc-mock\", after=[\"broker-db\"])\nsaml_mock = mock(name=\"saml-mock\", after=[\"broker-db\"])\nseed_realms = script(name=\"seed-realms\", after=[\"broker-db\"])\nbroker_api = container.run(name=\"broker-api\", after=[\"broker-db\", \"oidc-mock\", \"saml-mock\", \"seed-realms\"])\nsession_worker = container.run(name=\"session-worker\", after=[\"broker-api\"])\nlogin_smoke = scenario(name=\"login-smoke\", after=[\"broker-api\", \"session-worker\"])",
+    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nbroker_db = service.run()\noidc_mock = service.mock(after=[broker_db])\nsaml_mock = service.mock(after=[broker_db])\nseed_realms = task.run(file=\"seed_realms.ts\", image=\"node:22\", after=[broker_db])\nbroker_api = service.run(after=[broker_db, oidc_mock, saml_mock, seed_realms])\nsession_worker = service.run(after=[broker_api])\nlogin_smoke = test.run(file=\"login_smoke.py\", image=\"python:3.12\", after=[broker_api, session_worker])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -410,7 +410,7 @@
         ]
       },
       {
-        "name": "scripts",
+        "name": "tasks",
         "role": "Core",
         "description": "Realm seeders and certificate bootstrap helpers.",
         "files": [
@@ -419,7 +419,7 @@
         ]
       },
       {
-        "name": "scenarios",
+        "name": "tests",
         "role": "Core",
         "description": "Login smoke suites and expired-session validation.",
         "files": [
@@ -521,22 +521,22 @@
         "content": "name: Local Debug\ndescription: Relaxed certificates and hot-reloadable providers.\ndefault: true\nruntime:\n  suite: identity-broker\n  repository: localhost:5000/security/identity-broker\n  profileFile: local.yaml\nmodules:\n    - vault\n    - postgres\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
       },
       {
-        "path": "scenarios/expired_session.py",
+        "path": "tests/expired_session.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
       },
       {
-        "path": "scenarios/login_smoke.py",
+        "path": "tests/login_smoke.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
       },
       {
-        "path": "scripts/rotate_certs.sh",
+        "path": "tasks/rotate_certs.sh",
         "language": "bash",
         "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping rotate_certs.sh for Identity Broker\"\necho \"resolved modules: vault, postgres\"\n"
       },
       {
-        "path": "scripts/seed_realms.ts",
+        "path": "tasks/seed_realms.ts",
         "language": "typescript",
         "content": "const suiteId = \"identity-broker\"\nconst scriptName = \"seed_realms.ts\"\n\nconsole.log(`running ${scriptName} for ${suiteId}`)\n"
       }
@@ -655,7 +655,7 @@
     "score": 94,
     "pullCommand": "babelctl run localhost:5000/core-platform/payment-suite:v2.4.1",
     "forkCommand": "babelctl fork localhost:5000/core-platform/payment-suite:v2.4.1 ./payment-suite-local",
-    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\n# Pre-registered Starlark Modules return strict structs.\ndb = container.run(name=\"db\")\nkafka = container.run(name=\"kafka\")\nstripe_mock = mock(name=\"stripe-mock\", after=[\"db\"])\nbootstrap_topics = script(name=\"bootstrap-topics\", after=[\"kafka\"])\nmigrations = script(name=\"migrations\", after=[\"db\"])\npayment_gateway = container.run(name=\"payment-gateway\", after=[\"db\", \"stripe-mock\", \"migrations\"])\nfraud_worker = container.run(name=\"fraud-worker\", after=[\"kafka\", \"bootstrap-topics\", \"payment-gateway\"])\ncheckout_smoke = scenario(name=\"checkout-smoke\", after=[\"payment-gateway\", \"fraud-worker\"])",
+    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\n# Pre-registered Starlark Modules return strict structs.\ndb = service.run()\nkafka = service.run()\nstripe_mock = service.mock(after=[db])\nbootstrap_topics = task.run(file=\"bootstrap_topics.sh\", image=\"bash:5.2\", after=[kafka])\nmigrations = task.run(file=\"migrate.py\", image=\"python:3.12\", after=[db])\npayment_gateway = service.run(after=[db, stripe_mock, migrations])\nfraud_worker = service.run(after=[kafka, bootstrap_topics, payment_gateway])\ncheckout_smoke = test.run(file=\"checkout_smoke.py\", image=\"python:3.12\", after=[payment_gateway, fraud_worker])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -708,7 +708,7 @@
         ]
       },
       {
-        "name": "scripts",
+        "name": "tasks",
         "role": "Core",
         "description": "Boot-time migrations and broker preparation scripts.",
         "files": [
@@ -717,7 +717,7 @@
         ]
       },
       {
-        "name": "scenarios",
+        "name": "tests",
         "role": "Core",
         "description": "Smoke tests and attack-path executions.",
         "files": [
@@ -824,22 +824,22 @@
         "content": "name: Year-End\ndescription: Ledger rollover fixtures, end-of-year reporting toggles, and settlement edge cases.\ndefault: false\nruntime:\n  suite: payment-suite\n  repository: localhost:5000/core-platform/payment-suite\n  profileFile: year.yaml\nmodules:\n    - postgres\n    - kafka\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
       },
       {
-        "path": "scenarios/checkout_smoke.py",
+        "path": "tests/checkout_smoke.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
       },
       {
-        "path": "scenarios/refund_regression.py",
+        "path": "tests/refund_regression.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
       },
       {
-        "path": "scripts/bootstrap_topics.sh",
+        "path": "tasks/bootstrap_topics.sh",
         "language": "bash",
         "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping bootstrap_topics.sh for Payment Suite\"\necho \"resolved modules: postgres, kafka\"\n"
       },
       {
-        "path": "scripts/migrate.py",
+        "path": "tasks/migrate.py",
         "language": "python",
         "content": "from pathlib import Path\n\nSUITE_ID = \"payment-suite\"\nSCRIPT_NAME = \"migrate.py\"\n\ndef main() -\u003e None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
       }
@@ -1108,7 +1108,7 @@
     "score": 92,
     "pullCommand": "babelctl run localhost:5000/qa/returns-control-plane:v1.0.0",
     "forkCommand": "babelctl fork localhost:5000/qa/returns-control-plane:v1.0.0 ./returns-control-plane-local",
-    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nreturns_db = container.run(name=\"returns-db\")\nbroker = container.run(name=\"kafka\")\nrefunds_mock = mock(name=\"refunds-mock\", after=[\"returns-db\"])\npricing_mock = mock(name=\"pricing-mock\", after=[\"returns-db\"])\nevents_mock = mock(name=\"events-mock\", after=[\"kafka\"])\nseed_topics = script(name=\"seed-topics\", after=[\"kafka\"])\nseed_routes = script(name=\"seed-routes\", after=[\"returns-db\", \"refunds-mock\", \"pricing-mock\"])\nreturns_api = container.run(name=\"returns-api\", after=[\"returns-db\", \"refunds-mock\", \"pricing-mock\", \"seed-routes\"])\nrefund_worker = container.run(name=\"refund-worker\", after=[\"kafka\", \"returns-api\", \"events-mock\", \"seed-topics\"])\nreturns_smoke = scenario(name=\"returns-smoke\", after=[\"returns-api\", \"refund-worker\"])",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nreturns_db = service.run()\nbroker = service.run()\nrefunds_mock = service.mock(after=[returns_db])\npricing_mock = service.mock(after=[returns_db])\nevents_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nseed_routes = task.run(file=\"seed_routes.ts\", image=\"node:22\", after=[returns_db, refunds_mock, pricing_mock])\nreturns_api = service.run(after=[returns_db, refunds_mock, pricing_mock, seed_routes])\nrefund_worker = service.run(after=[broker, returns_api, events_mock, seed_topics])\nreturns_smoke = test.run(file=\"returns_smoke.py\", image=\"python:3.12\", after=[returns_api, refund_worker])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -1165,7 +1165,7 @@
         ]
       },
       {
-        "name": "scripts",
+        "name": "tasks",
         "role": "Core",
         "description": "Bootstrap hooks for Kafka topics and refund routing tables.",
         "files": [
@@ -1174,7 +1174,7 @@
         ]
       },
       {
-        "name": "scenarios",
+        "name": "tests",
         "role": "Core",
         "description": "Smoke and manual-review scenarios for reverse logistics flows.",
         "files": [
@@ -1301,22 +1301,22 @@
         "content": "name: Peak Season\ndescription: High-volume return traffic with fraud screening and worker backpressure.\ndefault: false\nruntime:\n  suite: returns-control-plane\n  repository: localhost:5000/qa/returns-control-plane\n  profileFile: peak.yaml\nmodules:\n    - postgres\n    - kafka\n    - grpc\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
       },
       {
-        "path": "scenarios/manual_review.spec.ts",
+        "path": "tests/manual_review.spec.ts",
         "language": "typescript",
         "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"manual review.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Returns Control Plane\")).toBeVisible()\n})\n"
       },
       {
-        "path": "scenarios/returns_smoke.py",
+        "path": "tests/returns_smoke.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"Returns Control Plane\"\n    assert \"returns-control-plane\" in \"localhost:5000/qa/returns-control-plane\"\n"
       },
       {
-        "path": "scripts/seed_routes.ts",
+        "path": "tasks/seed_routes.ts",
         "language": "typescript",
         "content": "const suiteId = \"returns-control-plane\"\nconst scriptName = \"seed_routes.ts\"\n\nconsole.log(`running ${scriptName} for ${suiteId}`)\n"
       },
       {
-        "path": "scripts/seed_topics.sh",
+        "path": "tasks/seed_topics.sh",
         "language": "bash",
         "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_topics.sh for Returns Control Plane\"\necho \"resolved modules: postgres, kafka, grpc\"\n"
       }
@@ -1726,7 +1726,7 @@
     "score": 87,
     "pullCommand": "babelctl run localhost:5000/enterprise-integration/soap-claims-hub:v0.9.0",
     "forkCommand": "babelctl fork localhost:5000/enterprise-integration/soap-claims-hub:v0.9.0 ./soap-claims-hub-local",
-    "suiteStar": "load(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nclaims_mock = mock(name=\"claims-mock\")\nseed_reference_data = script(name=\"seed-reference-data\", after=[\"claims-mock\"])\nclaims_bridge = container.run(name=\"claims-bridge\", after=[\"claims-mock\", \"seed-reference-data\"])\nclaims_smoke = scenario(name=\"claims-smoke\", after=[\"claims-bridge\"])",
+    "suiteStar": "load(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nclaims_mock = service.mock()\nseed_reference_data = task.run(file=\"seed_reference_data.sh\", image=\"bash:5.2\", after=[claims_mock])\nclaims_bridge = service.run(after=[claims_mock, seed_reference_data])\nclaims_smoke = test.run(file=\"claims_smoke.py\", image=\"python:3.12\", after=[claims_bridge])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -1769,7 +1769,7 @@
         ]
       },
       {
-        "name": "scripts",
+        "name": "tasks",
         "role": "Core",
         "description": "Bootstrap hooks for claim code tables and partner fixtures.",
         "files": [
@@ -1777,7 +1777,7 @@
         ]
       },
       {
-        "name": "scenarios",
+        "name": "tests",
         "role": "Core",
         "description": "Smoke coverage for submit and lookup SOAP exchanges.",
         "files": [
@@ -1851,12 +1851,12 @@
         "content": "name: Local Debug\ndescription: Relaxed SOAP timeouts with verbose envelope logging.\ndefault: true\nruntime:\n  suite: soap-claims-hub\n  repository: localhost:5000/enterprise-integration/soap-claims-hub\n  profileFile: local.yaml\nmodules:\n    - runtime\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
       },
       {
-        "path": "scenarios/claims_smoke.py",
+        "path": "tests/claims_smoke.py",
         "language": "python",
         "content": "def test_smoke() -\u003e None:\n    assert \"SOAP Claims Hub\"\n    assert \"soap-claims-hub\" in \"localhost:5000/enterprise-integration/soap-claims-hub\"\n"
       },
       {
-        "path": "scripts/seed_reference_data.sh",
+        "path": "tasks/seed_reference_data.sh",
         "language": "bash",
         "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_reference_data.sh for SOAP Claims Hub\"\necho \"resolved modules: \"\n"
       }
@@ -2015,7 +2015,7 @@
     "score": 90,
     "pullCommand": "babelctl run localhost:5000/qa/storefront-browser-lab:v1.3.0",
     "forkCommand": "babelctl fork localhost:5000/qa/storefront-browser-lab:v1.3.0 ./storefront-browser-lab",
-    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/playwright\", \"playwright\")\nload(\"@babelsuite/runtime\", \"container\", \"mock\", \"script\", \"scenario\")\n\nbroker = container.run(name=\"kafka\")\ncatalog_mock = mock(name=\"catalog-mock\", after=[\"kafka\"])\norders_mock = mock(name=\"orders-mock\", after=[\"kafka\"])\nseed_topics = script(name=\"seed-topics\", after=[\"kafka\"])\nevent_consumer = container.run(name=\"event-consumer\", after=[\"kafka\", \"seed-topics\", \"orders-mock\"])\nstorefront_api = container.run(name=\"storefront-api\", after=[\"catalog-mock\", \"orders-mock\", \"seed-topics\"])\nstorefront_ui = container.run(name=\"storefront-ui\", after=[\"storefront-api\"])\nplaywright_checkout = scenario(name=\"playwright-checkout\", after=[\"storefront-ui\", \"event-consumer\"])",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nbroker = service.run()\ncatalog_mock = service.mock(after=[broker])\norders_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nevent_consumer = service.run(after=[broker, seed_topics, orders_mock])\nstorefront_api = service.run(after=[catalog_mock, orders_mock, seed_topics])\nstorefront_ui = service.run(after=[storefront_api])\nplaywright_checkout = test.run(file=\"playwright_checkout.spec.ts\", image=\"mcr.microsoft.com/playwright:v1.53.0-noble\", after=[storefront_ui, event_consumer])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -2068,7 +2068,7 @@
         ]
       },
       {
-        "name": "scripts",
+        "name": "tasks",
         "role": "Core",
         "description": "Kafka bootstrap and browser fixture warm-up hooks.",
         "files": [
@@ -2077,7 +2077,7 @@
         ]
       },
       {
-        "name": "scenarios",
+        "name": "tests",
         "role": "Core",
         "description": "Playwright coverage for checkout success and cart abandonment journeys.",
         "files": [
@@ -2184,22 +2184,22 @@
         "content": "name: Promo Burst\ndescription: High-throughput cart and checkout traffic with promotional catalog fixtures.\ndefault: false\nruntime:\n  suite: storefront-browser-lab\n  repository: localhost:5000/qa/storefront-browser-lab\n  profileFile: promo.yaml\nmodules:\n    - kafka\n    - playwright\nobservability:\n  logs: structured\n  traces: enabled\n  metrics: enabled\n"
       },
       {
-        "path": "scenarios/cart_abandonment.spec.ts",
+        "path": "tests/cart_abandonment.spec.ts",
         "language": "typescript",
         "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"cart abandonment.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
       },
       {
-        "path": "scenarios/playwright_checkout.spec.ts",
+        "path": "tests/playwright_checkout.spec.ts",
         "language": "typescript",
         "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"playwright checkout.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
       },
       {
-        "path": "scripts/seed_topics.sh",
+        "path": "tasks/seed_topics.sh",
         "language": "bash",
         "content": "#!/usr/bin/env bash\nset -euo pipefail\n\necho \"bootstrapping seed_topics.sh for Storefront Browser Lab\"\necho \"resolved modules: kafka, playwright\"\n"
       },
       {
-        "path": "scripts/warm_cache.ts",
+        "path": "tasks/warm_cache.ts",
         "language": "typescript",
         "content": "const suiteId = \"storefront-browser-lab\"\nconst scriptName = \"warm_cache.ts\"\n\nconsole.log(`running ${scriptName} for ${suiteId}`)\n"
       }
@@ -2438,3 +2438,7 @@
     ]
   }
 ]
+
+
+
+

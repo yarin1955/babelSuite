@@ -12,12 +12,12 @@
       "0.8.3",
       "latest"
     ],
-    "description": "Core suite runtime module exposing container.run/create/get, mock.serve, service.wiremock/prism/custom, script, load, and scenario entry points for topology orchestration.",
+    "description": "Built-in suite runtime library exposing service.run/mock, task.run, test.run, traffic profiles, and suite composition entry points for topology orchestration.",
     "modules": [
       "container lifecycle",
       "native mocks",
       "compat services",
-      "load plans",
+      "traffic plans",
       "topology steps",
       "debug helpers"
     ],
@@ -41,7 +41,7 @@
       "1.3.2",
       "latest"
     ],
-    "description": "Pre-registered Starlark module for opinionated Postgres provisioning with strict connection URL contracts.",
+    "description": "Pure Starlark Postgres module built on top of BabelSuite's built-in runtime containers.",
     "modules": [
       "typed api contract",
       "health checks",
@@ -67,7 +67,7 @@
       "1.2.2",
       "latest"
     ],
-    "description": "Typed Kafka module that creates brokers, topics, and address outputs without leaking Docker wiring into suite authorship.",
+    "description": "Pure Starlark Kafka module built on top of BabelSuite's built-in runtime containers.",
     "modules": [
       "topics",
       "bootstrap address",
