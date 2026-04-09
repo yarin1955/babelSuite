@@ -13,6 +13,7 @@ type StepNode struct {
 	Name      string
 	Kind      string
 	Variant   string
+	Image     string
 	DependsOn []string
 }
 
