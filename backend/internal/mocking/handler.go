@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/babelsuite/babelsuite/internal/httpserver"
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
@@ -18,10 +19,10 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("/internal/mock-data/", h.resolveOperation)
-	mux.HandleFunc("/mocks/rest/", h.invokeREST)
-	mux.HandleFunc("POST /mocks/grpc/{suiteId}/{surfaceId}/{operationId}", h.invokeGRPC)
-	mux.HandleFunc("POST /mocks/async/{suiteId}/{surfaceId}/{operationId}", h.invokeAsync)
+	httpserver.HandleFunc(mux, "/internal/mock-data/", h.resolveOperation)
+	httpserver.HandleFunc(mux, "/mocks/rest/", h.invokeREST)
+	httpserver.HandleFunc(mux, "POST /mocks/grpc/{suiteId}/{surfaceId}/{operationId}", h.invokeGRPC)
+	httpserver.HandleFunc(mux, "POST /mocks/async/{suiteId}/{surfaceId}/{operationId}", h.invokeAsync)
 }
 
 func (h *Handler) resolveOperation(w http.ResponseWriter, r *http.Request) {

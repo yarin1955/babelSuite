@@ -63,6 +63,10 @@ func (s *Store) Close(ctx context.Context) error {
 	return s.client.Disconnect(ctx)
 }
 
+func (s *Store) Ping(ctx context.Context) error {
+	return s.client.Ping(ctx, nil)
+}
+
 func (s *Store) CreateWorkspace(ctx context.Context, workspace *domain.Workspace) error {
 	_, err := s.workspaces.InsertOne(ctx, workspace)
 	return wrap(err)

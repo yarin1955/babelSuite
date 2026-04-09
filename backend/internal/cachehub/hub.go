@@ -59,6 +59,13 @@ func (h *Hub) Close() error {
 	return h.client.Close()
 }
 
+func (h *Hub) Ping(ctx context.Context) error {
+	if !h.Enabled() {
+		return nil
+	}
+	return h.client.Ping(ctx).Err()
+}
+
 func (h *Hub) ReadJSON(ctx context.Context, key string, target any) (bool, error) {
 	if !h.Enabled() {
 		return false, nil

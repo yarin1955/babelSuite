@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/auth"
+	"github.com/babelsuite/babelsuite/internal/httpserver"
 )
 
 type Handler struct {
@@ -20,23 +20,17 @@ func NewHandler(store *Store, jwt *auth.JWTService) *Handler {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/engine/overview", h.getOverview)
-	mux.HandleFunc("GET /api/v1/engine/overview/stream", h.streamOverview)
+	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	httpserver.HandleFunc(mux, "GET /api/v1/engine/overview", h.getOverview, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/engine/overview/stream", h.streamOverview, streaming)
 }
 
 func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	writeJSON(w, http.StatusOK, h.store.Overview())
 }
 
 func (h *Handler) streamOverview(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
@@ -72,29 +66,6 @@ func (h *Handler) streamOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if token == "" {
-		bearer := strings.TrimSpace(r.Header.Get("Authorization"))
-		if strings.HasPrefix(bearer, "Bearer ") {
-			token = strings.TrimSpace(strings.TrimPrefix(bearer, "Bearer "))
-		}
-	}
-
-	if token == "" {
-		writeError(w, http.StatusUnauthorized, "Sign in required.")
-		return false
-	}
-
-	if _, err := h.jwt.Verify(token); err != nil {
-		writeError(w, http.StatusUnauthorized, "Session expired or invalid.")
-		return false
-	}
-
-	return true
-}
-
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
