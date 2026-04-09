@@ -25,6 +25,9 @@ backend/bin/
 backend/coverage.out
 backend/*.test
 
+# Docs build output
+site/
+
 data/
 scripts/
 .local/
