@@ -5,30 +5,53 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
+	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 type StepNode struct {
 	ID        string   `json:"id" yaml:"id"`
 	Name      string   `json:"name" yaml:"name"`
 	Kind      string   `json:"kind" yaml:"kind"`
+	Variant   string   `json:"variant,omitempty" yaml:"variant,omitempty"`
 	DependsOn []string `json:"dependsOn" yaml:"dependsOn"`
 }
 
+type ArtifactExport struct {
+	Path   string `json:"path" yaml:"path"`
+	Name   string `json:"name,omitempty" yaml:"name,omitempty"`
+	On     string `json:"on,omitempty" yaml:"on,omitempty"`
+	Format string `json:"format,omitempty" yaml:"format,omitempty"`
+}
+
 type StepRequest struct {
-	JobID           string        `json:"jobId" yaml:"jobId"`
-	ExecutionID     string        `json:"executionId" yaml:"executionId"`
-	SuiteID         string        `json:"suiteId" yaml:"suiteId"`
-	SuiteTitle      string        `json:"suiteTitle" yaml:"suiteTitle"`
-	SuiteRepository string        `json:"suiteRepository,omitempty" yaml:"suiteRepository,omitempty"`
-	Profile         string        `json:"profile" yaml:"profile"`
-	Trigger         string        `json:"trigger,omitempty" yaml:"trigger,omitempty"`
-	BackendID       string        `json:"backendId,omitempty" yaml:"backendId,omitempty"`
-	BackendKind     string        `json:"backendKind,omitempty" yaml:"backendKind,omitempty"`
-	BackendLabel    string        `json:"backendLabel,omitempty" yaml:"backendLabel,omitempty"`
-	StepIndex       int           `json:"stepIndex,omitempty" yaml:"stepIndex,omitempty"`
-	TotalSteps      int           `json:"totalSteps,omitempty" yaml:"totalSteps,omitempty"`
-	LeaseTTL        time.Duration `json:"leaseTtl,omitempty" yaml:"leaseTtl,omitempty"`
-	Node            StepNode      `json:"node" yaml:"node"`
+	JobID            string                 `json:"jobId" yaml:"jobId"`
+	ExecutionID      string                 `json:"executionId" yaml:"executionId"`
+	SuiteID          string                 `json:"suiteId" yaml:"suiteId"`
+	SuiteTitle       string                 `json:"suiteTitle" yaml:"suiteTitle"`
+	SuiteRepository  string                 `json:"suiteRepository,omitempty" yaml:"suiteRepository,omitempty"`
+	Profile          string                 `json:"profile" yaml:"profile"`
+	RuntimeProfile   string                 `json:"runtimeProfile,omitempty" yaml:"runtimeProfile,omitempty"`
+	Env              map[string]string      `json:"env,omitempty" yaml:"env,omitempty"`
+	Headers          map[string]string      `json:"headers,omitempty" yaml:"headers,omitempty"`
+	Trigger          string                 `json:"trigger,omitempty" yaml:"trigger,omitempty"`
+	BackendID        string                 `json:"backendId,omitempty" yaml:"backendId,omitempty"`
+	BackendKind      string                 `json:"backendKind,omitempty" yaml:"backendKind,omitempty"`
+	BackendLabel     string                 `json:"backendLabel,omitempty" yaml:"backendLabel,omitempty"`
+	SourceSuiteID    string                 `json:"sourceSuiteId,omitempty" yaml:"sourceSuiteId,omitempty"`
+	SourceSuiteTitle string                 `json:"sourceSuiteTitle,omitempty" yaml:"sourceSuiteTitle,omitempty"`
+	SourceRepository string                 `json:"sourceRepository,omitempty" yaml:"sourceRepository,omitempty"`
+	SourceVersion    string                 `json:"sourceVersion,omitempty" yaml:"sourceVersion,omitempty"`
+	ResolvedRef      string                 `json:"resolvedRef,omitempty" yaml:"resolvedRef,omitempty"`
+	Digest           string                 `json:"digest,omitempty" yaml:"digest,omitempty"`
+	DependencyAlias  string                 `json:"dependencyAlias,omitempty" yaml:"dependencyAlias,omitempty"`
+	StepIndex        int                    `json:"stepIndex,omitempty" yaml:"stepIndex,omitempty"`
+	TotalSteps       int                    `json:"totalSteps,omitempty" yaml:"totalSteps,omitempty"`
+	LeaseTTL         time.Duration          `json:"leaseTtl,omitempty" yaml:"leaseTtl,omitempty"`
+	Load             *suites.LoadSpec       `json:"traffic,omitempty" yaml:"traffic,omitempty"`
+	Evaluation       *suites.StepEvaluation `json:"evaluation,omitempty" yaml:"evaluation,omitempty"`
+	OnFailure        []string               `json:"onFailure,omitempty" yaml:"onFailure,omitempty"`
+	ArtifactExports  []ArtifactExport       `json:"artifactExports,omitempty" yaml:"artifactExports,omitempty"`
+	Node             StepNode               `json:"node" yaml:"node"`
 }
 
 type StreamMessage struct {

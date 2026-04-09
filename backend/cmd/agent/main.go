@@ -14,6 +14,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/envloader"
 	"github.com/babelsuite/babelsuite/internal/logstream"
 	"github.com/babelsuite/babelsuite/internal/runner"
+	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 func main() {
@@ -38,17 +39,33 @@ func main() {
 		Name:         agentName,
 		HostURL:      publicURL,
 		Status:       "ready",
-		Capabilities: []string{"container", "mock", "script", "scenario"},
+		Capabilities: []string{"service", "task", "test", "traffic", "suite"},
 	}, agent.ExecutorFunc(func(ctx context.Context, request agent.StepRequest, emit func(logstream.Line)) error {
 		return localBackend.Run(ctx, runner.StepSpec{
-			ExecutionID: request.ExecutionID,
-			SuiteID:     request.SuiteID,
-			SuiteTitle:  request.SuiteTitle,
-			Profile:     request.Profile,
+			ExecutionID:      request.ExecutionID,
+			SuiteID:          request.SuiteID,
+			SuiteTitle:       request.SuiteTitle,
+			SuiteRepository:  request.SuiteRepository,
+			Profile:          request.Profile,
+			RuntimeProfile:   request.RuntimeProfile,
+			Env:              cloneStringMap(request.Env),
+			Headers:          cloneStringMap(request.Headers),
+			SourceSuiteID:    request.SourceSuiteID,
+			SourceSuiteTitle: request.SourceSuiteTitle,
+			SourceRepository: request.SourceRepository,
+			SourceVersion:    request.SourceVersion,
+			ResolvedRef:      request.ResolvedRef,
+			Digest:           request.Digest,
+			DependencyAlias:  request.DependencyAlias,
+			Load:             cloneLoadSpec(request.Load),
+			Evaluation:       cloneStepEvaluation(request.Evaluation),
+			OnFailure:        append([]string{}, request.OnFailure...),
+			ArtifactExports:  cloneArtifactExports(request.ArtifactExports),
 			Node: runner.StepNode{
 				ID:        request.Node.ID,
 				Name:      request.Node.Name,
 				Kind:      request.Node.Kind,
+				Variant:   request.Node.Variant,
 				DependsOn: append([]string{}, request.Node.DependsOn...),
 			},
 		}, emit)
@@ -69,7 +86,7 @@ func main() {
 			AgentID:      agentID,
 			Name:         agentName,
 			HostURL:      publicURL,
-			Capabilities: []string{"container", "mock", "script", "scenario"},
+			Capabilities: []string{"service", "task", "test", "traffic", "suite"},
 		}); err != nil {
 			log.Printf("agent register failed: %v", err)
 		}
@@ -156,4 +173,70 @@ func durationOr(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return parsed
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
+
+func cloneArtifactExports(input []agent.ArtifactExport) []runner.ArtifactExport {
+	if len(input) == 0 {
+		return nil
+	}
+
+	output := make([]runner.ArtifactExport, len(input))
+	for index, item := range input {
+		output[index] = runner.ArtifactExport{
+			Path:   item.Path,
+			Name:   item.Name,
+			On:     item.On,
+			Format: item.Format,
+		}
+	}
+	return output
+}
+
+func cloneLoadSpec(input *suites.LoadSpec) *suites.LoadSpec {
+	if input == nil {
+		return nil
+	}
+
+	output := *input
+	output.Users = make([]suites.LoadUser, len(input.Users))
+	for userIndex, user := range input.Users {
+		output.Users[userIndex] = user
+		output.Users[userIndex].Tasks = make([]suites.LoadTask, len(user.Tasks))
+		for taskIndex, task := range user.Tasks {
+			output.Users[userIndex].Tasks[taskIndex] = task
+			output.Users[userIndex].Tasks[taskIndex].Checks = append([]suites.LoadThreshold{}, task.Checks...)
+			output.Users[userIndex].Tasks[taskIndex].Request.Headers = cloneStringMap(task.Request.Headers)
+			output.Users[userIndex].Tasks[taskIndex].Request.Checks = append([]suites.LoadThreshold{}, task.Request.Checks...)
+		}
+	}
+	output.Stages = append([]suites.LoadStage{}, input.Stages...)
+	output.Thresholds = append([]suites.LoadThreshold{}, input.Thresholds...)
+	return &output
+}
+
+func cloneStepEvaluation(input *suites.StepEvaluation) *suites.StepEvaluation {
+	if input == nil {
+		return nil
+	}
+
+	output := *input
+	output.ExpectLogs = append([]string{}, input.ExpectLogs...)
+	output.FailOnLogs = append([]string{}, input.FailOnLogs...)
+	if input.ExpectExit != nil {
+		value := *input.ExpectExit
+		output.ExpectExit = &value
+	}
+	return &output
 }
