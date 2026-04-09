@@ -1,8 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FaBoxArchive,
+  FaCircleCheck,
+  FaCubes,
   FaGear,
   FaMagnifyingGlass,
+  FaXmark,
 } from 'react-icons/fa6'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
