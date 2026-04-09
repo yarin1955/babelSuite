@@ -1,6 +1,6 @@
-load("@babelsuite/runtime", "container", "mock", "script", "scenario")
+load("@babelsuite/runtime", "service", "task", "test", "traffic", "suite")
 
-claims_mock = mock(name="claims-mock")
-seed_reference_data = script(name="seed-reference-data", after=["claims-mock"])
-claims_bridge = container.run(name="claims-bridge", after=["claims-mock", "seed-reference-data"])
-claims_smoke = scenario(name="claims-smoke", after=["claims-bridge"])
+claims_mock = service.mock()
+seed_reference_data = task.run(file="seed_reference_data.sh", image="bash:5.2", after=[claims_mock])
+claims_bridge = service.run(after=[claims_mock, seed_reference_data])
+claims_smoke = test.run(file="claims_smoke.py", image="python:3.12", after=[claims_bridge])

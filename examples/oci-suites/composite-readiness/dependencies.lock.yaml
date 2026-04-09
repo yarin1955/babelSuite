@@ -1,0 +1,4 @@
+locks:
+  payments-module:
+    version: workspace
+    resolved: localhost:5000/core-platform/payment-suite@sha256:1111111111111111111111111111111111111111111111111111111111111111

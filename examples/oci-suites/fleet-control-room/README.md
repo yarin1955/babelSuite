@@ -8,7 +8,7 @@ Structure
 - `profiles/`: Driver-specific runtime knobs for local, perf, and staging lanes.
 - `api/`: gRPC protobuf definitions and REST gateway overlays.
 - `mock/`: Telemetry playback feeds and fault injections for route spikes.
-- `scripts/`: Redis seeders and topology bootstrap hooks.
-- `scenarios/`: Control room smoke runs and degraded GPS scenarios.
+- `tasks/`: Redis seeders and topology bootstrap hooks.
+- `tests/`: Control room smoke runs and degraded GPS scenarios.
 - `fixtures/`: Vehicle manifests and fake GPS frames.
 - `policies/`: Route SLA validation and forbidden-zone checks.
