@@ -9,6 +9,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/agent"
 	"github.com/babelsuite/babelsuite/internal/domain"
 	"github.com/babelsuite/babelsuite/internal/execution"
+	"github.com/babelsuite/babelsuite/internal/logstream"
 	"github.com/babelsuite/babelsuite/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -74,6 +75,19 @@ CREATE TABLE IF NOT EXISTS runtime_documents (
   key TEXT PRIMARY KEY,
   payload JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS executions (
+  execution_id TEXT PRIMARY KEY,
+  started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  record       JSONB NOT NULL,
+  total        INT NOT NULL DEFAULT 0,
+  completed    INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS execution_logs (
+  execution_id TEXT PRIMARY KEY,
+  payload      TEXT NOT NULL DEFAULT ''
 );
 `)
 	return err
@@ -244,22 +258,129 @@ func (s *Store) SaveAssignmentRuntime(ctx context.Context, snapshots []agent.Ass
 }
 
 func (s *Store) LoadExecutionRuntime(ctx context.Context) ([]execution.PersistedExecution, error) {
-	var persisted []execution.PersistedExecution
-	ok, err := s.loadRuntimeDocument(ctx, "execution-runtime", &persisted)
+	rows, err := s.pool.Query(ctx,
+		`SELECT execution_id, record, total, completed FROM executions ORDER BY started_at ASC`,
+	)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		return []execution.PersistedExecution{}, nil
+	defer rows.Close()
+
+	var docs []struct {
+		id        string
+		record    []byte
+		total     int
+		completed int
 	}
-	return persisted, nil
+	for rows.Next() {
+		var d struct {
+			id        string
+			record    []byte
+			total     int
+			completed int
+		}
+		if err := rows.Scan(&d.id, &d.record, &d.total, &d.completed); err != nil {
+			return nil, err
+		}
+		docs = append(docs, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(docs) == 0 {
+		return s.migrateFromBlobStore(ctx)
+	}
+
+	out := make([]execution.PersistedExecution, 0, len(docs))
+	for _, d := range docs {
+		var rec execution.ExecutionRecord
+		if err := json.Unmarshal(d.record, &rec); err != nil {
+			return nil, err
+		}
+		logs, _ := s.loadExecutionLogs(ctx, d.id)
+		out = append(out, execution.PersistedExecution{
+			Record:    rec,
+			Total:     d.total,
+			Completed: d.completed,
+			Logs:      logs,
+		})
+	}
+	return out, nil
 }
 
 func (s *Store) SaveExecutionRuntime(ctx context.Context, persisted []execution.PersistedExecution) error {
-	if persisted == nil {
-		persisted = []execution.PersistedExecution{}
+	if len(persisted) == 0 {
+		return nil
 	}
-	return s.saveRuntimeDocument(ctx, "execution-runtime", persisted)
+	for _, item := range persisted {
+		if item.Record.ID == "" {
+			continue
+		}
+		record, err := json.Marshal(item.Record)
+		if err != nil {
+			return err
+		}
+		startedAt := item.Record.StartedAt
+		_, err = s.pool.Exec(ctx, `
+INSERT INTO executions (execution_id, started_at, record, total, completed)
+VALUES ($1, $2, $3::jsonb, $4, $5)
+ON CONFLICT (execution_id) DO UPDATE SET
+  record    = EXCLUDED.record,
+  total     = EXCLUDED.total,
+  completed = EXCLUDED.completed
+`, item.Record.ID, startedAt, string(record), item.Total, item.Completed)
+		if err != nil {
+			return err
+		}
+		if err := s.saveExecutionLogs(ctx, item.Record.ID, item.Logs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) loadExecutionLogs(ctx context.Context, executionID string) ([]logstream.Line, error) {
+	var payload string
+	err := s.pool.QueryRow(ctx,
+		`SELECT payload FROM execution_logs WHERE execution_id = $1`, executionID,
+	).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) || payload == "" {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var lines []logstream.Line
+	if err := json.Unmarshal([]byte(payload), &lines); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func (s *Store) saveExecutionLogs(ctx context.Context, executionID string, lines []logstream.Line) error {
+	payload, err := json.Marshal(lines)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+INSERT INTO execution_logs (execution_id, payload)
+VALUES ($1, $2)
+ON CONFLICT (execution_id) DO UPDATE SET payload = EXCLUDED.payload
+`, executionID, string(payload))
+	return err
+}
+
+func (s *Store) migrateFromBlobStore(ctx context.Context) ([]execution.PersistedExecution, error) {
+	var persisted []execution.PersistedExecution
+	ok, err := s.loadRuntimeDocument(ctx, "execution-runtime", &persisted)
+	if err != nil || !ok || len(persisted) == 0 {
+		return []execution.PersistedExecution{}, err
+	}
+	if saveErr := s.SaveExecutionRuntime(ctx, persisted); saveErr == nil {
+		s.pool.Exec(ctx, `DELETE FROM runtime_documents WHERE key = 'execution-runtime'`)
+	}
+	return persisted, nil
 }
 
 func (s *Store) loadRuntimeDocument(ctx context.Context, key string, target any) (bool, error) {
