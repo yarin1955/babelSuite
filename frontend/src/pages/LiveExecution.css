@@ -421,7 +421,7 @@
 }
 
 .exec-log-line--multi {
-  grid-template-columns: 42px 64px 100px 1fr;
+  grid-template-columns: 42px 48px 120px 1fr;
 }
 
 .exec-log-line:hover {
