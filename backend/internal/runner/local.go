@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -108,10 +109,47 @@ func stepRequiresContainer(step StepSpec) bool {
 
 func line(step StepSpec, level, text string) logstream.Line {
 	return logstream.Line{
-		Source:    step.Node.ID,
-		Timestamp: "",
-		Level:     level,
-		Text:      text,
+		Source: step.Node.ID,
+		Level:  level,
+		Kind:   "system",
+		Text:   text,
+	}
+}
+
+// containerLine emits a raw line from the container's stdout/stderr unchanged.
+func containerLine(step StepSpec, text string) logstream.Line {
+	return logstream.Line{
+		Source: step.Node.ID,
+		Level:  "info",
+		Kind:   "output",
+		Text:   text,
+	}
+}
+
+// TrafficMetricSnapshot is the JSON payload carried by metric-kind log lines.
+// The frontend reads this to render a live stats panel for traffic steps.
+type TrafficMetricSnapshot struct {
+	Requests  int     `json:"requests"`
+	Failures  int     `json:"failures"`
+	ErrorRate float64 `json:"errorRate"`
+	RPS       float64 `json:"rps"`
+	Users     int     `json:"users"`
+	MinMS     float64 `json:"minMs"`
+	AvgMS     float64 `json:"avgMs"`
+	P50MS     float64 `json:"p50Ms"`
+	P95MS     float64 `json:"p95Ms"`
+	P99MS     float64 `json:"p99Ms"`
+	MaxMS     float64 `json:"maxMs"`
+}
+
+// metricLine encodes a TrafficMetricSnapshot as a metric-kind log line.
+func metricLine(step StepSpec, snap TrafficMetricSnapshot) logstream.Line {
+	payload, _ := json.Marshal(snap)
+	return logstream.Line{
+		Source: step.Node.ID,
+		Level:  "info",
+		Kind:   "metric",
+		Text:   string(payload),
 	}
 }
 

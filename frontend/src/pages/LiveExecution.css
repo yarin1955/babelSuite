@@ -465,6 +465,67 @@
 .exec-log-line--warn .exec-log-line__text  { color: #f4c030; }
 .exec-log-line--error .exec-log-line__text { color: #e87982; }
 
+/* ── Traffic metrics panel ──────────────────────────────── */
+
+.exec-metrics-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #050f16;
+}
+
+.exec-metrics-panel__row {
+  display: flex;
+  gap: 0;
+}
+
+.exec-metrics-panel__row--primary .exec-metric-stat {
+  flex: 1;
+  border-bottom: 1px solid #0d2233;
+}
+
+.exec-metrics-panel__divider {
+  height: 20px;
+}
+
+.exec-metric-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-right: 1px solid #0d2233;
+  gap: 4px;
+}
+
+.exec-metric-stat:last-child {
+  border-right: none;
+}
+
+.exec-metric-stat__value {
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #d4e8f4;
+  line-height: 1;
+}
+
+.exec-metric-stat__label {
+  font-size: 0.72rem;
+  color: #3d6278;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.exec-metric-stat__sub {
+  font-size: 0.75rem;
+  color: #e87982;
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+}
+
 /* ── Stream status bar ──────────────────────────────────── */
 
 .exec-stream-bar {

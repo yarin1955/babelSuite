@@ -21,7 +21,7 @@
     "score": 88,
     "pullCommand": "babelctl run localhost:5000/platform/fleet-control-room:v1.8.0",
     "forkCommand": "babelctl fork localhost:5000/platform/fleet-control-room:v1.8.0 ./fleet-lab",
-    "suiteStar": "load(\"@babelsuite/redis\", \"redis\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nredis_cache = service.run()\ntelemetry_mock = service.mock(after=[redis_cache])\nseed_routes = task.run(file=\"seed_routes.sh\", image=\"bash:5.2\", after=[redis_cache])\ndispatcher_api = service.run(after=[redis_cache, seed_routes])\nplanner = service.run(after=[dispatcher_api])\ncontrol_room = service.run(after=[dispatcher_api, planner])\nfleet_smoke = test.run(file=\"fleet_smoke.py\", image=\"python:3.12\", after=[control_room, telemetry_mock])",
+    "suiteStar": "load(\"@babelsuite/redis\", \"redis\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\", \"traffic\", \"suite\")\n\nredis_cache = service.run()\ntelemetry_mock = service.mock(after=[redis_cache])\nseed_routes = task.run(file=\"seed_routes.sh\", image=\"bash:5.2\", after=[redis_cache])\ndispatcher_api = service.run(after=[redis_cache, seed_routes])\nplanner = service.run(after=[dispatcher_api])\ncontrol_room = service.run(after=[dispatcher_api, planner])\nfleet_smoke = test.run(file=\"fleet_smoke.py\", image=\"python:3.12\", after=[control_room, telemetry_mock])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -167,12 +167,12 @@
       {
         "path": "policies/geo_boundary.rego",
         "language": "rego",
-        "content": "package babelsuite.geo_boundary\n\ndefault allow := false\n\nallow if {\n  input.suite == \"fleet-control-room\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.geo_boundary\n\ndefault allow := false\n\nallow if {\n  input.suite == \"fleet-control-room\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "policies/route_latency.rego",
         "language": "rego",
-        "content": "package babelsuite.route_latency\n\ndefault allow := false\n\nallow if {\n  input.suite == \"fleet-control-room\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.route_latency\n\ndefault allow := false\n\nallow if {\n  input.suite == \"fleet-control-room\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "profiles/local.yaml",
@@ -192,17 +192,17 @@
       {
         "path": "tests/fleet_smoke.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
       },
       {
         "path": "tests/route_degradation.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Fleet Control Room\"\n    assert \"fleet-control-room\" in \"localhost:5000/platform/fleet-control-room\"\n"
       },
       {
         "path": "tasks/prime_cache.py",
         "language": "python",
-        "content": "from pathlib import Path\n\nSUITE_ID = \"fleet-control-room\"\nSCRIPT_NAME = \"prime_cache.py\"\n\ndef main() -\u003e None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
+        "content": "from pathlib import Path\n\nSUITE_ID = \"fleet-control-room\"\nSCRIPT_NAME = \"prime_cache.py\"\n\ndef main() -> None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
       },
       {
         "path": "tasks/seed_routes.sh",
@@ -358,7 +358,7 @@
     "score": 91,
     "pullCommand": "babelctl run localhost:5000/security/identity-broker:v3.0.2",
     "forkCommand": "babelctl fork localhost:5000/security/identity-broker:v3.0.2 ./identity-broker-local",
-    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nbroker_db = service.run()\noidc_mock = service.mock(after=[broker_db])\nsaml_mock = service.mock(after=[broker_db])\nseed_realms = task.run(file=\"seed_realms.ts\", image=\"node:22\", after=[broker_db])\nbroker_api = service.run(after=[broker_db, oidc_mock, saml_mock, seed_realms])\nsession_worker = service.run(after=[broker_api])\nlogin_smoke = test.run(file=\"login_smoke.py\", image=\"python:3.12\", after=[broker_api, session_worker])",
+    "suiteStar": "load(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\", \"traffic\", \"suite\")\n\nbroker_db = service.run()\noidc_mock = service.mock(after=[broker_db])\nsaml_mock = service.mock(after=[broker_db])\nseed_realms = task.run(file=\"seed_realms.ts\", image=\"node:22\", after=[broker_db])\nbroker_api = service.run(after=[broker_db, oidc_mock, saml_mock, seed_realms])\nsession_worker = service.run(after=[broker_api])\nlogin_smoke = test.run(file=\"login_smoke.py\", image=\"python:3.12\", after=[broker_api, session_worker])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -493,17 +493,17 @@
       {
         "path": "mock/saml/assertion.xml",
         "language": "xml",
-        "content": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cmockResponse\u003e\n  \u003csuite\u003eidentity-broker\u003c/suite\u003e\n  \u003cartifact\u003emock/saml/assertion.xml\u003c/artifact\u003e\n  \u003cstatus\u003eok\u003c/status\u003e\n\u003c/mockResponse\u003e\n"
+        "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<mockResponse>\n  <suite>identity-broker</suite>\n  <artifact>mock/saml/assertion.xml</artifact>\n  <status>ok</status>\n</mockResponse>\n"
       },
       {
         "path": "policies/issuer.rego",
         "language": "rego",
-        "content": "package babelsuite.issuer\n\ndefault allow := false\n\nallow if {\n  input.suite == \"identity-broker\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.issuer\n\ndefault allow := false\n\nallow if {\n  input.suite == \"identity-broker\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "policies/session.rego",
         "language": "rego",
-        "content": "package babelsuite.session\n\ndefault allow := false\n\nallow if {\n  input.suite == \"identity-broker\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.session\n\ndefault allow := false\n\nallow if {\n  input.suite == \"identity-broker\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "profiles/canary.yaml",
@@ -523,12 +523,12 @@
       {
         "path": "tests/expired_session.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
       },
       {
         "path": "tests/login_smoke.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Identity Broker\"\n    assert \"identity-broker\" in \"localhost:5000/security/identity-broker\"\n"
       },
       {
         "path": "tasks/rotate_certs.sh",
@@ -809,12 +809,12 @@
       {
         "path": "policies/ledger.rego",
         "language": "rego",
-        "content": "package babelsuite.ledger\n\ndefault allow := false\n\nallow if {\n  input.suite == \"payment-suite\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.ledger\n\ndefault allow := false\n\nallow if {\n  input.suite == \"payment-suite\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "policies/pci.rego",
         "language": "rego",
-        "content": "package babelsuite.pci\n\ndefault allow := false\n\nallow if {\n  input.suite == \"payment-suite\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.pci\n\ndefault allow := false\n\nallow if {\n  input.suite == \"payment-suite\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "profiles/local.yaml",
@@ -839,12 +839,12 @@
       {
         "path": "tests/checkout_smoke.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
       },
       {
         "path": "tests/refund_regression.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Payment Suite\"\n    assert \"payment-suite\" in \"localhost:5000/core-platform/payment-suite\"\n"
       },
       {
         "path": "tasks/bootstrap_topics.sh",
@@ -854,7 +854,7 @@
       {
         "path": "tasks/migrate.py",
         "language": "python",
-        "content": "from pathlib import Path\n\nSUITE_ID = \"payment-suite\"\nSCRIPT_NAME = \"migrate.py\"\n\ndef main() -\u003e None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
+        "content": "from pathlib import Path\n\nSUITE_ID = \"payment-suite\"\nSCRIPT_NAME = \"migrate.py\"\n\ndef main() -> None:\n    print(f\"running {SCRIPT_NAME} for {SUITE_ID}\")\n    print(Path('.').resolve())\n\nif __name__ == \"__main__\":\n    main()\n"
       }
     ],
     "contracts": [
@@ -1121,7 +1121,7 @@
     "score": 92,
     "pullCommand": "babelctl run localhost:5000/qa/returns-control-plane:v1.0.0",
     "forkCommand": "babelctl fork localhost:5000/qa/returns-control-plane:v1.0.0 ./returns-control-plane-local",
-    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nreturns_db = service.run()\nbroker = service.run()\nrefunds_mock = service.mock(after=[returns_db])\npricing_mock = service.mock(after=[returns_db])\nevents_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nseed_routes = task.run(file=\"seed_routes.ts\", image=\"node:22\", after=[returns_db, refunds_mock, pricing_mock])\nreturns_api = service.run(after=[returns_db, refunds_mock, pricing_mock, seed_routes])\nrefund_worker = service.run(after=[broker, returns_api, events_mock, seed_topics])\nreturns_smoke = test.run(file=\"returns_smoke.py\", image=\"python:3.12\", after=[returns_api, refund_worker])",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/postgres\", \"pg\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\", \"traffic\", \"suite\")\n\nreturns_db = service.run()\nbroker = service.run()\nrefunds_mock = service.mock(after=[returns_db])\npricing_mock = service.mock(after=[returns_db])\nevents_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nseed_routes = task.run(file=\"seed_routes.ts\", image=\"node:22\", after=[returns_db, refunds_mock, pricing_mock])\nreturns_api = service.run(after=[returns_db, refunds_mock, pricing_mock, seed_routes])\nrefund_worker = service.run(after=[broker, returns_api, events_mock, seed_topics])\nreturns_smoke = test.run(file=\"returns_smoke.py\", image=\"python:3.12\", after=[returns_api, refund_worker])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -1291,12 +1291,12 @@
       {
         "path": "policies/event_schema.rego",
         "language": "rego",
-        "content": "package babelsuite.event_schema\n\ndefault allow := false\n\nallow if {\n  input.suite == \"returns-control-plane\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.event_schema\n\ndefault allow := false\n\nallow if {\n  input.suite == \"returns-control-plane\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "policies/refund_limits.rego",
         "language": "rego",
-        "content": "package babelsuite.refund_limits\n\ndefault allow := false\n\nallow if {\n  input.suite == \"returns-control-plane\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.refund_limits\n\ndefault allow := false\n\nallow if {\n  input.suite == \"returns-control-plane\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "profiles/canary.yaml",
@@ -1316,12 +1316,12 @@
       {
         "path": "tests/manual_review.spec.ts",
         "language": "typescript",
-        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"manual review.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Returns Control Plane\")).toBeVisible()\n})\n"
+        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"manual review.spec\", async ({ page }) => {\n  await page.goto('/')\n  await expect(page.getByText(\"Returns Control Plane\")).toBeVisible()\n})\n"
       },
       {
         "path": "tests/returns_smoke.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"Returns Control Plane\"\n    assert \"returns-control-plane\" in \"localhost:5000/qa/returns-control-plane\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"Returns Control Plane\"\n    assert \"returns-control-plane\" in \"localhost:5000/qa/returns-control-plane\"\n"
       },
       {
         "path": "tasks/seed_routes.ts",
@@ -1739,7 +1739,7 @@
     "score": 87,
     "pullCommand": "babelctl run localhost:5000/enterprise-integration/soap-claims-hub:v0.9.0",
     "forkCommand": "babelctl fork localhost:5000/enterprise-integration/soap-claims-hub:v0.9.0 ./soap-claims-hub-local",
-    "suiteStar": "load(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nclaims_mock = service.mock()\nseed_reference_data = task.run(file=\"seed_reference_data.sh\", image=\"bash:5.2\", after=[claims_mock])\nclaims_bridge = service.run(after=[claims_mock, seed_reference_data])\nclaims_smoke = test.run(file=\"claims_smoke.py\", image=\"python:3.12\", after=[claims_bridge])",
+    "suiteStar": "load(\"@babelsuite/runtime\", \"service\", \"task\", \"test\", \"traffic\", \"suite\")\n\nclaims_mock = service.mock()\nseed_reference_data = task.run(file=\"seed_reference_data.sh\", image=\"bash:5.2\", after=[claims_mock])\nclaims_bridge = service.run(after=[claims_mock, seed_reference_data])\nclaims_smoke = test.run(file=\"claims_smoke.py\", image=\"python:3.12\", after=[claims_bridge])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -1826,7 +1826,7 @@
       {
         "path": "api/wsdl/claims.wsdl",
         "language": "xml",
-        "content": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cdefinitions xmlns=\"http://schemas.xmlsoap.org/wsdl/\" xmlns:soap=\"http://schemas.xmlsoap.org/wsdl/soap/\" xmlns:tns=\"urn:babelsuite:soap-claims-hub\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" name=\"claimsService\" targetNamespace=\"urn:babelsuite:soap-claims-hub\"\u003e\n  \u003ctypes\u003e\n    \u003cxsd:schema targetNamespace=\"urn:babelsuite:soap-claims-hub\"\u003e\n      \u003cxsd:element name=\"SubmitClaimRequest\" type=\"xsd:string\"/\u003e\n      \u003cxsd:element name=\"SubmitClaimResponse\" type=\"xsd:string\"/\u003e\n      \u003cxsd:element name=\"GetClaimStatusRequest\" type=\"xsd:string\"/\u003e\n      \u003cxsd:element name=\"GetClaimStatusResponse\" type=\"xsd:string\"/\u003e\n    \u003c/xsd:schema\u003e\n  \u003c/types\u003e\n\n  \u003cmessage name=\"SubmitClaimInput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:SubmitClaimRequest\"/\u003e\n  \u003c/message\u003e\n  \u003cmessage name=\"SubmitClaimOutput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:SubmitClaimResponse\"/\u003e\n  \u003c/message\u003e\n\n  \u003cmessage name=\"GetClaimStatusInput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:GetClaimStatusRequest\"/\u003e\n  \u003c/message\u003e\n  \u003cmessage name=\"GetClaimStatusOutput\"\u003e\n    \u003cpart name=\"parameters\" element=\"tns:GetClaimStatusResponse\"/\u003e\n  \u003c/message\u003e\n\n  \u003cportType name=\"claimsPortType\"\u003e\n    \u003coperation name=\"SubmitClaim\"\u003e\n      \u003cinput message=\"tns:SubmitClaimInput\"/\u003e\n      \u003coutput message=\"tns:SubmitClaimOutput\"/\u003e\n    \u003c/operation\u003e\n    \u003coperation name=\"GetClaimStatus\"\u003e\n      \u003cinput message=\"tns:GetClaimStatusInput\"/\u003e\n      \u003coutput message=\"tns:GetClaimStatusOutput\"/\u003e\n    \u003c/operation\u003e\n  \u003c/portType\u003e\n  \u003cbinding name=\"claimsBinding\" type=\"tns:claimsPortType\"\u003e\n    \u003csoap:binding transport=\"http://schemas.xmlsoap.org/soap/http\" style=\"document\"/\u003e\n    \u003coperation name=\"SubmitClaim\"\u003e\n      \u003csoap:operation soapAction=\"urn:SubmitClaim\"/\u003e\n      \u003cinput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/input\u003e\n      \u003coutput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/output\u003e\n    \u003c/operation\u003e\n    \u003coperation name=\"GetClaimStatus\"\u003e\n      \u003csoap:operation soapAction=\"urn:GetClaimStatus\"/\u003e\n      \u003cinput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/input\u003e\n      \u003coutput\u003e\u003csoap:body use=\"literal\"/\u003e\u003c/output\u003e\n    \u003c/operation\u003e\n  \u003c/binding\u003e\n  \u003cservice name=\"claimsService\"\u003e\n    \u003cport name=\"claimsPort\" binding=\"tns:claimsBinding\"\u003e\n      \u003csoap:address location=\"https://soap-claims-hub.mock.internal/ClaimService\"/\u003e\n    \u003c/port\u003e\n  \u003c/service\u003e\n\u003c/definitions\u003e\n"
+        "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<definitions xmlns=\"http://schemas.xmlsoap.org/wsdl/\" xmlns:soap=\"http://schemas.xmlsoap.org/wsdl/soap/\" xmlns:tns=\"urn:babelsuite:soap-claims-hub\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" name=\"claimsService\" targetNamespace=\"urn:babelsuite:soap-claims-hub\">\n  <types>\n    <xsd:schema targetNamespace=\"urn:babelsuite:soap-claims-hub\">\n      <xsd:element name=\"SubmitClaimRequest\" type=\"xsd:string\"/>\n      <xsd:element name=\"SubmitClaimResponse\" type=\"xsd:string\"/>\n      <xsd:element name=\"GetClaimStatusRequest\" type=\"xsd:string\"/>\n      <xsd:element name=\"GetClaimStatusResponse\" type=\"xsd:string\"/>\n    </xsd:schema>\n  </types>\n\n  <message name=\"SubmitClaimInput\">\n    <part name=\"parameters\" element=\"tns:SubmitClaimRequest\"/>\n  </message>\n  <message name=\"SubmitClaimOutput\">\n    <part name=\"parameters\" element=\"tns:SubmitClaimResponse\"/>\n  </message>\n\n  <message name=\"GetClaimStatusInput\">\n    <part name=\"parameters\" element=\"tns:GetClaimStatusRequest\"/>\n  </message>\n  <message name=\"GetClaimStatusOutput\">\n    <part name=\"parameters\" element=\"tns:GetClaimStatusResponse\"/>\n  </message>\n\n  <portType name=\"claimsPortType\">\n    <operation name=\"SubmitClaim\">\n      <input message=\"tns:SubmitClaimInput\"/>\n      <output message=\"tns:SubmitClaimOutput\"/>\n    </operation>\n    <operation name=\"GetClaimStatus\">\n      <input message=\"tns:GetClaimStatusInput\"/>\n      <output message=\"tns:GetClaimStatusOutput\"/>\n    </operation>\n  </portType>\n  <binding name=\"claimsBinding\" type=\"tns:claimsPortType\">\n    <soap:binding transport=\"http://schemas.xmlsoap.org/soap/http\" style=\"document\"/>\n    <operation name=\"SubmitClaim\">\n      <soap:operation soapAction=\"urn:SubmitClaim\"/>\n      <input><soap:body use=\"literal\"/></input>\n      <output><soap:body use=\"literal\"/></output>\n    </operation>\n    <operation name=\"GetClaimStatus\">\n      <soap:operation soapAction=\"urn:GetClaimStatus\"/>\n      <input><soap:body use=\"literal\"/></input>\n      <output><soap:body use=\"literal\"/></output>\n    </operation>\n  </binding>\n  <service name=\"claimsService\">\n    <port name=\"claimsPort\" binding=\"tns:claimsBinding\">\n      <soap:address location=\"https://soap-claims-hub.mock.internal/ClaimService\"/>\n    </port>\n  </service>\n</definitions>\n"
       },
       {
         "path": "fixtures/claims.json",
@@ -1846,12 +1846,12 @@
       {
         "path": "mock/claims/claim-service.metadata.yaml",
         "language": "yaml",
-        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/claims/claim-service.metadata.yaml\n    operationId: claim-service\n    sourceArtifact: mock/claims/claim-service.cue\n    suite: soap-claims-hub\nspec:\n    adapter: rest\n    delayMillis: 90\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"500\"\n        mediatype: text/xml; charset=utf-8\n        body: |-\n            \u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n            \u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\u003e\n              \u003csoapenv:Body\u003e\n                \u003csoapenv:Fault\u003e\n                  \u003cfaultcode\u003esoapenv:Client\u003c/faultcode\u003e\n                  \u003cfaultstring\u003eNo SOAPAction matched the incoming request.\u003c/faultstring\u003e\n                \u003c/soapenv:Fault\u003e\n              \u003c/soapenv:Body\u003e\n            \u003c/soapenv:Envelope\u003e\n        headers: []\n    parameterConstraints:\n        - name: content-type\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)^(text/xml|application/soap\\+xml)\n        - name: soapaction\n          source: header\n          required: true\n          forward: false\n          pattern: ^urn:(SubmitClaim|GetClaimStatus)$\n        - name: x-suite-profile\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/soap-claims-hub/claims-soap/claim-service\n    runtimeUrl: /mocks/rest/soap-claims-hub/claims-soap/ClaimService\n    state: null\n"
+        "content": "apiVersion: mocks.babelsuite.io/v1alpha1\nkind: MockOperation\nmetadata:\n    metadataPath: mock/claims/claim-service.metadata.yaml\n    operationId: claim-service\n    sourceArtifact: mock/claims/claim-service.cue\n    suite: soap-claims-hub\nspec:\n    adapter: rest\n    delayMillis: 90\n    fallback:\n        mode: static\n        examplename: \"\"\n        proxyurl: \"\"\n        status: \"500\"\n        mediatype: text/xml; charset=utf-8\n        body: |-\n            <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n            <soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n              <soapenv:Body>\n                <soapenv:Fault>\n                  <faultcode>soapenv:Client</faultcode>\n                  <faultstring>No SOAPAction matched the incoming request.</faultstring>\n                </soapenv:Fault>\n              </soapenv:Body>\n            </soapenv:Envelope>\n        headers: []\n    parameterConstraints:\n        - name: content-type\n          source: header\n          required: true\n          forward: false\n          pattern: (?i)^(text/xml|application/soap\\+xml)\n        - name: soapaction\n          source: header\n          required: true\n          forward: false\n          pattern: ^urn:(SubmitClaim|GetClaimStatus)$\n        - name: x-suite-profile\n          source: header\n          required: false\n          forward: true\n          pattern: \"\"\n    resolverUrl: /internal/mock-data/soap-claims-hub/claims-soap/claim-service\n    runtimeUrl: /mocks/rest/soap-claims-hub/claims-soap/ClaimService\n    state: null\n"
       },
       {
         "path": "policies/soap_faults.rego",
         "language": "rego",
-        "content": "package babelsuite.soap_faults\n\ndefault allow := false\n\nallow if {\n  input.suite == \"soap-claims-hub\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.soap_faults\n\ndefault allow := false\n\nallow if {\n  input.suite == \"soap-claims-hub\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "profiles/canary.yaml",
@@ -1866,7 +1866,7 @@
       {
         "path": "tests/claims_smoke.py",
         "language": "python",
-        "content": "def test_smoke() -\u003e None:\n    assert \"SOAP Claims Hub\"\n    assert \"soap-claims-hub\" in \"localhost:5000/enterprise-integration/soap-claims-hub\"\n"
+        "content": "def test_smoke() -> None:\n    assert \"SOAP Claims Hub\"\n    assert \"soap-claims-hub\" in \"localhost:5000/enterprise-integration/soap-claims-hub\"\n"
       },
       {
         "path": "tasks/seed_reference_data.sh",
@@ -1895,7 +1895,7 @@
             "contractPath": "api/wsdl/claims.wsdl#ClaimService",
             "mockPath": "mock/claims/claim-service.cue",
             "mockUrl": "https://soap-claims-hub.mock.internal/ClaimService",
-            "curlCommand": "curl -X POST \"https://soap-claims-hub.mock.internal/ClaimService\" -H \"content-type: text/xml; charset=utf-8\" -H \"soapaction: urn:SubmitClaim\" -H \"x-suite-profile: canary.yaml\" -d '\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Header/\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:SubmitClaimRequest\u003e\n      \u003cclm:PolicyNumber\u003ePL-1024\u003c/clm:PolicyNumber\u003e\n      \u003cclm:LossType\u003ewater\u003c/clm:LossType\u003e\n      \u003cclm:Amount\u003e4200\u003c/clm:Amount\u003e\n    \u003c/clm:SubmitClaimRequest\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e'",
+            "curlCommand": "curl -X POST \"https://soap-claims-hub.mock.internal/ClaimService\" -H \"content-type: text/xml; charset=utf-8\" -H \"soapaction: urn:SubmitClaim\" -H \"x-suite-profile: canary.yaml\" -d '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <clm:SubmitClaimRequest>\n      <clm:PolicyNumber>PL-1024</clm:PolicyNumber>\n      <clm:LossType>water</clm:LossType>\n      <clm:Amount>4200</clm:Amount>\n    </clm:SubmitClaimRequest>\n  </soapenv:Body>\n</soapenv:Envelope>'",
             "dispatcher": "apisix",
             "mockMetadata": {
               "adapter": "rest",
@@ -1928,7 +1928,7 @@
                 "mode": "static",
                 "status": "500",
                 "mediaType": "text/xml; charset=utf-8",
-                "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\u003e\n  \u003csoapenv:Body\u003e\n    \u003csoapenv:Fault\u003e\n      \u003cfaultcode\u003esoapenv:Client\u003c/faultcode\u003e\n      \u003cfaultstring\u003eNo SOAPAction matched the incoming request.\u003c/faultstring\u003e\n    \u003c/soapenv:Fault\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e"
+                "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Body>\n    <soapenv:Fault>\n      <faultcode>soapenv:Client</faultcode>\n      <faultstring>No SOAPAction matched the incoming request.</faultstring>\n    </soapenv:Fault>\n  </soapenv:Body>\n</soapenv:Envelope>"
               },
               "metadataPath": "mock/claims/claim-service.metadata.yaml",
               "resolverUrl": "/internal/mock-data/soap-claims-hub/claims-soap/claim-service",
@@ -1959,7 +1959,7 @@
                     "value": "canary.yaml"
                   }
                 ],
-                "requestBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Header/\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:SubmitClaimRequest\u003e\n      \u003cclm:PolicyNumber\u003ePL-1024\u003c/clm:PolicyNumber\u003e\n      \u003cclm:LossType\u003ewater\u003c/clm:LossType\u003e\n      \u003cclm:Amount\u003e4200\u003c/clm:Amount\u003e\n    \u003c/clm:SubmitClaimRequest\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+                "requestBody": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <clm:SubmitClaimRequest>\n      <clm:PolicyNumber>PL-1024</clm:PolicyNumber>\n      <clm:LossType>water</clm:LossType>\n      <clm:Amount>4200</clm:Amount>\n    </clm:SubmitClaimRequest>\n  </soapenv:Body>\n</soapenv:Envelope>",
                 "responseStatus": "200",
                 "responseMediaType": "text/xml; charset=utf-8",
                 "responseHeaders": [
@@ -1968,7 +1968,7 @@
                     "value": "soap-submit-claim"
                   }
                 ],
-                "responseBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:SubmitClaimResponse\u003e\n      \u003cclm:ClaimId\u003eclm_2048\u003c/clm:ClaimId\u003e\n      \u003cclm:Decision\u003eAPPROVED\u003c/clm:Decision\u003e\n      \u003cclm:Profile\u003ecanary.yaml\u003c/clm:Profile\u003e\n      \u003cclm:TraceId\u003e00000000-0000-0000-0000-000000000010\u003c/clm:TraceId\u003e\n      \u003cclm:ServedAt\u003e2026-01-01T00:00:00Z\u003c/clm:ServedAt\u003e\n    \u003c/clm:SubmitClaimResponse\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e"
+                "responseBody": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\">\n  <soapenv:Body>\n    <clm:SubmitClaimResponse>\n      <clm:ClaimId>clm_2048</clm:ClaimId>\n      <clm:Decision>APPROVED</clm:Decision>\n      <clm:Profile>canary.yaml</clm:Profile>\n      <clm:TraceId>00000000-0000-0000-0000-000000000010</clm:TraceId>\n      <clm:ServedAt>2026-01-01T00:00:00Z</clm:ServedAt>\n    </clm:SubmitClaimResponse>\n  </soapenv:Body>\n</soapenv:Envelope>"
               },
               {
                 "name": "GetClaimStatus",
@@ -1990,7 +1990,7 @@
                     "value": "urn:GetClaimStatus"
                   }
                 ],
-                "requestBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Header/\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:GetClaimStatusRequest\u003e\n      \u003cclm:ClaimId\u003eclm_2048\u003c/clm:ClaimId\u003e\n    \u003c/clm:GetClaimStatusRequest\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+                "requestBody": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <clm:GetClaimStatusRequest>\n      <clm:ClaimId>clm_2048</clm:ClaimId>\n    </clm:GetClaimStatusRequest>\n  </soapenv:Body>\n</soapenv:Envelope>",
                 "responseStatus": "200",
                 "responseMediaType": "text/xml; charset=utf-8",
                 "responseHeaders": [
@@ -1999,7 +1999,7 @@
                     "value": "soap-claim-status"
                   }
                 ],
-                "responseBody": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\"\u003e\n  \u003csoapenv:Body\u003e\n    \u003cclm:GetClaimStatusResponse\u003e\n      \u003cclm:ClaimId\u003eclm_2048\u003c/clm:ClaimId\u003e\n      \u003cclm:Status\u003eIN_REVIEW\u003c/clm:Status\u003e\n      \u003cclm:Owner\u003emanual_queue\u003c/clm:Owner\u003e\n      \u003cclm:TraceId\u003e00000000-0000-0000-0000-000000000011\u003c/clm:TraceId\u003e\n      \u003cclm:ServedAt\u003e2026-01-01T00:05:00Z\u003c/clm:ServedAt\u003e\n    \u003c/clm:GetClaimStatusResponse\u003e\n  \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e"
+                "responseBody": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:clm=\"urn:claims:v1\">\n  <soapenv:Body>\n    <clm:GetClaimStatusResponse>\n      <clm:ClaimId>clm_2048</clm:ClaimId>\n      <clm:Status>IN_REVIEW</clm:Status>\n      <clm:Owner>manual_queue</clm:Owner>\n      <clm:TraceId>00000000-0000-0000-0000-000000000011</clm:TraceId>\n      <clm:ServedAt>2026-01-01T00:05:00Z</clm:ServedAt>\n    </clm:GetClaimStatusResponse>\n  </soapenv:Body>\n</soapenv:Envelope>"
               }
             ]
           }
@@ -2028,7 +2028,7 @@
     "score": 90,
     "pullCommand": "babelctl run localhost:5000/qa/storefront-browser-lab:v1.3.0",
     "forkCommand": "babelctl fork localhost:5000/qa/storefront-browser-lab:v1.3.0 ./storefront-browser-lab",
-    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/playwright\", \"playwright\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\")\n\nbroker = service.run()\ncatalog_mock = service.mock(after=[broker])\norders_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nevent_consumer = service.run(after=[broker, seed_topics, orders_mock])\nstorefront_api = service.run(after=[catalog_mock, orders_mock, seed_topics])\nstorefront_ui = service.run(after=[storefront_api])\nplaywright_checkout = test.run(file=\"playwright_checkout.spec.ts\", image=\"mcr.microsoft.com/playwright:v1.53.0-noble\", after=[storefront_ui, event_consumer])",
+    "suiteStar": "load(\"@babelsuite/kafka\", \"kafka\")\nload(\"@babelsuite/playwright\", \"playwright\")\nload(\"@babelsuite/runtime\", \"service\", \"task\", \"test\", \"traffic\", \"suite\")\n\nbroker = service.run()\ncatalog_mock = service.mock(after=[broker])\norders_mock = service.mock(after=[broker])\nseed_topics = task.run(file=\"seed_topics.sh\", image=\"bash:5.2\", after=[broker])\nevent_consumer = service.run(after=[broker, seed_topics, orders_mock])\nstorefront_api = service.run(after=[catalog_mock, orders_mock, seed_topics])\nstorefront_ui = service.run(after=[storefront_api])\nplaywright_checkout = test.run(file=\"playwright_checkout.spec.ts\", image=\"mcr.microsoft.com/playwright:v1.53.0-noble\", after=[storefront_ui, event_consumer])",
     "profiles": [
       {
         "fileName": "local.yaml",
@@ -2174,12 +2174,12 @@
       {
         "path": "policies/checkout_latency.rego",
         "language": "rego",
-        "content": "package babelsuite.checkout_latency\n\ndefault allow := false\n\nallow if {\n  input.suite == \"storefront-browser-lab\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.checkout_latency\n\ndefault allow := false\n\nallow if {\n  input.suite == \"storefront-browser-lab\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "policies/event_schema.rego",
         "language": "rego",
-        "content": "package babelsuite.event_schema\n\ndefault allow := false\n\nallow if {\n  input.suite == \"storefront-browser-lab\"\n  count(input.modules) \u003e= 1\n}\n"
+        "content": "package babelsuite.event_schema\n\ndefault allow := false\n\nallow if {\n  input.suite == \"storefront-browser-lab\"\n  count(input.modules) >= 1\n}\n"
       },
       {
         "path": "profiles/ci.yaml",
@@ -2199,12 +2199,12 @@
       {
         "path": "tests/cart_abandonment.spec.ts",
         "language": "typescript",
-        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"cart abandonment.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
+        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"cart abandonment.spec\", async ({ page }) => {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
       },
       {
         "path": "tests/playwright_checkout.spec.ts",
         "language": "typescript",
-        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"playwright checkout.spec\", async ({ page }) =\u003e {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
+        "content": "import { test, expect } from \"@playwright/test\"\n\ntest(\"playwright checkout.spec\", async ({ page }) => {\n  await page.goto('/')\n  await expect(page.getByText(\"Storefront Browser Lab\")).toBeVisible()\n})\n"
       },
       {
         "path": "tasks/seed_topics.sh",
@@ -2449,9 +2449,62 @@
         ]
       }
     ]
+  },
+  {
+    "id": "composite-readiness",
+    "title": "Composite Readiness",
+    "repository": "localhost:5000/composite/composite-readiness",
+    "owner": "Platform Engineering",
+    "provider": "Zot",
+    "version": "v1.0.0",
+    "tags": [
+      "latest",
+      "v1.0.0"
+    ],
+    "description": "Minimal workspace suite that composes another suite through a dependency manifest and adds one final smoke step.",
+    "modules": [],
+    "status": "Verified",
+    "score": 85,
+    "pullCommand": "babelctl run localhost:5000/composite/composite-readiness:v1.0.0",
+    "forkCommand": "babelctl fork localhost:5000/composite/composite-readiness:v1.0.0 ./composite-lab",
+    "suiteStar": "load(\"@babelsuite/runtime\", \"test\", \"suite\")\n\npayments = suite.run(ref=\"payments-module\")\nreadiness_smoke = test.run(file=\"go/readiness_smoke_test.go\", image=\"golang:1.24\", after=[payments])",
+    "profiles": [
+      {
+        "fileName": "local.yaml",
+        "label": "Local",
+        "description": "Local composite profile for readiness validation.",
+        "default": true
+      }
+    ],
+    "folders": [
+      {
+        "name": "",
+        "role": "Core",
+        "description": "Suite composition manifests.",
+        "files": [
+          "dependencies.yaml",
+          "dependencies.lock.yaml"
+        ]
+      },
+      {
+        "name": "profiles",
+        "role": "Core",
+        "description": "Profile overrides for composite suite launch.",
+        "files": [
+          "local.yaml"
+        ]
+      },
+      {
+        "name": "tests/go",
+        "role": "Core",
+        "description": "Go smoke test for final readiness validation.",
+        "files": [
+          "readiness_smoke_test.go"
+        ]
+      }
+    ],
+    "contracts": [],
+    "apiSurfaces": [],
+    "sourceFiles": []
   }
 ]
-
-
-
-
