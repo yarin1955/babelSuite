@@ -528,7 +528,22 @@ export interface ExecutionLogLine {
   source: string
   timestamp: string
   level: 'info' | 'warn' | 'error'
+  kind: 'system' | 'output' | 'metric'
   text: string
+}
+
+export interface TrafficMetricSnapshot {
+  requests: number
+  failures: number
+  errorRate: number
+  rps: number
+  users: number
+  minMs: number
+  avgMs: number
+  p50Ms: number
+  p95Ms: number
+  p99Ms: number
+  maxMs: number
 }
 
 export interface ExecutionLogStreamRecord {

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/babelsuite/babelsuite/internal/logstream"
 )
 
@@ -103,20 +105,19 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 	if err == nil {
 		go func() {
 			defer logStream.Close()
-			buf := make([]byte, 4096)
-			for {
-				n, err := logStream.Read(buf)
-				if n > 0 {
-					text := strings.TrimRight(string(buf[:n]), "\r\n")
-					if len(text) > 8 {
-						text = text[8:]
-					}
-					if text != "" {
-						emit(line(step, "info", fmt.Sprintf("[%s] %s", step.Node.Name, text)))
-					}
-				}
-				if err != nil {
-					return
+			// Demultiplex the Docker multiplexed stream into stdout and stderr.
+			// Both streams are piped into a single reader so lines reach the UI
+			// in arrival order without buffering across streams.
+			pr, pw := io.Pipe()
+			go func() {
+				stdcopy.StdCopy(pw, pw, logStream)
+				pw.Close()
+			}()
+			scanner := bufio.NewScanner(pr)
+			for scanner.Scan() {
+				text := strings.TrimRight(scanner.Text(), "\r\n")
+				if text != "" {
+					emit(containerLine(step, text))
 				}
 			}
 		}()

@@ -52,6 +52,9 @@ type StepSpec struct {
 	OnFailure        []string
 	ArtifactExports  []ArtifactExport
 	Node             StepNode
+	// GatewayURL is the address of the APISIX sidecar for this execution.
+	// It is set automatically when the suite has a gateway (mock) node.
+	GatewayURL string
 }
 
 type Executor interface {

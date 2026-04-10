@@ -77,6 +77,14 @@ func executeLoadStep(ctx context.Context, step StepSpec, emit func(logstream.Lin
 		return finalizeLoadStep(step, emit, stats)
 	}
 
+	// Delegate to APISIX sidecar when the environment provides a gateway URL.
+	if canUseAPISIXTraffic(step) {
+		if err := runAPISIXTraffic(ctx, step, emit, stats); err != nil {
+			return err
+		}
+		return finalizeLoadStep(step, emit, stats)
+	}
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	switch step.Node.Variant {
 	case "traffic.constant_throughput", "traffic.open_model":
@@ -220,6 +228,7 @@ func runClosedLoadModel(ctx context.Context, step StepSpec, client *http.Client,
 		emit(line(step, "info", fmt.Sprintf("[%s] Entering stage %d with target users=%d spawn_rate=%.1f duration=%s.", step.Node.Name, stageIndex+1, stage.Users, stage.SpawnRate, stage.Duration)))
 		stageCtx, cancel := context.WithTimeout(ctx, stage.Duration)
 		ticker := time.NewTicker(time.Second)
+		tick := 0
 
 		adjustClosedUsers(stageCtx, stageIndex, step, client, emit, stats, &active, stage, selector)
 	stageLoop:
@@ -233,6 +242,10 @@ func runClosedLoadModel(ctx context.Context, step StepSpec, client *http.Client,
 				break stageLoop
 			case <-ticker.C:
 				adjustClosedUsers(stageCtx, stageIndex, step, client, emit, stats, &active, stage, selector)
+				tick++
+				if tick%5 == 0 {
+					emit(metricLine(step, snapshotMetrics(stats)))
+				}
 			}
 		}
 
@@ -350,15 +363,19 @@ func runOpenLoadModel(ctx context.Context, step StepSpec, client *http.Client, e
 
 		stageCtx, cancel := context.WithTimeout(ctx, stage.Duration)
 		ticker := time.NewTicker(interval)
+		metricTicker := time.NewTicker(5 * time.Second)
 	stageLoop:
 		for {
 			select {
 			case <-ctx.Done():
 				ticker.Stop()
+				metricTicker.Stop()
 				cancel()
 				return ctx.Err()
 			case <-stageCtx.Done():
 				break stageLoop
+			case <-metricTicker.C:
+				emit(metricLine(step, snapshotMetrics(stats)))
 			case <-ticker.C:
 				select {
 				case limiter <- struct{}{}:
@@ -379,6 +396,7 @@ func runOpenLoadModel(ctx context.Context, step StepSpec, client *http.Client, e
 			}
 		}
 		ticker.Stop()
+		metricTicker.Stop()
 		cancel()
 		stats.endStage(stageIndex, time.Now())
 		if stage.Stop {
@@ -709,6 +727,25 @@ func (s *loadStats) summary() loadSummary {
 		return summary.Stages[i].Index < summary.Stages[j].Index
 	})
 	return summary
+}
+
+// snapshotMetrics reads the current loadStats and returns a TrafficMetricSnapshot
+// suitable for emission as a metric-kind log line.
+func snapshotMetrics(stats *loadStats) TrafficMetricSnapshot {
+	s := stats.summary()
+	return TrafficMetricSnapshot{
+		Requests:  s.Requests,
+		Failures:  s.Failures,
+		ErrorRate: s.ErrorRate,
+		RPS:       s.AverageRPS,
+		Users:     s.PeakUsers,
+		MinMS:     s.Latency.MinMillis,
+		AvgMS:     s.Latency.AvgMillis,
+		P50MS:     s.Latency.P50Millis,
+		P95MS:     s.Latency.P95Millis,
+		P99MS:     s.Latency.P99Millis,
+		MaxMS:     s.Latency.MaxMillis,
+	}
 }
 
 func (s loadSummary) metricValue(metric string, sampler string) (float64, bool) {
