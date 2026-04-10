@@ -12,6 +12,11 @@ func RenderStandaloneConfig(suite SuiteConfig) string {
 	routes, streamRoutes, upstreams, protos, deferred := buildResources(suite)
 	resolvers := buildResolverBindings(suite)
 	pluginTemplates := buildProtocolTemplates(suite)
+
+	// Always include the traffic cannon so the sidecar is ready for load tests
+	// without any runtime Admin API calls.
+	routes = append(routes, trafficTriggerRoute())
+
 	document := routeDocument{
 		Deployment: deploymentBlock{
 			Role: "data_plane",
@@ -133,7 +138,10 @@ func buildResources(suite SuiteConfig) ([]routeBlock, []streamRouteBlock, []name
 }
 
 func buildPluginCatalog(suite SuiteConfig) []pluginSpec {
-	seen := map[string]pluginSpec{}
+	seen := map[string]pluginSpec{
+		// Always register the traffic cannon so it is available on boot.
+		TrafficCannonPluginName: {Name: TrafficCannonPluginName},
+	}
 	for _, surface := range suite.APISurfaces {
 		for _, operation := range surface.Operations {
 			transport := transportKind(surface, operation)
@@ -167,6 +175,27 @@ func buildPluginCatalog(suite SuiteConfig) []pluginSpec {
 		output = append(output, seen[name])
 	}
 	return output
+}
+
+// trafficTriggerRoute returns the hidden route that accepts the BabelSuite
+// runner's POST /_babelsuite/traffic/start trigger.  The upstream node is a
+// loopback placeholder — the cannon plugin short-circuits the request in the
+// access phase and never forwards it.
+func trafficTriggerRoute() routeBlock {
+	return routeBlock{
+		ID:      "babelsuite-traffic-trigger",
+		Name:    "babelsuite-traffic-trigger",
+		Desc:    "BabelSuite load test trigger — handled entirely by the traffic-cannon Lua plugin.",
+		URI:     TrafficCannonTriggerRoute,
+		Methods: []string{"POST"},
+		Plugins: map[string]any{
+			TrafficCannonPluginName: map[string]any{},
+		},
+		Upstream: upstreamBlock{
+			Type:  "roundrobin",
+			Nodes: map[string]int{"127.0.0.1:1": 1},
+		},
+	}
 }
 
 func buildResolverBindings(suite SuiteConfig) []resolverBinding {

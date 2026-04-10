@@ -44,12 +44,18 @@ type OperationMetadataConfig struct {
 }
 
 type routeDocument struct {
-	Deployment   deploymentBlock      `yaml:"deployment"`
-	Plugins      []pluginSpec         `yaml:"plugins,omitempty"`
-	Protos       []protoBlock         `yaml:"protos,omitempty"`
-	Upstreams    []namedUpstreamBlock `yaml:"upstreams,omitempty"`
-	Routes       []routeBlock         `yaml:"routes,omitempty"`
-	StreamRoutes []streamRouteBlock   `yaml:"stream_routes,omitempty"`
+	Deployment      deploymentBlock      `yaml:"deployment"`
+	Plugins         []pluginSpec         `yaml:"plugins,omitempty"`
+	PluginMetadata  map[string]any       `yaml:"plugin_metadata,omitempty"`
+	Protos          []protoBlock         `yaml:"protos,omitempty"`
+	Upstreams       []namedUpstreamBlock `yaml:"upstreams,omitempty"`
+	Routes          []routeBlock         `yaml:"routes,omitempty"`
+	StreamRoutes    []streamRouteBlock   `yaml:"stream_routes,omitempty"`
+}
+
+type luaPluginBlock struct {
+	Name string `yaml:"name"`
+	Code string `yaml:"code"`
 }
 
 type pluginSpec struct {
