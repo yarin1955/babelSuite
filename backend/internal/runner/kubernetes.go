@@ -1,9 +1,9 @@
 package runner
 
 import (
+	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -207,20 +207,11 @@ func (k *Kubernetes) streamLogs(ctx context.Context, client kubernetes.Interface
 	}
 	defer stream.Close()
 
-	buf := make([]byte, 4096)
-	for {
-		n, err := stream.Read(buf)
-		if n > 0 {
-			text := strings.TrimRight(string(buf[:n]), "\r\n")
-			if text != "" {
-				emit(line(step, "info", fmt.Sprintf("[%s] %s", step.Node.Name, text)))
-			}
-		}
-		if err != nil {
-			if err != io.EOF {
-				return
-			}
-			return
+	scanner := bufio.NewScanner(stream)
+	for scanner.Scan() {
+		text := strings.TrimRight(scanner.Text(), "\r\n")
+		if text != "" {
+			emit(containerLine(step, text))
 		}
 	}
 }

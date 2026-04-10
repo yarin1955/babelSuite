@@ -11,7 +11,7 @@ import {
 } from 'react-icons/fa6'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
-import { createExecution, type ExecutionArtifactRecord, type ExecutionLogLine } from '../lib/api'
+import { createExecution, type ExecutionArtifactRecord, type ExecutionLogLine, type TrafficMetricSnapshot } from '../lib/api'
 import { useExecutionStream } from '../hooks/useExecutionStream'
 import {
   deriveRuntimeStatus,
@@ -57,12 +57,30 @@ export default function LiveExecution() {
   )
   const filteredLogs = useMemo(() => {
     let result = selectedSource === 'all' ? logs : logs.filter((line) => line.source === selectedSource)
+    // Never render metric payloads in the terminal — they go to the stats panel
+    result = result.filter((line) => line.kind !== 'metric')
     if (logSearch.trim()) {
       const term = logSearch.toLowerCase()
       result = result.filter((line) => line.text.toLowerCase().includes(term))
     }
     return result
   }, [logs, selectedSource, logSearch])
+
+  // Latest metric snapshot per step source, derived from metric-kind lines
+  const latestMetrics = useMemo(() => {
+    const map = new Map<string, TrafficMetricSnapshot>()
+    for (const line of logs) {
+      if (line.kind !== 'metric') continue
+      try { map.set(line.source, JSON.parse(line.text) as TrafficMetricSnapshot) } catch { /* ignore */ }
+    }
+    return map
+  }, [logs])
+
+  const selectedNodeKind = useMemo(
+    () => flatTopology.find((n) => n.id === selectedSource)?.kind ?? '',
+    [flatTopology, selectedSource],
+  )
+  const showMetricsPanel = selectedNodeKind === 'traffic' && latestMetrics.has(selectedSource)
   const mockPreviews = useMemo(
     () => (execution?.suite.apiSurfaces ?? []).flatMap((surface) => (
       surface.operations.flatMap((operation) => (
@@ -275,23 +293,27 @@ export default function LiveExecution() {
               <div className='exec-tabs__spacer' />
             </div>
 
-            {/* Log body */}
-            <div className='exec-log' ref={logRef}>
-              {filteredLogs.length === 0 ? (
-                <div className='exec-log__empty'>
-                  {loading ? 'Connecting…' : 'Waiting for log output from the execution stream.'}
-                </div>
-              ) : (
-                filteredLogs.map((line, index) => (
-                  <LogLine
-                    key={`${line.timestamp}-${line.source}-${index}`}
-                    line={line}
-                    showPrefix={selectedSource === 'all'}
-                    index={index + 1}
-                  />
-                ))
-              )}
-            </div>
+            {/* Log body — replaced by metrics panel for traffic steps with live data */}
+            {showMetricsPanel ? (
+              <TrafficMetricsPanel snapshot={latestMetrics.get(selectedSource)!} />
+            ) : (
+              <div className='exec-log' ref={logRef}>
+                {filteredLogs.length === 0 ? (
+                  <div className='exec-log__empty'>
+                    {loading ? 'Connecting…' : 'Waiting for log output from the execution stream.'}
+                  </div>
+                ) : (
+                  filteredLogs.map((line, index) => (
+                    <LogLine
+                      key={`${line.timestamp}-${line.source}-${index}`}
+                      line={line}
+                      showPrefix={selectedSource === 'all'}
+                      index={index + 1}
+                    />
+                  ))
+                )}
+              </div>
+            )}
 
             {/* Stream status bar */}
             <div className='exec-stream-bar'>
@@ -522,6 +544,36 @@ function StreamPill({
   )
 }
 
+function TrafficMetricsPanel({ snapshot }: { snapshot: TrafficMetricSnapshot }) {
+  const errPct = (snapshot.errorRate * 100).toFixed(2)
+  const stat = (label: string, value: string, sub?: string) => (
+    <div className='exec-metric-stat'>
+      <span className='exec-metric-stat__value'>{value}</span>
+      <span className='exec-metric-stat__label'>{label}</span>
+      {sub && <span className='exec-metric-stat__sub'>{sub}</span>}
+    </div>
+  )
+  return (
+    <div className='exec-metrics-panel'>
+      <div className='exec-metrics-panel__row exec-metrics-panel__row--primary'>
+        {stat('Requests', snapshot.requests.toLocaleString())}
+        {stat('Failures', snapshot.failures.toLocaleString(), `${errPct}%`)}
+        {stat('RPS', snapshot.rps.toFixed(1))}
+        {stat('Active Users', snapshot.users.toLocaleString())}
+      </div>
+      <div className='exec-metrics-panel__divider' />
+      <div className='exec-metrics-panel__row'>
+        {stat('Min', `${snapshot.minMs.toFixed(0)} ms`)}
+        {stat('Avg', `${snapshot.avgMs.toFixed(0)} ms`)}
+        {stat('P50', `${snapshot.p50Ms.toFixed(0)} ms`)}
+        {stat('P95', `${snapshot.p95Ms.toFixed(0)} ms`)}
+        {stat('P99', `${snapshot.p99Ms.toFixed(0)} ms`)}
+        {stat('Max', `${snapshot.maxMs.toFixed(0)} ms`)}
+      </div>
+    </div>
+  )
+}
+
 function LogLine({
   line,
   showPrefix,
@@ -531,16 +583,23 @@ function LogLine({
   showPrefix: boolean
   index: number
 }) {
+  const isOutput = line.kind === 'output'
+  const text = showPrefix
+    ? line.text.replace(new RegExp(`^\\[${line.source}\\]\\s*`), '')
+    : line.text
+
   return (
-    <div className={`exec-log-line exec-log-line--${line.level}${showPrefix ? ' exec-log-line--multi' : ''}`}>
+    <div className={[
+      'exec-log-line',
+      `exec-log-line--${line.level}`,
+      isOutput ? 'exec-log-line--output' : 'exec-log-line--system',
+      showPrefix ? 'exec-log-line--multi' : '',
+    ].filter(Boolean).join(' ')}>
       <span className='exec-log-line__num'>{index}</span>
-      <span className='exec-log-line__time'>{line.timestamp}</span>
+      {!isOutput && <span className='exec-log-line__time'>{line.timestamp}</span>}
+      {isOutput && <span className='exec-log-line__stream'>stdout</span>}
       {showPrefix && <span className='exec-log-line__src'>[{line.source}]</span>}
-      <code className='exec-log-line__text'>{
-        showPrefix
-          ? line.text.replace(new RegExp(`^\\[${line.source}\\]\\s*`), '')
-          : line.text
-      }</code>
+      <code className='exec-log-line__text'>{text}</code>
     </div>
   )
 }
