@@ -716,6 +716,94 @@
   line-height: 1.5;
 }
 
+/* Artifact detail inside dialog */
+.exec-artifact-detail {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: #f5f8fa;
+  border-radius: 6px;
+}
+
+.exec-artifact-detail__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.exec-artifact-detail__label {
+  min-width: 90px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8da4b4;
+  flex-shrink: 0;
+}
+
+.exec-artifact-detail__value {
+  color: #21405b;
+  font-size: 0.88rem;
+}
+
+code.exec-artifact-detail__value {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  color: #1f7ea8;
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.exec-artifact-detail__section {
+  display: grid;
+  gap: 10px;
+}
+
+.exec-artifact-detail__section-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8da4b4;
+}
+
+.exec-artifact-detail__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.exec-artifact-detail__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 18px;
+  border-radius: 6px;
+  background: #ffffff;
+  min-width: 72px;
+}
+
+.exec-artifact-detail__stat strong {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.exec-artifact-detail__stat span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8da4b4;
+}
+
+.exec-artifact-detail__stat--pass strong { color: #16a87f; }
+.exec-artifact-detail__stat--fail strong { color: #c44e56; }
+.exec-artifact-detail__stat--skip strong { color: #b88a00; }
+.exec-artifact-detail__stat--total strong { color: #21405b; }
+.exec-artifact-detail__stat--muted strong { color: #5d7082; }
+.exec-artifact-detail__stat--cov strong { color: #1f7ea8; }
+
 .exec-source-preview {
   flex-shrink: 0;
   display: flex;
@@ -734,6 +822,13 @@
   padding: 12px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   background: #0b141c;
+}
+
+.exec-source-preview__header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .exec-source-preview__header h3 {
@@ -1500,6 +1595,20 @@
 
 .exec-dialog--mock      { width: min(720px, 92vw); }
 .exec-dialog--artifacts { width: min(820px, 92vw); }
+
+.exec-dialog .exec-source-preview {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  border-top: none;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.exec-dialog .exec-source-preview__body {
+  flex: 1;
+  overflow-y: auto;
+}
 
 .exec-dialog__header {
   flex-shrink: 0;

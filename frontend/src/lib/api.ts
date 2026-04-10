@@ -312,6 +312,7 @@ export interface ExecutionArtifactRecord {
   name: string
   on?: string
   format?: string
+  content?: string
   testSummary?: ExecutionArtifactTestSummary
   coverageSummary?: ExecutionArtifactCoverageSummary
 }

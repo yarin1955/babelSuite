@@ -346,22 +346,6 @@ export default function LiveExecution() {
                 <StreamPill state={executionStreamState} paused={paused} label='events' />
               </div>
             </div>
-            {artifacts.length > 0 && (
-              <section className='exec-artifacts'>
-                <div className='exec-artifacts__header'>
-                  <div>
-                    <p className='exec-artifacts__eyebrow'>Artifacts</p>
-                    <h3>Structured Results</h3>
-                  </div>
-                  <span className='exec-artifacts__count'>{artifacts.length}</span>
-                </div>
-                <div className='exec-artifacts__grid'>
-                  {artifacts.map((artifact) => (
-                    <ArtifactCard key={artifact.id} artifact={artifact} />
-                  ))}
-                </div>
-              </section>
-            )}
           </section>
 
           {/* ── Topology sidebar ── */}
@@ -488,14 +472,28 @@ function MockDialog({
   return createPortal(
     <div className='exec-dialog-backdrop' onClick={onClose}>
       <div className='exec-dialog exec-dialog--mock' onClick={(e) => e.stopPropagation()}>
-        <div className='exec-dialog__header'>
-          <span className='exec-dialog__title'>Mock Responses</span>
-          <button type='button' className='dag-close' onClick={onClose}>
-            <FaXmark />
-            <span>Close</span>
-          </button>
-        </div>
-        <div className='exec-dialog__body'>
+        <section className='exec-source-preview'>
+          <div className='exec-source-preview__header'>
+            <div>
+              <p className='exec-source-preview__eyebrow'>Generated Mock Data</p>
+              <h3>{activeMockPreview?.label ?? 'Mock Responses'}</h3>
+            </div>
+            <div className='exec-source-preview__header-right'>
+              {activeMockPreview && (
+                <div className='exec-source-preview__actions'>
+                  <span className='exec-source-preview__language'>{activeMockPreview.language}</span>
+                  <button type='button' className='exec-source-preview__copy' onClick={() => void onCopy()}>
+                    <FaCopy />
+                    <span>Copy</span>
+                  </button>
+                </div>
+              )}
+              <button type='button' className='dag-close' onClick={onClose}>
+                <FaXmark />
+                <span>Close</span>
+              </button>
+            </div>
+          </div>
           {mockPreviews.length > 1 && (
             <div className='exec-source-preview__switcher'>
               {mockPreviews.map((preview) => (
@@ -510,20 +508,8 @@ function MockDialog({
               ))}
             </div>
           )}
-          {activeMockPreview && (
-            <div className='exec-dialog__preview-header'>
-              <span>{activeMockPreview.label}</span>
-              <div className='exec-source-preview__actions'>
-                <span className='exec-source-preview__language'>{activeMockPreview.language}</span>
-                <button type='button' className='exec-source-preview__copy' onClick={() => void onCopy()}>
-                  <FaCopy />
-                  <span>Copy</span>
-                </button>
-              </div>
-            </div>
-          )}
           {activeMockPreview ? (
-            <div className='exec-source-preview__body exec-dialog__code'>
+            <div className='exec-source-preview__body'>
               {activeMockPreview.content.split('\n').map((line, index) => (
                 <div key={`${activeMockPreview.id}-${index + 1}`} className='exec-source-preview__line'>
                   <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
@@ -532,13 +518,35 @@ function MockDialog({
               ))}
             </div>
           ) : (
-            <p className='exec-dialog__empty'>No mock data available.</p>
+            <div className='exec-source-preview__empty'>
+              Waiting for mock data to become available for this suite.
+            </div>
           )}
-        </div>
+        </section>
       </div>
     </div>,
     document.body,
   )
+}
+
+function artifactContent(artifact: ExecutionArtifactRecord): string | null {
+  if (artifact.content) return artifact.content
+  if (artifact.testSummary) {
+    const s = artifact.testSummary
+    const dur = typeof s.durationSeconds === 'number' ? s.durationSeconds.toFixed(3) : '0'
+    const cases = [
+      `  <testcase name="${artifact.stepName}" classname="${artifact.stepName}" time="${dur}">${
+        s.failures > 0 ? `\n    <failure message="step failed">${artifact.stepName} ended in failed state.</failure>\n  ` : ''
+      }</testcase>`,
+    ]
+    return [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<testsuite name="${artifact.stepName}" tests="${s.total}" failures="${s.failures}" errors="${s.errors}" skipped="${s.skipped}" time="${dur}">`,
+      ...cases,
+      `</testsuite>`,
+    ].join('\n')
+  }
+  return null
 }
 
 function ArtifactsDialog({
@@ -548,24 +556,68 @@ function ArtifactsDialog({
   artifacts: ExecutionArtifactRecord[]
   onClose: () => void
 }) {
+  const [activeId, setActiveId] = useState(artifacts[0]?.id ?? '')
+  const active = artifacts.find((a) => a.id === activeId) ?? artifacts[0]
+  const content = active ? artifactContent(active) : null
+
   return createPortal(
     <div className='exec-dialog-backdrop' onClick={onClose}>
       <div className='exec-dialog exec-dialog--artifacts' onClick={(e) => e.stopPropagation()}>
-        <div className='exec-dialog__header'>
-          <span className='exec-dialog__title'>Artifacts</span>
-          <span className='exec-artifacts__count'>{artifacts.length}</span>
-          <button type='button' className='dag-close' onClick={onClose}>
-            <FaXmark />
-            <span>Close</span>
-          </button>
-        </div>
-        <div className='exec-dialog__body'>
-          <div className='exec-artifacts__grid'>
-            {artifacts.map((artifact) => (
-              <ArtifactCard key={artifact.id} artifact={artifact} />
-            ))}
+        <section className='exec-source-preview'>
+          <div className='exec-source-preview__header'>
+            <div>
+              <p className='exec-source-preview__eyebrow'>Artifacts</p>
+              <h3>{active?.name ?? 'Artifact Results'}</h3>
+            </div>
+            <div className='exec-source-preview__header-right'>
+              {content && (
+                <div className='exec-source-preview__actions'>
+                  <span className='exec-source-preview__language'>{(active?.format ?? 'raw').toUpperCase()}</span>
+                  <button
+                    type='button'
+                    className='exec-source-preview__copy'
+                    onClick={() => void navigator.clipboard.writeText(content)}
+                  >
+                    <FaCopy />
+                    <span>Copy</span>
+                  </button>
+                </div>
+              )}
+              <button type='button' className='dag-close' onClick={onClose}>
+                <FaXmark />
+                <span>Close</span>
+              </button>
+            </div>
           </div>
-        </div>
+          {artifacts.length > 1 && (
+            <div className='exec-source-preview__switcher'>
+              {artifacts.map((a) => (
+                <button
+                  key={a.id}
+                  type='button'
+                  className={`exec-source-preview__chip${a.id === activeId ? ' exec-source-preview__chip--active' : ''}`}
+                  onClick={() => setActiveId(a.id)}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {content ? (
+            <div className='exec-source-preview__body'>
+              {content.split('\n').map((line, index) => (
+                <div key={`${active!.id}-${index + 1}`} className='exec-source-preview__line'>
+                  <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
+                  <code className='exec-source-preview__line-content'>{line || ' '}</code>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className='exec-source-preview__empty'>
+              No content available for this artifact.
+            </div>
+          )}
+        </section>
       </div>
     </div>,
     document.body,
@@ -695,74 +747,6 @@ function LogLine({
 }
 
 /* ── DAG overlay ────────────────────────────────────────── */
-
-function ArtifactCard({ artifact }: { artifact: ExecutionArtifactRecord }) {
-  const format = (artifact.format ?? 'raw').toUpperCase()
-
-  return (
-    <article className='exec-artifact-card'>
-      <div className='exec-artifact-card__header'>
-        <div>
-          <p className='exec-artifact-card__title'>{artifact.name}</p>
-          <p className='exec-artifact-card__path'>{artifact.path}</p>
-        </div>
-        <span className='exec-artifact-card__badge'>{format}</span>
-      </div>
-
-      <div className='exec-artifact-card__meta'>
-        <span>{artifact.stepName}</span>
-        {artifact.on && <span>on {artifact.on}</span>}
-      </div>
-
-      {artifact.testSummary && (
-        <div className='exec-artifact-card__stats'>
-          <ArtifactStat label='passed' value={artifact.testSummary.passed} tone='healthy' />
-          <ArtifactStat label='failed' value={artifact.testSummary.failures} tone='failed' />
-          <ArtifactStat label='errors' value={artifact.testSummary.errors} tone='failed' />
-          <ArtifactStat label='skipped' value={artifact.testSummary.skipped} tone='muted' />
-        </div>
-      )}
-
-      {artifact.coverageSummary ? (
-        <div className='exec-artifact-card__coverage'>
-          <ArtifactCoverage label='Line coverage' value={artifact.coverageSummary.lineRate} />
-          <ArtifactCoverage label='Branch coverage' value={artifact.coverageSummary.branchRate} />
-        </div>
-      ) : artifact.format === 'cobertura' ? (
-        <p className='exec-artifact-card__hint'>
-          Coverage summaries will appear when report content is collected for this export.
-        </p>
-      ) : null}
-    </article>
-  )
-}
-
-function ArtifactStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: number
-  tone: 'healthy' | 'failed' | 'muted'
-}) {
-  return (
-    <div className='exec-artifact-card__stat'>
-      <strong data-tone={tone}>{value}</strong>
-      <span>{label}</span>
-    </div>
-  )
-}
-
-function ArtifactCoverage({ label, value }: { label: string; value?: number }) {
-  const percent = typeof value === 'number' ? `${Math.round(value * 100)}%` : 'n/a'
-  return (
-    <div className='exec-artifact-card__coverage-item'>
-      <span>{label}</span>
-      <strong>{percent}</strong>
-    </div>
-  )
-}
 
 const DAG_NODE_W = 180
 const DAG_NODE_H = 62

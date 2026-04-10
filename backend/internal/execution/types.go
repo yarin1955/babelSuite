@@ -112,6 +112,7 @@ type ExecutionArtifact struct {
 	Name            string                    `json:"name"`
 	On              string                    `json:"on,omitempty"`
 	Format          string                    `json:"format,omitempty"`
+	Content         string                    `json:"content,omitempty"`
 	TestSummary     *ExecutionTestSummary     `json:"testSummary,omitempty"`
 	CoverageSummary *ExecutionCoverageSummary `json:"coverageSummary,omitempty"`
 }
