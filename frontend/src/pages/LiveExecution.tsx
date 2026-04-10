@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   FaArrowsRotate,
+  FaBoxOpen,
   FaCopy,
   FaDiagramProject,
+  FaFlask,
   FaMagnifyingGlass,
   FaPause,
   FaPlay,
@@ -38,6 +40,8 @@ export default function LiveExecution() {
   const [selectedSource, setSelectedSource] = useState<'all' | string>('all')
   const [selectedMockPreviewId, setSelectedMockPreviewId] = useState('')
   const [showDag, setShowDag] = useState(false)
+  const [showMockDialog, setShowMockDialog] = useState(false)
+  const [showArtifactsDialog, setShowArtifactsDialog] = useState(false)
   const [logSearch, setLogSearch] = useState('')
   const [notice, setNotice] = useState('')
   const [actionError, setActionError] = useState('')
@@ -179,6 +183,24 @@ export default function LiveExecution() {
       description=''
       actions={(
         <>
+          <button
+            type='button'
+            className='exec-toolbar-btn exec-toolbar-btn--ghost'
+            disabled={artifacts.length === 0}
+            onClick={() => setShowArtifactsDialog(true)}
+          >
+            <FaBoxOpen />
+            <span>Artifacts</span>
+          </button>
+          <button
+            type='button'
+            className='exec-toolbar-btn exec-toolbar-btn--ghost'
+            disabled={mockPreviews.length === 0}
+            onClick={() => setShowMockDialog(true)}
+          >
+            <FaFlask />
+            <span>Mock</span>
+          </button>
           <button
             type='button'
             className='exec-toolbar-btn exec-toolbar-btn--ghost'
@@ -340,55 +362,6 @@ export default function LiveExecution() {
                 </div>
               </section>
             )}
-            {mockPreviews.length > 0 && (
-              <section className='exec-source-preview'>
-                <div className='exec-source-preview__header'>
-                  <div>
-                    <p className='exec-source-preview__eyebrow'>Generated Mock Data</p>
-                    <h3>{activeMockPreview?.label ?? 'Waiting for mock data'}</h3>
-                  </div>
-                  {activeMockPreview && (
-                    <div className='exec-source-preview__actions'>
-                      <span className='exec-source-preview__language'>{activeMockPreview.language}</span>
-                      <button type='button' className='exec-source-preview__copy' onClick={() => void copyMockPreview()}>
-                        <FaCopy />
-                        <span>Copy</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {mockPreviews.length > 1 && (
-                  <div className='exec-source-preview__switcher'>
-                    {mockPreviews.map((preview) => (
-                      <button
-                        key={preview.id}
-                        type='button'
-                        className={`exec-source-preview__chip${activeMockPreview?.id === preview.id ? ' exec-source-preview__chip--active' : ''}`}
-                        onClick={() => selectMockPreview(preview.id)}
-                      >
-                        {preview.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {activeMockPreview ? (
-                  <div className='exec-source-preview__body'>
-                    {activeMockPreview.content.split('\n').map((line, index) => (
-                      <div key={`${activeMockPreview.id}-${index + 1}`} className='exec-source-preview__line'>
-                        <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
-                        <code className='exec-source-preview__line-content'>{line || ' '}</code>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className='exec-source-preview__empty'>
-                    Waiting for mock data to become available for this suite.
-                  </div>
-                )}
-              </section>
-            )}
           </section>
 
           {/* ── Topology sidebar ── */}
@@ -462,6 +435,21 @@ export default function LiveExecution() {
         </div>
       </div>
 
+      {showMockDialog && (
+        <MockDialog
+          mockPreviews={mockPreviews}
+          activeMockPreview={activeMockPreview}
+          onSelectMockPreview={selectMockPreview}
+          onCopy={copyMockPreview}
+          onClose={() => setShowMockDialog(false)}
+        />
+      )}
+      {showArtifactsDialog && (
+        <ArtifactsDialog
+          artifacts={artifacts}
+          onClose={() => setShowArtifactsDialog(false)}
+        />
+      )}
       {showDag && (
         <ExecutionDag
           topology={topology}
@@ -479,6 +467,108 @@ export default function LiveExecution() {
         />
       )}
     </AppShell>
+  )
+}
+
+/* ── Dialogs ────────────────────────────────────────────── */
+
+function MockDialog({
+  mockPreviews,
+  activeMockPreview,
+  onSelectMockPreview,
+  onCopy,
+  onClose,
+}: {
+  mockPreviews: Array<{ id: string; label: string; language: string; content: string }>
+  activeMockPreview: { id: string; label: string; language: string; content: string } | undefined
+  onSelectMockPreview: (id: string) => void
+  onCopy: () => Promise<void>
+  onClose: () => void
+}) {
+  return createPortal(
+    <div className='exec-dialog-backdrop' onClick={onClose}>
+      <div className='exec-dialog exec-dialog--mock' onClick={(e) => e.stopPropagation()}>
+        <div className='exec-dialog__header'>
+          <span className='exec-dialog__title'>Mock Responses</span>
+          <button type='button' className='dag-close' onClick={onClose}>
+            <FaXmark />
+            <span>Close</span>
+          </button>
+        </div>
+        <div className='exec-dialog__body'>
+          {mockPreviews.length > 1 && (
+            <div className='exec-source-preview__switcher'>
+              {mockPreviews.map((preview) => (
+                <button
+                  key={preview.id}
+                  type='button'
+                  className={`exec-source-preview__chip${activeMockPreview?.id === preview.id ? ' exec-source-preview__chip--active' : ''}`}
+                  onClick={() => onSelectMockPreview(preview.id)}
+                >
+                  {preview.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeMockPreview && (
+            <div className='exec-dialog__preview-header'>
+              <span>{activeMockPreview.label}</span>
+              <div className='exec-source-preview__actions'>
+                <span className='exec-source-preview__language'>{activeMockPreview.language}</span>
+                <button type='button' className='exec-source-preview__copy' onClick={() => void onCopy()}>
+                  <FaCopy />
+                  <span>Copy</span>
+                </button>
+              </div>
+            </div>
+          )}
+          {activeMockPreview ? (
+            <div className='exec-source-preview__body exec-dialog__code'>
+              {activeMockPreview.content.split('\n').map((line, index) => (
+                <div key={`${activeMockPreview.id}-${index + 1}`} className='exec-source-preview__line'>
+                  <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
+                  <code className='exec-source-preview__line-content'>{line || ' '}</code>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className='exec-dialog__empty'>No mock data available.</p>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function ArtifactsDialog({
+  artifacts,
+  onClose,
+}: {
+  artifacts: ExecutionArtifactRecord[]
+  onClose: () => void
+}) {
+  return createPortal(
+    <div className='exec-dialog-backdrop' onClick={onClose}>
+      <div className='exec-dialog exec-dialog--artifacts' onClick={(e) => e.stopPropagation()}>
+        <div className='exec-dialog__header'>
+          <span className='exec-dialog__title'>Artifacts</span>
+          <span className='exec-artifacts__count'>{artifacts.length}</span>
+          <button type='button' className='dag-close' onClick={onClose}>
+            <FaXmark />
+            <span>Close</span>
+          </button>
+        </div>
+        <div className='exec-dialog__body'>
+          <div className='exec-artifacts__grid'>
+            {artifacts.map((artifact) => (
+              <ArtifactCard key={artifact.id} artifact={artifact} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 
