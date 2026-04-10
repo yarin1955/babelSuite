@@ -77,6 +77,14 @@ func executeLoadStep(ctx context.Context, step StepSpec, emit func(logstream.Lin
 		return finalizeLoadStep(step, emit, stats)
 	}
 
+	// Delegate to APISIX sidecar when the environment provides a gateway URL.
+	if canUseAPISIXTraffic(step) {
+		if err := runAPISIXTraffic(ctx, step, emit, stats); err != nil {
+			return err
+		}
+		return finalizeLoadStep(step, emit, stats)
+	}
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	switch step.Node.Variant {
 	case "traffic.constant_throughput", "traffic.open_model":
