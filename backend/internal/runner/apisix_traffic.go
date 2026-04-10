@@ -55,12 +55,12 @@ type apisixTrafficResult struct {
 	Max      float64 `json:"max"`
 }
 
-// canUseAPISIXTraffic returns true when the step environment carries an APISIX
-// gateway URL (APISIX_TRAFFIC_URL).  The plugin and trigger route are already
-// baked into the sidecar's apisix.yaml by RenderStandaloneConfig — no Admin
-// API calls are needed at runtime.
+// canUseAPISIXTraffic returns true when the step has a gateway URL, meaning
+// the suite has an APISIX sidecar running.  The cannon plugin is already baked
+// into every generated apisix.yaml by RenderStandaloneConfig, so no Admin API
+// calls are needed at runtime.
 func canUseAPISIXTraffic(step StepSpec) bool {
-	return strings.TrimSpace(step.Env["APISIX_TRAFFIC_URL"]) != ""
+	return strings.TrimSpace(step.GatewayURL) != ""
 }
 
 // runAPISIXTraffic delegates load generation to an APISIX/OpenResty sidecar.
@@ -70,7 +70,7 @@ func canUseAPISIXTraffic(step StepSpec) bool {
 //  2. POSTs it to /_babelsuite/traffic/start and waits for the synchronous result.
 //  3. Merges the histogram into loadStats for finalizeLoadStep.
 func runAPISIXTraffic(ctx context.Context, step StepSpec, emit func(logstream.Line), stats *loadStats) error {
-	gatewayURL := strings.TrimSuffix(strings.TrimSpace(step.Env["APISIX_TRAFFIC_URL"]), "/")
+	gatewayURL := strings.TrimSuffix(strings.TrimSpace(step.GatewayURL), "/")
 
 	emit(line(step, "info", fmt.Sprintf("[%s] Delegating traffic generation to APISIX sidecar at %s.", step.Node.Name, gatewayURL)))
 

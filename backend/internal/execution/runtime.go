@@ -282,6 +282,7 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		Evaluation:       cloneNodeEvaluation(node.Evaluation),
 		OnFailure:        append([]string{}, node.OnFailure...),
 		ArtifactExports:  cloneNodeArtifactExports(node.ArtifactExports),
+		GatewayURL:       resolveGatewayURL(executionID, suite),
 		Node: runner.StepNode{
 			ID:        node.ID,
 			Name:      node.Name,
@@ -539,4 +540,43 @@ func (s *Service) executionBackendLabel(executionID string) string {
 		return item.record.Backend
 	}
 	return ""
+}
+
+// resolveGatewayURL returns the APISIX sidecar address for this execution by
+// locating the suite's mock node and deriving its container hostname.
+// The container name follows the same pattern used by the Docker runner:
+// babel-{executionID}-{nodeID}, listening on APISIX's default port 9080.
+// Returns an empty string when the suite has no mock node.
+func resolveGatewayURL(executionID string, suite *suites.Definition) string {
+	if suite == nil {
+		return ""
+	}
+	for _, node := range suite.Topology {
+		if strings.TrimSpace(node.Kind) != "mock" {
+			continue
+		}
+		host := "babel-" + sanitizeContainerID(executionID) + "-" + sanitizeContainerID(node.ID)
+		return "http://" + host + ":9080"
+	}
+	return ""
+}
+
+// sanitizeContainerID mirrors the runner's sanitizeID so container names match.
+func sanitizeContainerID(id string) string {
+	var b strings.Builder
+	for _, ch := range id {
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= '0' && ch <= '9', ch == '-':
+			b.WriteRune(ch)
+		case ch >= 'A' && ch <= 'Z':
+			b.WriteRune(ch + 32)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	s := b.String()
+	if len(s) > 40 {
+		s = s[:40]
+	}
+	return strings.Trim(s, "-")
 }
