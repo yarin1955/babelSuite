@@ -448,7 +448,7 @@ func (r platformSecretResolver) resolveLocal(ref profiles.SecretReference) (stri
 		}
 	}
 
-	return "", fmt.Errorf("%w: could not resolve local secret %q", ErrProfileRuntime, ref.Ref)
+	return "", fmt.Errorf("%w: could not resolve local secret %q", errProfileSecretUnavailable, ref.Ref)
 }
 
 func (r platformSecretResolver) resolveVault(ctx context.Context, ref profiles.SecretReference) (string, error) {
