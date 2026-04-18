@@ -769,6 +769,19 @@ function ExecutionDag({
   onSelectSource: (id: string) => void
   onClose: () => void
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight })
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const maxNodes = Math.max(...topology.map((w) => w.length), 1)
   const totalH = maxNodes * (DAG_NODE_H + DAG_ROW_GAP) - DAG_ROW_GAP
 
@@ -789,6 +802,12 @@ function ExecutionDag({
 
   const canvasW = topology.length * (DAG_NODE_W + DAG_COL_GAP) - DAG_COL_GAP + DAG_PAD * 2
   const canvasH = totalH + DAG_PAD * 2
+
+  const scale = containerSize.w > 0 && containerSize.h > 0
+    ? Math.min(1, (containerSize.w - DAG_PAD) / canvasW, (containerSize.h - DAG_PAD) / canvasH)
+    : 1
+  const scaledW = Math.ceil(canvasW * scale)
+  const scaledH = Math.ceil(canvasH * scale)
 
   const edges = useMemo(() => {
     const result: Array<{ fromId: string; toId: string; status: RuntimeStatus }> = []
@@ -815,8 +834,9 @@ function ExecutionDag({
         </button>
       </div>
 
-      <div className='dag-scroll'>
-        <div className='dag-canvas' style={{ width: canvasW, height: canvasH }}>
+      <div className='dag-scroll' ref={scrollRef}>
+        <div style={{ width: scaledW, height: scaledH, position: 'relative' }}>
+        <div className='dag-canvas' style={{ width: canvasW, height: canvasH, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
 
           {/* SVG edge layer */}
           <svg
@@ -893,6 +913,7 @@ function ExecutionDag({
               </button>
             )
           })}
+        </div>
         </div>
       </div>
     </div>,

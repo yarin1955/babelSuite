@@ -1384,6 +1384,8 @@ code.exec-artifact-detail__value {
 
 .dag-scroll {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: #162636 transparent;
