@@ -312,6 +312,7 @@ export interface ExecutionArtifactRecord {
   name: string
   on?: string
   format?: string
+  content?: string
   testSummary?: ExecutionArtifactTestSummary
   coverageSummary?: ExecutionArtifactCoverageSummary
 }
@@ -723,6 +724,10 @@ export async function reapAllSandboxes() {
 export async function listExecutionLaunchSuites() {
   const response = await request<{ suites: ExecutionLaunchSuite[] }>('/api/v1/executions/launch-suites')
   return response.suites
+}
+
+export async function resolveExecutionRef(ref: string) {
+  return request<ExecutionLaunchSuite>(`/api/v1/executions/resolve-ref?ref=${encodeURIComponent(ref)}`)
 }
 
 export async function listExecutions() {

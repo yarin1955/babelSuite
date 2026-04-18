@@ -70,6 +70,7 @@ type UpsertRequest struct {
 type suiteReader interface {
 	List() []suites.Definition
 	Get(id string) (*suites.Definition, error)
+	Resolve(ref string) (*suites.Definition, error)
 }
 
 type Document struct {

@@ -112,6 +112,7 @@ type ExecutionArtifact struct {
 	Name            string                    `json:"name"`
 	On              string                    `json:"on,omitempty"`
 	Format          string                    `json:"format,omitempty"`
+	Content         string                    `json:"content,omitempty"`
 	TestSummary     *ExecutionTestSummary     `json:"testSummary,omitempty"`
 	CoverageSummary *ExecutionCoverageSummary `json:"coverageSummary,omitempty"`
 }
@@ -203,6 +204,7 @@ type Service struct {
 type suiteSource interface {
 	List() []suites.Definition
 	Get(id string) (*suites.Definition, error)
+	Resolve(ref string) (*suites.Definition, error)
 }
 
 type platformSource interface {

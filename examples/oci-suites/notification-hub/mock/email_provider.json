@@ -1,0 +1,22 @@
+{
+  "adapter": "rest",
+  "dispatcher": "path",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/send",
+      "response": {
+        "status": 200,
+        "body": { "queued": true, "message_id": "mock-{{uuid}}" }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/status/{message_id}",
+      "response": {
+        "status": 200,
+        "body": { "status": "delivered" }
+      }
+    }
+  ]
+}

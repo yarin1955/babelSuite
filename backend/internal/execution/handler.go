@@ -28,6 +28,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
 	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
 	httpserver.HandleFunc(mux, "GET /api/v1/executions/launch-suites", h.listLaunchSuites, protected)
+	httpserver.HandleFunc(mux, "GET /api/v1/executions/resolve-ref", h.resolveRef, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/executions/overview", h.getOverview, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/executions", h.listExecutions, protected)
 	httpserver.HandleFunc(mux, "POST /api/v1/executions", h.createExecution, protected)
@@ -38,6 +39,20 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) listLaunchSuites(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"suites": h.service.ListLaunchSuites()})
+}
+
+func (h *Handler) resolveRef(w http.ResponseWriter, r *http.Request) {
+	ref := strings.TrimSpace(r.URL.Query().Get("ref"))
+	if ref == "" {
+		writeError(w, http.StatusBadRequest, "ref query parameter is required.")
+		return
+	}
+	suite, err := h.service.ResolveRef(ref)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "Suite not found.")
+		return
+	}
+	writeJSON(w, http.StatusOK, suite)
 }
 
 func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {

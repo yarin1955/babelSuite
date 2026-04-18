@@ -70,9 +70,11 @@ func buildExecutionArtifact(node topologyNode, export suites.ArtifactExport, sta
 
 	switch format {
 	case "junit":
-		if summary, err := parseJUnitSummary(syntheticJUnitReport(node, status)); err == nil {
+		raw := syntheticJUnitReport(node, status)
+		if summary, err := parseJUnitSummary(raw); err == nil {
 			artifact.TestSummary = summary
 		}
+		artifact.Content = string(raw)
 	}
 
 	return artifact

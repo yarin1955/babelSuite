@@ -389,6 +389,31 @@ func TestRunNodeInjectsWorkspaceProfileInlineSecretRefsIntoBackend(t *testing.T)
 	}
 }
 
+func TestResolveExecutionRuntimeOverlaySkipsWorkspaceVaultRefsWhenPlatformDefaultsDoNotEnableVault(t *testing.T) {
+	t.Setenv(demofs.EnableEnvVar, "false")
+	configureExecutionExamplesRoot(t)
+
+	profileService := profiles.NewService(suites.NewService(), profiles.NewMemoryStore())
+	settings := platform.DefaultSettings()
+	service := NewServiceWithPlatform(profileService, stubPlatformSource{settings: &settings})
+	defer service.Close()
+
+	overlay, err := service.resolveExecutionRuntimeOverlay(context.Background(), "payment-suite", "staging.yaml")
+	if err != nil {
+		t.Fatalf("resolve runtime overlay: %v", err)
+	}
+
+	if got := overlay.Env["PAYMENTS_API_BASE_URL"]; got != "https://payments.staging.company.test" {
+		t.Fatalf("expected PAYMENTS_API_BASE_URL from workspace staging profile, got %q", got)
+	}
+	if got := overlay.Env["HTTPS_PROXY"]; got != "http://proxy.internal.company.com:8080" {
+		t.Fatalf("expected global override to remain available, got %q", got)
+	}
+	if _, ok := overlay.SecretEnv["DB_PASSWORD"]; ok {
+		t.Fatal("did not expect Vault-backed DB_PASSWORD to resolve when platform defaults leave Vault disabled")
+	}
+}
+
 func configureExecutionExamplesRoot(t *testing.T) {
 	t.Helper()
 

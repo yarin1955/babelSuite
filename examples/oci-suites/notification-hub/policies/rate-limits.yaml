@@ -1,0 +1,15 @@
+policies:
+  - name: api-rate-limit
+    description: Cap inbound notification requests per second.
+    rule: rps <= env.RATE_LIMIT_RPS
+
+  - name: recipient-format
+    description: Recipients must be a valid email, E.164 phone, or non-empty device token.
+    rule: >
+      (channel == "email" && recipient matches "^[^@]+@[^@]+$") ||
+      (channel == "sms"   && recipient matches "^\+[1-9]\d{7,14}$") ||
+      (channel == "push"  && len(recipient) > 0)
+
+  - name: dispatcher-lag
+    description: Dispatcher queue lag must stay under 500 ms.
+    rule: dispatcher.queue_lag_ms <= 500

@@ -1,0 +1,20 @@
+[
+  {
+    "template": "welcome_email",
+    "recipient": "alice@example.com",
+    "channel": "email",
+    "vars": { "name": "Alice" }
+  },
+  {
+    "template": "sms_otp",
+    "recipient": "+15550009876",
+    "channel": "sms",
+    "vars": { "otp": "774231" }
+  },
+  {
+    "template": "push_new_message",
+    "recipient": "device-token-abc123",
+    "channel": "push",
+    "vars": { "sender": "Bob" }
+  }
+]

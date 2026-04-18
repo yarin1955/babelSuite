@@ -34,6 +34,25 @@ func (s *Service) Close() {
 	s.queue.Close()
 }
 
+func (s *Service) ResolveRef(ref string) (*LaunchSuite, error) {
+	suite, err := s.suiteSource.Resolve(ref)
+	if err != nil {
+		return nil, ErrSuiteNotFound
+	}
+	backends := s.backendOptions()
+	result := LaunchSuite{
+		ID:          suite.ID,
+		Title:       suite.Title,
+		Repository:  suite.Repository,
+		Description: suite.Description,
+		Provider:    suite.Provider,
+		Status:      suite.Status,
+		Profiles:    toExecutionProfiles(suite.Profiles),
+		Backends:    append([]BackendOption{}, backends...),
+	}
+	return &result, nil
+}
+
 func (s *Service) ListLaunchSuites() []LaunchSuite {
 	backends := s.backendOptions()
 	result := make([]LaunchSuite, 0, len(s.suiteSource.List()))
@@ -92,6 +111,9 @@ func (s *Service) CreateExecution(ctx context.Context, request CreateRequest) (*
 	s.noteLaunch(ctx, suiteID)
 
 	suite, err := s.suiteSource.Get(suiteID)
+	if err != nil {
+		suite, err = s.suiteSource.Resolve(suiteID)
+	}
 	if err != nil {
 		s.noteRejectedLaunch(ctx, suiteID, "suite_not_found")
 		return nil, ErrSuiteNotFound
