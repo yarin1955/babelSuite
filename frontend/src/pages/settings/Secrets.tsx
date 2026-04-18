@@ -295,8 +295,7 @@ export default function Secrets() {
             </button>
             <button className='platform-button platform-button--secondary' onClick={closePanel}>Cancel</button>
             <button
-              className='platform-icon-button'
-              style={{ marginLeft: 'auto' }}
+              className='platform-icon-button platform-header-spacer'
               onClick={() => panelOverride && removeOverride(panelOverride.index)}
               title='Remove override'
             >

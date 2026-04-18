@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fa6'
 import type { CatalogPackage } from '../lib/api'
 import { logoGradient } from './logoGradient'
+import './PackageCard.css'
 
 export interface PackageCardProps {
   item: CatalogPackage

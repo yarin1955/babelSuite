@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import {
   FaArrowsRotate,
   FaBoxOpen,
@@ -13,7 +12,10 @@ import {
 } from 'react-icons/fa6'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
-import { createExecution, type ExecutionArtifactRecord, type ExecutionLogLine, type TrafficMetricSnapshot } from '../lib/api'
+import { ExecutionDag } from '../components/execution/ExecutionDag'
+import { ArtifactsDialog, MockDialog } from '../components/execution/ExecutionDialogs'
+import { createExecution, type ExecutionLogLine, type TrafficMetricSnapshot } from '../lib/api'
+import { useClipboardFeedback } from '../hooks/useClipboardFeedback'
 import { useExecutionStream } from '../hooks/useExecutionStream'
 import {
   deriveRuntimeStatus,
@@ -46,6 +48,7 @@ export default function LiveExecution() {
   const [notice, setNotice] = useState('')
   const [actionError, setActionError] = useState('')
   const [restarting, setRestarting] = useState(false)
+  const { copyToClipboard } = useClipboardFeedback(1600)
   const logRef = useRef<HTMLDivElement | null>(null)
 
   const topology = useMemo(
@@ -114,7 +117,7 @@ export default function LiveExecution() {
     const text = filteredLogs
       .map((line) => (selectedSource === 'all' ? `[${line.source}] ` : '') + line.text)
       .join('\n')
-    await navigator.clipboard.writeText(text)
+    await copyToClipboard('visible-logs', text)
     setNotice('Copied to clipboard.')
     window.setTimeout(() => setNotice(''), 1600)
   }
@@ -164,7 +167,7 @@ export default function LiveExecution() {
 
   const copyMockPreview = async () => {
     if (!activeMockPreview) return
-    await navigator.clipboard.writeText(activeMockPreview.content)
+    await copyToClipboard(activeMockPreview.id, activeMockPreview.content)
     setNotice(`${activeMockPreview.label} copied.`)
     window.setTimeout(() => setNotice(''), 1600)
   }
@@ -277,7 +280,7 @@ export default function LiveExecution() {
 
             {/* Log search bar */}
             <div className='exec-tabs'>
-              <div style={{width: 12, flexShrink: 0}} />
+              <div className='exec-tabs__lead' />
               <div className='exec-log-search'>
                 <FaMagnifyingGlass className='exec-log-search__icon' />
                 <input
@@ -454,178 +457,6 @@ export default function LiveExecution() {
   )
 }
 
-/* ── Dialogs ────────────────────────────────────────────── */
-
-function MockDialog({
-  mockPreviews,
-  activeMockPreview,
-  onSelectMockPreview,
-  onCopy,
-  onClose,
-}: {
-  mockPreviews: Array<{ id: string; label: string; language: string; content: string }>
-  activeMockPreview: { id: string; label: string; language: string; content: string } | undefined
-  onSelectMockPreview: (id: string) => void
-  onCopy: () => Promise<void>
-  onClose: () => void
-}) {
-  return createPortal(
-    <div className='exec-dialog-backdrop' onClick={onClose}>
-      <div className='exec-dialog exec-dialog--mock' onClick={(e) => e.stopPropagation()}>
-        <section className='exec-source-preview'>
-          <div className='exec-source-preview__header'>
-            <div>
-              <p className='exec-source-preview__eyebrow'>Generated Mock Data</p>
-              <h3>{activeMockPreview?.label ?? 'Mock Responses'}</h3>
-            </div>
-            <div className='exec-source-preview__header-right'>
-              {activeMockPreview && (
-                <div className='exec-source-preview__actions'>
-                  <span className='exec-source-preview__language'>{activeMockPreview.language}</span>
-                  <button type='button' className='exec-source-preview__copy' onClick={() => void onCopy()}>
-                    <FaCopy />
-                    <span>Copy</span>
-                  </button>
-                </div>
-              )}
-              <button type='button' className='dag-close' onClick={onClose}>
-                <FaXmark />
-                <span>Close</span>
-              </button>
-            </div>
-          </div>
-          {mockPreviews.length > 1 && (
-            <div className='exec-source-preview__switcher'>
-              {mockPreviews.map((preview) => (
-                <button
-                  key={preview.id}
-                  type='button'
-                  className={`exec-source-preview__chip${activeMockPreview?.id === preview.id ? ' exec-source-preview__chip--active' : ''}`}
-                  onClick={() => onSelectMockPreview(preview.id)}
-                >
-                  {preview.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {activeMockPreview ? (
-            <div className='exec-source-preview__body'>
-              {activeMockPreview.content.split('\n').map((line, index) => (
-                <div key={`${activeMockPreview.id}-${index + 1}`} className='exec-source-preview__line'>
-                  <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
-                  <code className='exec-source-preview__line-content'>{line || ' '}</code>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className='exec-source-preview__empty'>
-              Waiting for mock data to become available for this suite.
-            </div>
-          )}
-        </section>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
-function artifactContent(artifact: ExecutionArtifactRecord): string | null {
-  if (artifact.content) return artifact.content
-  if (artifact.testSummary) {
-    const s = artifact.testSummary
-    const dur = typeof s.durationSeconds === 'number' ? s.durationSeconds.toFixed(3) : '0'
-    const cases = [
-      `  <testcase name="${artifact.stepName}" classname="${artifact.stepName}" time="${dur}">${
-        s.failures > 0 ? `\n    <failure message="step failed">${artifact.stepName} ended in failed state.</failure>\n  ` : ''
-      }</testcase>`,
-    ]
-    return [
-      `<?xml version="1.0" encoding="UTF-8"?>`,
-      `<testsuite name="${artifact.stepName}" tests="${s.total}" failures="${s.failures}" errors="${s.errors}" skipped="${s.skipped}" time="${dur}">`,
-      ...cases,
-      `</testsuite>`,
-    ].join('\n')
-  }
-  return null
-}
-
-function ArtifactsDialog({
-  artifacts,
-  onClose,
-}: {
-  artifacts: ExecutionArtifactRecord[]
-  onClose: () => void
-}) {
-  const [activeId, setActiveId] = useState(artifacts[0]?.id ?? '')
-  const active = artifacts.find((a) => a.id === activeId) ?? artifacts[0]
-  const content = active ? artifactContent(active) : null
-
-  return createPortal(
-    <div className='exec-dialog-backdrop' onClick={onClose}>
-      <div className='exec-dialog exec-dialog--artifacts' onClick={(e) => e.stopPropagation()}>
-        <section className='exec-source-preview'>
-          <div className='exec-source-preview__header'>
-            <div>
-              <p className='exec-source-preview__eyebrow'>Artifacts</p>
-              <h3>{active?.name ?? 'Artifact Results'}</h3>
-            </div>
-            <div className='exec-source-preview__header-right'>
-              {content && (
-                <div className='exec-source-preview__actions'>
-                  <span className='exec-source-preview__language'>{(active?.format ?? 'raw').toUpperCase()}</span>
-                  <button
-                    type='button'
-                    className='exec-source-preview__copy'
-                    onClick={() => void navigator.clipboard.writeText(content)}
-                  >
-                    <FaCopy />
-                    <span>Copy</span>
-                  </button>
-                </div>
-              )}
-              <button type='button' className='dag-close' onClick={onClose}>
-                <FaXmark />
-                <span>Close</span>
-              </button>
-            </div>
-          </div>
-          {artifacts.length > 1 && (
-            <div className='exec-source-preview__switcher'>
-              {artifacts.map((a) => (
-                <button
-                  key={a.id}
-                  type='button'
-                  className={`exec-source-preview__chip${a.id === activeId ? ' exec-source-preview__chip--active' : ''}`}
-                  onClick={() => setActiveId(a.id)}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {content ? (
-            <div className='exec-source-preview__body'>
-              {content.split('\n').map((line, index) => (
-                <div key={`${active!.id}-${index + 1}`} className='exec-source-preview__line'>
-                  <span className='exec-source-preview__line-number'>{String(index + 1).padStart(3, ' ')}</span>
-                  <code className='exec-source-preview__line-content'>{line || ' '}</code>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className='exec-source-preview__empty'>
-              No content available for this artifact.
-            </div>
-          )}
-        </section>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
-/* ── Sub-components ─────────────────────────────────────── */
-
 function mockLabelFromPath(path: string): string {
   return path.replace(/^mock\//, '')
 }
@@ -747,179 +578,6 @@ function LogLine({
 }
 
 /* ── DAG overlay ────────────────────────────────────────── */
-
-const DAG_NODE_W = 180
-const DAG_NODE_H = 62
-const DAG_COL_GAP = 110
-const DAG_ROW_GAP = 20
-const DAG_PAD = 40
-
-function ExecutionDag({
-  topology,
-  flatTopology,
-  statusMap,
-  selectedSource,
-  onSelectSource,
-  onClose,
-}: {
-  topology: ReturnType<typeof groupTopologyByLevel>
-  flatTopology: ReturnType<typeof groupTopologyByLevel>[number]
-  statusMap: Record<string, RuntimeStatus>
-  selectedSource: string
-  onSelectSource: (id: string) => void
-  onClose: () => void
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight })
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const maxNodes = Math.max(...topology.map((w) => w.length), 1)
-  const totalH = maxNodes * (DAG_NODE_H + DAG_ROW_GAP) - DAG_ROW_GAP
-
-  const positions = useMemo(() => {
-    const map = new Map<string, { x: number; y: number }>()
-    topology.forEach((wave, wi) => {
-      const colH = wave.length * (DAG_NODE_H + DAG_ROW_GAP) - DAG_ROW_GAP
-      const startY = (totalH - colH) / 2 + DAG_PAD
-      wave.forEach((node, ni) => {
-        map.set(node.id, {
-          x: wi * (DAG_NODE_W + DAG_COL_GAP) + DAG_PAD,
-          y: startY + ni * (DAG_NODE_H + DAG_ROW_GAP),
-        })
-      })
-    })
-    return map
-  }, [topology, totalH])
-
-  const canvasW = topology.length * (DAG_NODE_W + DAG_COL_GAP) - DAG_COL_GAP + DAG_PAD * 2
-  const canvasH = totalH + DAG_PAD * 2
-
-  const scale = containerSize.w > 0 && containerSize.h > 0
-    ? Math.min(1, (containerSize.w - DAG_PAD) / canvasW, (containerSize.h - DAG_PAD) / canvasH)
-    : 1
-  const scaledW = Math.ceil(canvasW * scale)
-  const scaledH = Math.ceil(canvasH * scale)
-
-  const edges = useMemo(() => {
-    const result: Array<{ fromId: string; toId: string; status: RuntimeStatus }> = []
-    flatTopology.forEach((node) => {
-      const toPos = positions.get(node.id)
-      if (!toPos) return
-      node.dependsOn.forEach((depId) => {
-        const fromPos = positions.get(depId)
-        if (!fromPos) return
-        result.push({ fromId: depId, toId: node.id, status: statusMap[depId] })
-      })
-    })
-    return result
-  }, [flatTopology, positions, statusMap])
-
-  return createPortal(
-    <div className='dag-overlay'>
-      <div className='dag-header'>
-        <span className='dag-header__title'>Topology Graph</span>
-        <div className='dag-header__hint'>Click a node to filter logs</div>
-        <button type='button' className='dag-close' onClick={onClose}>
-          <FaXmark />
-          <span>Close</span>
-        </button>
-      </div>
-
-      <div className='dag-scroll' ref={scrollRef}>
-        <div style={{ width: scaledW, height: scaledH, position: 'relative' }}>
-        <div className='dag-canvas' style={{ width: canvasW, height: canvasH, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-
-          {/* SVG edge layer */}
-          <svg
-            className='dag-svg'
-            width={canvasW}
-            height={canvasH}
-          >
-            <defs>
-              <marker id='dag-arrow-pending'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
-                <path d='M0,0 L6,3 L0,6 Z' fill='#1e3a4e' />
-              </marker>
-              <marker id='dag-arrow-running'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
-                <path d='M0,0 L6,3 L0,6 Z' fill='#0DADEA' />
-              </marker>
-              <marker id='dag-arrow-healthy'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
-                <path d='M0,0 L6,3 L0,6 Z' fill='#18BE94' />
-              </marker>
-              <marker id='dag-arrow-failed'   markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
-                <path d='M0,0 L6,3 L0,6 Z' fill='#E96D76' />
-              </marker>
-              <marker id='dag-arrow-skipped'  markerWidth='6' markerHeight='6' refX='5' refY='3' orient='auto'>
-                <path d='M0,0 L6,3 L0,6 Z' fill='#7c8b98' />
-              </marker>
-            </defs>
-
-            {edges.map(({ fromId, toId, status }) => {
-              const fp = positions.get(fromId)
-              const tp = positions.get(toId)
-              if (!fp || !tp) return null
-              const sx = fp.x + DAG_NODE_W
-              const sy = fp.y + DAG_NODE_H / 2
-              const tx = tp.x - 6
-              const ty = tp.y + DAG_NODE_H / 2
-              const cx = sx + (tx - sx) / 2
-              const stroke =
-                status === 'healthy' ? '#18BE94'
-                : status === 'running' ? '#0DADEA'
-                : status === 'failed'  ? '#E96D76'
-                : status === 'skipped' ? '#7c8b98'
-                : '#1e3a4e'
-              return (
-                <path
-                  key={`${fromId}-${toId}`}
-                  className={`dag-edge${status === 'running' ? ' dag-edge--running' : ''}`}
-                  d={`M ${sx} ${sy} C ${cx} ${sy}, ${cx} ${ty}, ${tx} ${ty}`}
-                  fill='none'
-                  stroke={stroke}
-                  strokeWidth={1.5}
-                  strokeOpacity={0.55}
-                  markerEnd={`url(#dag-arrow-${status})`}
-                />
-              )
-            })}
-          </svg>
-
-          {/* Node cards */}
-          {flatTopology.map((node) => {
-            const pos = positions.get(node.id)
-            if (!pos) return null
-            const st = statusMap[node.id]
-            return (
-              <button
-                key={node.id}
-                type='button'
-                className={`dag-node dag-node--${st}${selectedSource === node.id ? ' dag-node--selected' : ''}`}
-                style={{ left: pos.x, top: pos.y, width: DAG_NODE_W, height: DAG_NODE_H }}
-                onClick={() => onSelectSource(node.id)}
-              >
-                <ExecDot status={st} />
-                <div className='dag-node__text'>
-                  <strong>{node.name}</strong>
-                  <span>{node.kind}</span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
 
 /* ── Helpers ────────────────────────────────────────────── */
 

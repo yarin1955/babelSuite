@@ -39,6 +39,58 @@ body {
   margin: 0;
 }
 
+.app-error-boundary {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(150deg, #07131f 10%, #0f2536 52%, #152840 100%);
+}
+
+.app-error-boundary__panel {
+  width: min(100%, 480px);
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.app-error-boundary__eyebrow {
+  margin: 0 0 8px;
+  color: var(--danger);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app-error-boundary__panel h1 {
+  margin: 0 0 10px;
+  font-size: 1.65rem;
+}
+
+.app-error-boundary__panel p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.app-error-boundary__panel button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1b7ca9, #276b95);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 a {
   color: inherit;
 }

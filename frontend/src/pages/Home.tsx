@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   FaChevronDown,
@@ -19,6 +19,10 @@ import {
 } from 'react-icons/fa6'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
+import '../components/CatalogInspectModal.css'
+import { logoGradient } from '../components/logoGradient'
+import { useClipboardFeedback } from '../hooks/useClipboardFeedback'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import {
   createExecution,
   getExecutionOverview,
@@ -31,7 +35,7 @@ import {
   type SuiteDefinition,
   type SuiteSourceFile,
 } from '../lib/api'
-import './Catalog.css'
+import { renderSourceLine, renderStarlarkLine } from '../lib/codeHighlight'
 import './Home.css'
 
 export default function Home() {
@@ -335,15 +339,7 @@ function ExecutionModal({
   onClose,
   onExecute,
 }: ExecutionModalProps) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   return createPortal(
     <div className='ex-modal' role='presentation'>
@@ -513,84 +509,14 @@ function formatProgress(run: ExecutionOverviewItem) {
 
 /* ── Suite inspect modal ──────────────────────────────── */
 
-const LOGO_GRADIENTS = [
-  'linear-gradient(135deg, #173b5b 0%, #1f7ea8 100%)',
-  'linear-gradient(135deg, #1a3a5c 0%, #0DADEA 100%)',
-  'linear-gradient(135deg, #2c1654 0%, #7e3fb3 100%)',
-  'linear-gradient(135deg, #0f3d2b 0%, #18BE94 100%)',
-  'linear-gradient(135deg, #3d1f0a 0%, #f77530 100%)',
-  'linear-gradient(135deg, #1a0f3d 0%, #5b4ee8 100%)',
-  'linear-gradient(135deg, #3d0f1a 0%, #e84e6e 100%)',
-  'linear-gradient(135deg, #1a3d0f 0%, #5cb84e 100%)',
-]
-
-function logoGradient(seed: string): string {
-  let h = 0
-  for (let i = 0; i < seed.length; i++) h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0
-  return LOGO_GRADIENTS[Math.abs(h) % LOGO_GRADIENTS.length]
-}
-
-function renderStarLine(line: string): ReactNode[] {
-  const ci = line.indexOf('#')
-  const code = ci >= 0 ? line.slice(0, ci) : line
-  const comment = ci >= 0 ? line.slice(ci) : ''
-  const out: ReactNode[] = []
-  const pat = /"[^"]*"|\b(load|service|task|test|traffic|suite|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
-  let cur = 0
-  for (const m of code.matchAll(pat)) {
-    const v = m[0]; const s = m.index ?? 0
-    if (s > cur) out.push(code.slice(cur, s))
-    const cls = v.startsWith('"') ? 'ci-tok ci-tok--str' : v.startsWith('@') ? 'ci-tok ci-tok--mod' : 'ci-tok ci-tok--kw'
-    out.push(<span key={`${s}-${v}`} className={cls}>{v}</span>)
-    cur = s + v.length
-  }
-  if (cur < code.length) out.push(code.slice(cur))
-  if (comment) out.push(<span key='cmt' className='ci-tok ci-tok--cmt'>{comment}</span>)
-  return out
-}
-
-function highlightCodeTokens(line: string): ReactNode[] {
-  const fragments: ReactNode[] = []
-  const pattern = /"[^"]*"|'[^']*'|\b(message|service|rpc|package|import|const|let|type|interface|export|default|allow|if|true|false|null)\b|@[a-zA-Z0-9/_-]+/g
-  let cursor = 0
-  for (const match of line.matchAll(pattern)) {
-    const value = match[0]; const start = match.index ?? 0
-    if (start > cursor) fragments.push(line.slice(cursor, start))
-    const className = value.startsWith('"') || value.startsWith("'")
-      ? 'ci-tok ci-tok--str'
-      : value.startsWith('@') ? 'ci-tok ci-tok--mod' : 'ci-tok ci-tok--kw'
-    fragments.push(<span key={`${start}-${value}`} className={className}>{value}</span>)
-    cursor = start + value.length
-  }
-  if (cursor < line.length) fragments.push(line.slice(cursor))
-  return fragments
-}
-
-function renderSourceLine(line: string, language: string): ReactNode[] {
-  const lang = language.trim().toLowerCase()
-  if (lang === 'yaml' || lang === 'python' || lang === 'bash' || lang === 'rego') {
-    const ci = line.indexOf('#')
-    const code = ci >= 0 ? line.slice(0, ci) : line
-    const comment = ci >= 0 ? line.slice(ci) : ''
-    const fragments = highlightCodeTokens(code)
-    if (comment) fragments.push(<span key={`cmt-${line}`} className='ci-tok ci-tok--cmt'>{comment}</span>)
-    return fragments
-  }
-  return highlightCodeTokens(line)
-}
-
 function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () => void }) {
   const [suite, setSuite] = useState<SuiteDefinition | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState('suite.star')
-  const [copyId, setCopyId] = useState('')
+  const { copiedId, copyToClipboard } = useClipboardFeedback(1600)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   useEffect(() => {
     let active = true
@@ -601,12 +527,6 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : 'Could not load suite.'); setLoading(false) } })
     return () => { active = false }
   }, [suiteId])
-
-  const copy = async (id: string, value: string) => {
-    await navigator.clipboard.writeText(value)
-    setCopyId(id)
-    window.setTimeout(() => setCopyId(''), 1600)
-  }
 
   const suiteSourceFiles: SuiteSourceFile[] = suite?.sourceFiles ?? []
   const suiteFolders = suite?.folders ?? []
@@ -706,7 +626,7 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
                 )}
             {suiteProfiles.length > 0 && (
               <>
-                <p className='ci-tree__label' style={{ marginTop: 16 }}>Profiles</p>
+                <p className='ci-tree__label ci-tree__label--profiles'>Profiles</p>
                 {suiteProfiles.map((p) => (
                   <div key={p.fileName} className='ci-tree__profile'>
                     <span>{p.label}</span>
@@ -731,18 +651,18 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
                   <span className='ci-content__filename'><FaFile /> suite.star</span>
                   <button
                     type='button'
-                    className={`ci-copy-btn${copyId === 'star' ? ' ci-copy-btn--ok' : ''}`}
-                    onClick={() => void copy('star', suite.suiteStar)}
+                    className={`ci-copy-btn${copiedId === 'star' ? ' ci-copy-btn--ok' : ''}`}
+                    onClick={() => void copyToClipboard('star', suite.suiteStar)}
                   >
                     <FaCopy />
-                    <span>{copyId === 'star' ? 'Copied!' : 'Copy'}</span>
+                    <span>{copiedId === 'star' ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
                 <div className='ci-code'>
                   {suite.suiteStar.split('\n').map((line, i) => (
                     <div key={i} className='ci-code__line'>
                       <span className='ci-code__num'>{String(i + 1).padStart(3, ' ')}</span>
-                      <code className='ci-code__text'>{renderStarLine(line)}</code>
+                      <code className='ci-code__text'>{renderStarlarkLine(line)}</code>
                     </div>
                   ))}
                 </div>
@@ -756,11 +676,11 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
                   <span className='ci-folder-role'>{activeSourceFile.language}</span>
                   <button
                     type='button'
-                    className={`ci-copy-btn${copyId === activeSourceFile.path ? ' ci-copy-btn--ok' : ''}`}
-                    onClick={() => void copy(activeSourceFile.path, activeSourceFile.content)}
+                    className={`ci-copy-btn${copiedId === activeSourceFile.path ? ' ci-copy-btn--ok' : ''}`}
+                    onClick={() => void copyToClipboard(activeSourceFile.path, activeSourceFile.content)}
                   >
                     <FaCopy />
-                    <span>{copyId === activeSourceFile.path ? 'Copied!' : 'Copy'}</span>
+                    <span>{copiedId === activeSourceFile.path ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
                 <div className='ci-code'>
@@ -786,19 +706,19 @@ function SuiteInspectModal({ suiteId, onClose }: { suiteId: string; onClose: () 
               <div className='ci-footer'>
                 <button
                   type='button'
-                  className={`ci-cmd-btn${copyId === 'pull' ? ' ci-cmd-btn--ok' : ''}`}
-                  onClick={() => void copy('pull', suite.pullCommand)}
+                  className={`ci-cmd-btn${copiedId === 'pull' ? ' ci-cmd-btn--ok' : ''}`}
+                  onClick={() => void copyToClipboard('pull', suite.pullCommand)}
                 >
                   <FaCopy />
-                  <span>{copyId === 'pull' ? 'Copied!' : 'Copy pull command'}</span>
+                  <span>{copiedId === 'pull' ? 'Copied!' : 'Copy pull command'}</span>
                 </button>
                 <button
                   type='button'
-                  className={`ci-cmd-btn ci-cmd-btn--ghost${copyId === 'fork' ? ' ci-cmd-btn--ok' : ''}`}
-                  onClick={() => void copy('fork', suite.forkCommand)}
+                  className={`ci-cmd-btn ci-cmd-btn--ghost${copiedId === 'fork' ? ' ci-cmd-btn--ok' : ''}`}
+                  onClick={() => void copyToClipboard('fork', suite.forkCommand)}
                 >
                   <FaDownload />
-                  <span>{copyId === 'fork' ? 'Copied!' : 'Fork'}</span>
+                  <span>{copiedId === 'fork' ? 'Copied!' : 'Fork'}</span>
                 </button>
                 {suite.modules.length > 0 && (
                   <div className='ci-modules'>

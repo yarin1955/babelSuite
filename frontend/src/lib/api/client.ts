@@ -1,5 +1,8 @@
 import type { AuthResponse } from './types'
 
+type QueryValue = string | number | boolean | null | undefined
+type QueryParams = Record<string, QueryValue | QueryValue[]>
+
 export class ApiError extends Error {
   status: number
 
@@ -16,6 +19,31 @@ const GET_CACHE_TTL_MS = 5000
 
 const inflightGetRequests = new Map<string, Promise<unknown>>()
 const cachedGetResponses = new Map<string, { expiresAt: number; value: unknown }>()
+
+export function encodeQueryString(params: QueryParams = {}) {
+  const pairs: string[] = []
+
+  for (const key of Object.keys(params).sort()) {
+    const values = Array.isArray(params[key]) ? params[key] : [params[key]]
+    for (const value of values) {
+      if (value === undefined || value === null || value === '') {
+        continue
+      }
+      pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    }
+  }
+
+  return pairs.join('&')
+}
+
+export function buildApiPath(path: string, params: QueryParams = {}) {
+  const query = encodeQueryString(params)
+  if (!query) {
+    return path
+  }
+
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`
+}
 
 export function getSession(): AuthResponse | null {
   const raw = window.localStorage.getItem(SESSION_KEY)
@@ -43,17 +71,12 @@ export function clearSession() {
 
 export function buildAuthenticatedStreamUrl(
   path: string,
-  params: Record<string, string | number | boolean | undefined> = {},
+  params: QueryParams = {},
 ) {
   const session = getSession()
   const url = new URL(`${API_BASE}${path}`)
 
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === '') {
-      continue
-    }
-    url.searchParams.set(key, String(value))
-  }
+  appendQueryParams(url.searchParams, params)
 
   if (session?.token) {
     url.searchParams.set('token', session.token)
@@ -65,7 +88,8 @@ export function buildAuthenticatedStreamUrl(
 export async function request<T>(path: string, init: RequestInit = {}) {
   const session = getSession()
   const method = (init.method ?? 'GET').toUpperCase()
-  const cacheKey = method === httpMethodGet ? buildGetCacheKey(path, session?.token ?? '') : ''
+  const headers = buildRequestHeaders(init, session?.token)
+  const cacheKey = method === httpMethodGet ? buildGetCacheKey(path, headers) : ''
 
   if (method === httpMethodGet) {
     const cached = cachedGetResponses.get(cacheKey)
@@ -82,11 +106,8 @@ export async function request<T>(path: string, init: RequestInit = {}) {
   const runRequest = async () => {
     const response = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
-        ...(init.headers ?? {}),
-      },
+      method,
+      headers,
     })
 
     const text = await response.text()
@@ -126,8 +147,43 @@ export async function request<T>(path: string, init: RequestInit = {}) {
 
 const httpMethodGet = 'GET'
 
-function buildGetCacheKey(path: string, token: string) {
-  return `${token}::${path}`
+function appendQueryParams(searchParams: URLSearchParams, params: QueryParams) {
+  for (const key of Object.keys(params).sort()) {
+    const values = Array.isArray(params[key]) ? params[key] : [params[key]]
+    for (const value of values) {
+      if (value === undefined || value === null || value === '') {
+        continue
+      }
+      searchParams.append(key, String(value))
+    }
+  }
+}
+
+function buildRequestHeaders(init: RequestInit, sessionToken: string | undefined) {
+  const headers = new Headers(init.headers)
+
+  if (sessionToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${sessionToken}`)
+  }
+
+  if (init.body != null && shouldUseJsonContentType(init.body) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  return headers
+}
+
+function shouldUseJsonContentType(body: BodyInit) {
+  return typeof body === 'string'
+}
+
+function buildGetCacheKey(path: string, headers: Headers) {
+  const headerKey = Array.from(headers.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value}`)
+    .join('|')
+
+  return `${path}::${headerKey}`
 }
 
 function clearRequestCache() {
