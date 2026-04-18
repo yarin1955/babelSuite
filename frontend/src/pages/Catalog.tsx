@@ -20,7 +20,6 @@ import {
   type CatalogPackage,
   type SuiteDefinition,
 } from '../lib/api'
-import { buildSuiteDropRef, SANDBOX_SUITE_REF_MIME } from '../lib/sandboxRef'
 import './Catalog.css'
 
 type SortKey = 'starred' | 'title' | 'version'
