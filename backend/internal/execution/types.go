@@ -204,6 +204,7 @@ type Service struct {
 type suiteSource interface {
 	List() []suites.Definition
 	Get(id string) (*suites.Definition, error)
+	Resolve(ref string) (*suites.Definition, error)
 }
 
 type platformSource interface {

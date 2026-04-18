@@ -1,0 +1,86 @@
+openapi: "3.1.0"
+info:
+  title: Notification Hub API
+  version: "1.0.0"
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+  /api/v1/notifications:
+    post:
+      summary: Send a notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendNotificationRequest"
+      responses:
+        "201":
+          description: Notification queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRecord"
+        "422":
+          description: Unknown template or invalid payload
+  /api/v1/notifications/{id}:
+    get:
+      summary: Get notification status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Notification record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRecord"
+        "404":
+          description: Not found
+components:
+  schemas:
+    SendNotificationRequest:
+      type: object
+      required: [template, recipient, channel]
+      properties:
+        template:
+          type: string
+        recipient:
+          type: string
+        channel:
+          type: string
+          enum: [email, sms, push]
+        vars:
+          type: object
+          additionalProperties:
+            type: string
+    NotificationRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        template:
+          type: string
+        recipient:
+          type: string
+        channel:
+          type: string
+        status:
+          type: string
+          enum: [pending, sent, failed]
+        created_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: string
+          format: date-time

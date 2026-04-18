@@ -43,6 +43,17 @@ func (s *Service) Get(id string) (*suites.Definition, error) {
 	return definition, nil
 }
 
+func (s *Service) Resolve(ref string) (*suites.Definition, error) {
+	definition, err := s.base.Resolve(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	document := s.safeLoadDocument()
+	definition.Profiles = toLaunchOptions(s.mergeSuiteProfiles(*definition, document))
+	return definition, nil
+}
+
 func (s *Service) ListSuiteSummaries() ([]SuiteSummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -726,6 +726,10 @@ export async function listExecutionLaunchSuites() {
   return response.suites
 }
 
+export async function resolveExecutionRef(ref: string) {
+  return request<ExecutionLaunchSuite>(`/api/v1/executions/resolve-ref?ref=${encodeURIComponent(ref)}`)
+}
+
 export async function listExecutions() {
   const response = await request<{ executions: ExecutionSummary[] }>('/api/v1/executions')
   return response.executions

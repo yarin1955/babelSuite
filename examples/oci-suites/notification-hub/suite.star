@@ -1,0 +1,12 @@
+load("@babelsuite/redis", "redis")
+load("@babelsuite/postgres", "pg")
+load("@babelsuite/runtime", "service", "task", "test", "suite")
+
+cache = service.run()
+db = service.run()
+email_mock = service.mock(after=[db])
+seed_templates = task.run(file="seed_templates.sql", image="postgres:16", after=[db])
+migrations = task.run(file="migrate.sh", image="bash:5.2", after=[db])
+notification_api = service.run(after=[db, cache, email_mock, migrations, seed_templates])
+dispatcher = service.run(after=[cache, notification_api])
+notify_smoke = test.run(file="notify_smoke.py", image="python:3.12", after=[notification_api, dispatcher]).export("reports/junit.xml", name="notify-test-report", on="always", format="junit")

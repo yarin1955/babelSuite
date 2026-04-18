@@ -49,6 +49,72 @@ func (s *Service) Get(id string) (*Definition, error) {
 	return &clone, nil
 }
 
+// Resolve finds a suite by fuzzy-matching a raw OCI ref against suite IDs and
+// repositories, using the same normalisation rules as the frontend.
+func (s *Service) Resolve(ref string) (*Definition, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	normalizedRef := normalizeSuiteRef(ref)
+	pathRef := repositorySuitePath(ref)
+	if normalizedRef == "" {
+		return nil, ErrNotFound
+	}
+
+	for _, suite := range s.suites {
+		id := strings.TrimSpace(suite.ID)
+		if id == normalizedRef || id == pathRef {
+			catalog := suiteCatalog(s.suites)
+			clone := cloneDefinition(ResolveDefinitionTopology(suite, catalog))
+			return &clone, nil
+		}
+		suiteNorm := normalizeSuiteRef(suite.Repository)
+		suitePath := repositorySuitePath(suite.Repository)
+		if (suiteNorm != "" && suiteNorm == normalizedRef) || (suitePath != "" && suitePath == pathRef) {
+			catalog := suiteCatalog(s.suites)
+			clone := cloneDefinition(ResolveDefinitionTopology(suite, catalog))
+			return &clone, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+// normalizeSuiteRef strips the digest and tag from a repository ref so that
+// refs like "registry.io/team/suite:v1.0" compare equal to "registry.io/team/suite".
+func normalizeSuiteRef(ref string) string {
+	value := strings.TrimRight(strings.TrimSpace(ref), "/")
+	if value == "" {
+		return ""
+	}
+	if i := strings.Index(value, "@"); i >= 0 {
+		value = value[:i]
+	}
+	lastSlash := strings.LastIndex(value, "/")
+	lastColon := strings.LastIndex(value, ":")
+	if lastColon > lastSlash {
+		value = value[:lastColon]
+	}
+	return value
+}
+
+// repositorySuitePath strips the registry host from a normalized ref so that
+// "registry.io/team/suite" and "team/suite" can match.
+func repositorySuitePath(ref string) string {
+	value := normalizeSuiteRef(ref)
+	if value == "" {
+		return ""
+	}
+	firstSlash := strings.Index(value, "/")
+	if firstSlash < 0 {
+		return value
+	}
+	head := value[:firstSlash]
+	if head == "localhost" || strings.ContainsAny(head, ".:") {
+		return value[firstSlash+1:]
+	}
+	return value
+}
+
 func suiteCatalog(items map[string]Definition) []Definition {
 	result := make([]Definition, 0, len(items))
 	for _, suite := range items {
