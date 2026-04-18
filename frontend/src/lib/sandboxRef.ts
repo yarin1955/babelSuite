@@ -27,6 +27,11 @@ export function extractSuiteRef(input: string) {
 
   value = value.replace(/^['"]+|['"]+$/g, '')
 
+  const exampleSuiteID = suiteIDFromExamplesPath(value)
+  if (exampleSuiteID !== '') {
+    return exampleSuiteID
+  }
+
   const commandMatch = value.match(/(?:^|\s)(?:babelctl|babelsuite)\s+run\s+(\S+)/i)
   if (commandMatch?.[1]) {
     value = commandMatch[1].trim()
@@ -35,6 +40,22 @@ export function extractSuiteRef(input: string) {
   value = value.replace(/^oci:\/\//i, '')
   value = value.replace(/,+$/, '')
   return value
+}
+
+export function extractSuiteRefs(input: string) {
+  const refs = new Set<string>()
+  const primary = extractSuiteRef(input)
+  if (primary !== '') {
+    refs.add(primary)
+  }
+
+  for (const candidate of inferredSuiteRefsFromPath(input)) {
+    if (candidate !== '') {
+      refs.add(candidate)
+    }
+  }
+
+  return Array.from(refs)
 }
 
 export function normalizeSuiteLookupKey(input: string) {
@@ -121,4 +142,89 @@ export function resolveCatalogPackageRef(items: CatalogPackage[], input: string)
 
 function strings(value?: string | null) {
   return (value ?? '').trim()
+}
+
+function suiteIDFromExamplesPath(input: string) {
+  const decoded = decodeLocalDropValue(input)
+  if (decoded === '') {
+    return ''
+  }
+
+  const normalized = decoded
+    .replace(/[?#].*$/, '')
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+
+  const match = normalized.match(/(?:^|\/)examples\/oci-suites\/([^/]+)/i)
+  return strings(match?.[1])
+}
+
+function inferredSuiteRefsFromPath(input: string) {
+  const decoded = decodeLocalDropValue(input)
+  if (decoded === '') {
+    return []
+  }
+
+  const normalized = decoded
+    .replace(/[?#].*$/, '')
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\/+/, '')
+
+  if (normalized === '') {
+    return []
+  }
+
+  const refs = new Set<string>()
+  const segments = normalized.split('/').filter(Boolean)
+  if (segments.length === 0) {
+    return []
+  }
+
+  const exampleSuiteID = suiteIDFromExamplesPath(decoded)
+  if (exampleSuiteID !== '') {
+    refs.add(exampleSuiteID)
+  }
+
+  const lastSegment = segments[segments.length - 1]
+  const parentSegment = segments.length > 1 ? segments[segments.length - 2] : ''
+  if (/^suite\.star$/i.test(lastSegment) && parentSegment !== '') {
+    refs.add(parentSegment)
+  }
+
+  const profilesIndex = segments.findIndex((segment) => segment.toLowerCase() === 'profiles')
+  if (profilesIndex > 0) {
+    refs.add(segments[profilesIndex - 1])
+  }
+
+  if (segments.length === 1 && !segments[0].includes('.')) {
+    refs.add(segments[0])
+  }
+
+  return Array.from(refs).map(strings).filter(Boolean)
+}
+
+function decodeLocalDropValue(input: string) {
+  const value = strings(input)
+  if (value === '') {
+    return ''
+  }
+
+  if (!/^file:\/\//i.test(value)) {
+    return value
+  }
+
+  try {
+    const url = new URL(value)
+    let pathname = decodeURIComponent(url.pathname)
+    if (/^\/[a-zA-Z]:/.test(pathname)) {
+      pathname = pathname.slice(1)
+    }
+    if (url.host && url.host !== 'localhost') {
+      return `//${url.host}${pathname}`
+    }
+    return pathname
+  } catch {
+    return value.replace(/^file:\/+/i, '')
+  }
 }
