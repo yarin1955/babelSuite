@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   FaBookOpen,
@@ -18,7 +17,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { HeaderList } from '../components/HeaderList'
 import { logoGradient } from '../components/logoGradient'
+import { useClipboardFeedback } from '../hooks/useClipboardFeedback'
 import { createExecution, getSuite, listExecutionLaunchSuites, type ExecutionLaunchSuite, type SuiteDefinition } from '../lib/api'
+import { renderStarlarkLine, suiteTokenClasses } from '../lib/codeHighlight'
 import { groupTopologyByLevel, parseSuiteTopology } from '../lib/suites'
 import './Suites.css'
 
@@ -38,7 +39,7 @@ export default function Suites() {
   const [loadError, setLoadError] = useState('')
   const [showRunModal, setShowRunModal] = useState(false)
   const [launching, setLaunching] = useState(false)
-  const [copiedId, setCopiedId] = useState('')
+  const { copiedId, copyToClipboard, clearCopied } = useClipboardFeedback()
 
   useEffect(() => {
     let active = true
@@ -100,7 +101,7 @@ export default function Suites() {
   }, [suite])
 
   const copyValue = async (id: string, value: string) => {
-    await navigator.clipboard.writeText(value)
+    await copyToClipboard(id, value)
     const label = id === 'pull'
       ? 'Pull command'
       : id === 'fork'
@@ -114,9 +115,8 @@ export default function Suites() {
             : id === 'curl'
               ? 'cURL command'
               : id
-    setCopiedId(id)
     setNotice(`${label} copied.`)
-    window.setTimeout(() => { setCopiedId(''); setNotice('') }, 1800)
+    window.setTimeout(() => { clearCopied(); setNotice('') }, 1800)
   }
 
   const executeSuite = async () => {
@@ -264,7 +264,7 @@ export default function Suites() {
               {suite.suiteStar.split('\n').map((line, i) => (
                 <div key={`${i + 1}-${line}`} className='suite-code-line'>
                   <span className='suite-code-line__number'>{String(i + 1).padStart(3, ' ')}</span>
-                  <code className='suite-code-line__content'>{renderHighlightedLine(line)}</code>
+                  <code className='suite-code-line__content'>{renderStarlarkLine(line, suiteTokenClasses)}</code>
                 </div>
               ))}
             </div>
@@ -789,32 +789,6 @@ function fallbackSummary(operation: SuiteDefinition['apiSurfaces'][number]['oper
   if (fallback.mode === 'example') return `Uses example ${fallback.exampleName || '(unknown)'}.`
   if (fallback.mode === 'proxy') return `Proxies unmatched traffic to ${fallback.proxyUrl || '(missing url)'}.`
   return `${fallback.status || 'default'} ${fallback.mediaType || ''}`.trim() || 'Static fallback response.'
-}
-
-function renderHighlightedLine(line: string): ReactNode[] {
-  const commentIndex = line.indexOf('#')
-  const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line
-  const comment = commentIndex >= 0 ? line.slice(commentIndex) : ''
-  const fragments: ReactNode[] = []
-  const pattern = /"[^"]*"|\b(load|service|task|test|traffic|suite|container|mock|script|scenario)\b|@[a-zA-Z0-9/_-]+/g
-  let cursor = 0
-
-  for (const match of code.matchAll(pattern)) {
-    const value = match[0]
-    const start = match.index ?? 0
-    if (start > cursor) fragments.push(code.slice(cursor, start))
-    const cls = value.startsWith('"')
-      ? 'suite-token suite-token--string'
-      : value.startsWith('@')
-        ? 'suite-token suite-token--module'
-        : 'suite-token suite-token--keyword'
-    fragments.push(<span key={`${start}-${value}`} className={cls}>{value}</span>)
-    cursor = start + value.length
-  }
-
-  if (cursor < code.length) fragments.push(code.slice(cursor))
-  if (comment) fragments.push(<span key={`comment-${comment}`} className='suite-token suite-token--comment'>{comment}</span>)
-  return fragments
 }
 
 function preferredSourcePath(

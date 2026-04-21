@@ -301,8 +301,7 @@ export default function Agents() {
             </button>
             <button className='platform-button platform-button--secondary' onClick={closePanel}>Cancel</button>
             <button
-              className='platform-icon-button'
-              style={{ marginLeft: 'auto' }}
+              className='platform-icon-button platform-header-spacer'
               onClick={() => panelAgent && removeAgent(panelAgent.agentId)}
               disabled={draft.agents.length <= 1}
               title='Remove agent'
@@ -364,7 +363,7 @@ export default function Agents() {
                 </div>
               </div>
               <div className='bs-form-row'>
-                <label>Routing Tags <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(comma-separated)</span></label>
+                <label>Routing Tags <span className='bs-label-note'>(comma-separated)</span></label>
                 <input
                   value={panelAgent.routingTags.join(', ')}
                   onChange={(e) => updatePanelAgent('routingTags', splitList(e.target.value))}
@@ -372,7 +371,7 @@ export default function Agents() {
                 />
               </div>
               <div className='bs-form-row'>
-                <label>Runtime Capabilities <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(comma-separated)</span></label>
+                <label>Runtime Capabilities <span className='bs-label-note'>(comma-separated)</span></label>
                 <input
                   value={runtimeCapabilities.join(', ')}
                   onChange={(e) => updatePanelAgent('runtimeCapabilities', splitList(e.target.value))}
@@ -393,7 +392,7 @@ export default function Agents() {
 
             {panelAgent.type === 'local' && (
               <div className='white-box'>
-                <p className='white-box__section-header'><FaDocker style={{ marginRight: 6 }} />Local Docker</p>
+                <p className='white-box__section-header'><FaDocker className='bs-section-header-icon' />Local Docker</p>
                 <div className='bs-form-row'>
                   <label>Docker Socket</label>
                   <input value={panelAgent.dockerSocket} onChange={(e) => updatePanelAgent('dockerSocket', e.target.value)} />
@@ -403,7 +402,7 @@ export default function Agents() {
 
             {panelAgent.type === 'remote-agent' && (
               <div className='white-box'>
-                <p className='white-box__section-header'><FaCloudArrowUp style={{ marginRight: 6 }} />Remote Worker</p>
+                <p className='white-box__section-header'><FaCloudArrowUp className='bs-section-header-icon' />Remote Worker</p>
                 <div className='bs-form-row'>
                   <label>Worker URL</label>
                   <input value={panelAgent.hostUrl} onChange={(e) => updatePanelAgent('hostUrl', e.target.value)} />
@@ -423,7 +422,7 @@ export default function Agents() {
 
             {panelAgent.type === 'remote-docker' && (
               <div className='white-box'>
-                <p className='white-box__section-header'><FaCloudArrowUp style={{ marginRight: 6 }} />Remote Docker</p>
+                <p className='white-box__section-header'><FaCloudArrowUp className='bs-section-header-icon' />Remote Docker</p>
                 <div className='bs-form-row'>
                   <label>TCP Host URL</label>
                   <input value={panelAgent.hostUrl} onChange={(e) => updatePanelAgent('hostUrl', e.target.value)} />
@@ -443,7 +442,7 @@ export default function Agents() {
 
             {panelAgent.type === 'kubernetes' && (
               <div className='white-box'>
-                <p className='white-box__section-header'><FaCloudArrowUp style={{ marginRight: 6 }} />Kubernetes</p>
+                <p className='white-box__section-header'><FaCloudArrowUp className='bs-section-header-icon' />Kubernetes</p>
                 <div className='bs-form-row'>
                   <label>Kubeconfig File Path</label>
                   <input value={panelAgent.kubeconfigPath} onChange={(e) => updatePanelAgent('kubeconfigPath', e.target.value)} />
@@ -490,7 +489,7 @@ export default function Agents() {
                 </div>
               </div>
               <div className='bs-form-row'>
-                <label>Capabilities <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(comma-separated)</span></label>
+                <label>Capabilities <span className='bs-label-note'>(comma-separated)</span></label>
                 <input
                   value={panelAgent.apisixSidecar.capabilities.join(', ')}
                   onChange={(e) => updatePanelSidecar('capabilities', splitList(e.target.value))}

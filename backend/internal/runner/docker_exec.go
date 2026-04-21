@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +17,11 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/babelsuite/babelsuite/internal/logstream"
+)
+
+const (
+	containerArtifactsMount = "/babelsuite-artifacts"
+	maxArtifactBytes        = 10 * 1024 * 1024 // 10 MB per artifact file
 )
 
 var (
@@ -48,7 +56,21 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 
 	img := step.Node.Image
 	if img == "" {
+		img = resolveStepImage(step)
+	}
+	if img == "" {
 		return fmt.Errorf("no image configured for step %q", step.Node.Name)
+	}
+
+	// Prepare host-side artifact directory before container creation so the
+	// bind mount is ready when the container starts.
+	hostArtifactDir := ""
+	if step.OnArtifact != nil && len(step.ArtifactExports) > 0 {
+		dir := filepath.Join(os.TempDir(), "babel-artifacts", sanitizeID(step.ExecutionID), sanitizeID(step.Node.ID))
+		if err := os.MkdirAll(dir, 0700); err == nil {
+			hostArtifactDir = dir
+			defer os.RemoveAll(hostArtifactDir)
+		}
 	}
 
 	emit(line(step, "info", fmt.Sprintf("[%s] Pulling image %s.", step.Node.Name, img)))
@@ -59,9 +81,12 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 	io.Copy(io.Discard, pullOut)
 	pullOut.Close()
 
-	env := make([]string, 0, len(step.Env))
+	env := make([]string, 0, len(step.Env)+1)
 	for k, v := range step.Env {
 		env = append(env, k+"="+v)
+	}
+	if hostArtifactDir != "" {
+		env = append(env, "BABELSUITE_ARTIFACTS_DIR="+containerArtifactsMount)
 	}
 
 	containerName := fmt.Sprintf("babel-%s-%s", sanitizeID(step.ExecutionID), sanitizeID(step.Node.ID))
@@ -76,6 +101,9 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 	}
 	hostCfg := &container.HostConfig{
 		AutoRemove: false,
+	}
+	if hostArtifactDir != "" {
+		hostCfg.Binds = []string{hostArtifactDir + ":" + containerArtifactsMount + ":rw"}
 	}
 
 	emit(line(step, "info", fmt.Sprintf("[%s] Creating container %s.", step.Node.Name, containerName)))
@@ -105,9 +133,6 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 	if err == nil {
 		go func() {
 			defer logStream.Close()
-			// Demultiplex the Docker multiplexed stream into stdout and stderr.
-			// Both streams are piped into a single reader so lines reach the UI
-			// in arrival order without buffering across streams.
 			pr, pw := io.Pipe()
 			go func() {
 				stdcopy.StdCopy(pw, pw, logStream)
@@ -124,6 +149,7 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 	}
 
 	waitCh, errCh := cli.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
+	var containerRunErr error
 	select {
 	case <-ctx.Done():
 		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -136,15 +162,68 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 		}
 	case result := <-waitCh:
 		if result.Error != nil && result.Error.Message != "" {
-			return fmt.Errorf("container exited with error: %s", result.Error.Message)
+			containerRunErr = fmt.Errorf("container exited with error: %s", result.Error.Message)
+		} else if result.StatusCode != 0 {
+			containerRunErr = fmt.Errorf("container exited with code %d", result.StatusCode)
 		}
-		if result.StatusCode != 0 {
-			return fmt.Errorf("container exited with code %d", result.StatusCode)
+	}
+
+	if hostArtifactDir != "" {
+		exitStatus := "success"
+		if containerRunErr != nil {
+			exitStatus = "failure"
 		}
+		for _, export := range step.ArtifactExports {
+			if !artifactTriggerMatchesStatus(export.On, exitStatus) {
+				continue
+			}
+			content, err := readArtifactFromMount(hostArtifactDir, export.Path)
+			if err == nil && len(content) > 0 {
+				step.OnArtifact(export.Path, content)
+			}
+		}
+	}
+
+	if containerRunErr != nil {
+		return containerRunErr
 	}
 
 	emit(line(step, "info", fmt.Sprintf("[%s] Container finished successfully.", step.Node.Name)))
 	return nil
+}
+
+// readArtifactFromMount reads an artifact file from the host-side mount directory.
+// The export path is cleaned and verified to stay within the mount root to
+// prevent any path traversal from a malicious or misconfigured container.
+func readArtifactFromMount(mountDir, exportPath string) ([]byte, error) {
+	cleaned := path.Clean("/" + strings.TrimSpace(exportPath))
+	hostPath := filepath.Join(mountDir, filepath.FromSlash(cleaned))
+
+	// Reject any path that escapes the mount directory.
+	if !strings.HasPrefix(hostPath+string(filepath.Separator), mountDir+string(filepath.Separator)) {
+		return nil, fmt.Errorf("artifact path %q escapes mount directory", exportPath)
+	}
+
+	f, err := os.Open(hostPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return io.ReadAll(io.LimitReader(f, maxArtifactBytes))
+}
+
+func artifactTriggerMatchesStatus(trigger, status string) bool {
+	switch strings.TrimSpace(trigger) {
+	case "", "success":
+		return status == "success"
+	case "failure":
+		return status == "failure"
+	case "always":
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveStepImage(step StepSpec) string {

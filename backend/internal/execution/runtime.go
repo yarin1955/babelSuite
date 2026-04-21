@@ -277,6 +277,8 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		return err
 	}
 
+	collectedFiles := make(map[string][]byte)
+
 	err := backend.Run(stepCtx, runner.StepSpec{
 		ExecutionID:      executionID,
 		SuiteID:          suite.ID,
@@ -304,7 +306,12 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		Evaluation:       cloneNodeEvaluation(node.Evaluation),
 		OnFailure:        append([]string{}, node.OnFailure...),
 		ArtifactExports:  cloneNodeArtifactExports(node.ArtifactExports),
-		GatewayURL:       resolveGatewayURL(executionID, suite),
+		OnArtifact: func(path string, content []byte) {
+			if len(content) > 0 {
+				collectedFiles[path] = content
+			}
+		},
+		GatewayURL: resolveGatewayURL(executionID, suite),
 		Node: runner.StepNode{
 			ID:        node.ID,
 			Name:      node.Name,
@@ -334,7 +341,7 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 		}
 		message := fmt.Sprintf("[%s] Runner failed: %v", node.Name, err)
 		finished := s.markNodeFailed(executionID, node.ID, message, !node.ContinueOnFailure)
-		s.registerStepArtifacts(executionID, node, "failed")
+		s.registerStepArtifacts(executionID, node, "failed", collectedFiles)
 		s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, err)
 		if finished {
 			s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))
@@ -354,7 +361,7 @@ func (s *Service) runNode(ctx context.Context, executionID string, suite *suites
 	}
 
 	finished := s.markNodeHealthy(executionID, node.ID, buildHealthyMessage(node, suite, profile))
-	s.registerStepArtifacts(executionID, node, "healthy")
+	s.registerStepArtifacts(executionID, node, "healthy", collectedFiles)
 	s.finishStepObservation(stepCtx, stepSpan, stepStartedAt, executionID, suite, profile, node, nil)
 	if finished {
 		s.finishExecutionObservation(executionID, s.executionTerminalError(executionID))

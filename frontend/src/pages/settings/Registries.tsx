@@ -280,8 +280,7 @@ export default function Registries() {
             )}
             <button className='platform-button platform-button--secondary' onClick={closePanel}>Cancel</button>
             <button
-              className='platform-icon-button'
-              style={{ marginLeft: 'auto' }}
+              className='platform-icon-button platform-header-spacer'
               onClick={() => panelRegistry && removeRegistry(panelRegistry.registryId)}
               disabled={draft.registries.length <= 1}
               title='Remove registry'
@@ -317,7 +316,7 @@ export default function Registries() {
                   </select>
                 </div>
                 <div>
-                  <label>Region <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(cloud only)</span></label>
+                  <label>Region <span className='bs-label-note'>(cloud only)</span></label>
                   <input value={panelRegistry.region} onChange={(e) => updatePanelRegistry('region', e.target.value)} placeholder='eu-west-1' />
                 </div>
               </div>
@@ -353,7 +352,7 @@ export default function Registries() {
                   <input
                     readOnly
                     value={panelRegistry.lastSyncedAt ? new Date(panelRegistry.lastSyncedAt).toLocaleString() : 'Never'}
-                    style={{ color: '#678094', cursor: 'default' }}
+                    className='bs-field--readonly'
                   />
                 </div>
               </div>

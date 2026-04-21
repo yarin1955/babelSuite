@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -13,8 +12,12 @@ import {
   FaStar,
   FaXmark,
 } from 'react-icons/fa6'
+import { useClipboardFeedback } from '../hooks/useClipboardFeedback'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import type { CatalogPackage, SuiteDefinition } from '../lib/api'
+import { renderSourceLine, renderStarlarkLine } from '../lib/codeHighlight'
 import { logoGradient } from './logoGradient'
+import './CatalogInspectModal.css'
 
 interface InspectModalProps {
   item: CatalogPackage
@@ -29,7 +32,7 @@ interface InspectModalProps {
 
 export function CatalogInspectModal({ item, suite, starred, loading, error, favoriteBusy, onClose, onToggleFavorite }: InspectModalProps) {
   const [selected, setSelected] = useState<string>('suite.star')
-  const [copyId, setCopyId] = useState('')
+  const { copiedId, copyToClipboard } = useClipboardFeedback(1600)
   const fallbackSourceFile = useMemo(() => buildRegistryPreviewFile(item, error), [item, error])
   const suiteSourceFiles = suite?.sourceFiles ?? []
   const suiteFolders = suite?.folders ?? []
@@ -39,17 +42,7 @@ export function CatalogInspectModal({ item, suite, starred, loading, error, favo
     [suiteSourceFiles],
   )
 
-  const copy = async (id: string, value: string) => {
-    await navigator.clipboard.writeText(value)
-    setCopyId(id)
-    window.setTimeout(() => setCopyId(''), 1600)
-  }
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   useEffect(() => {
     setSelected(suite ? 'suite.star' : fallbackSourceFile.path)
@@ -155,7 +148,7 @@ export function CatalogInspectModal({ item, suite, starred, loading, error, favo
                 )}
             {suiteProfiles.length > 0 && (
               <>
-                <p className='ci-tree__label' style={{ marginTop: 16 }}>Profiles</p>
+                <p className='ci-tree__label ci-tree__label--profiles'>Profiles</p>
                 {suiteProfiles.map((p) => (
                   <div key={p.fileName} className='ci-tree__profile'>
                     <span>{p.label}</span>
@@ -181,18 +174,18 @@ export function CatalogInspectModal({ item, suite, starred, loading, error, favo
                   <span className='ci-content__filename'><FaFile /> suite.star</span>
                   <button
                     type='button'
-                    className={`ci-copy-btn${copyId === 'star' ? ' ci-copy-btn--ok' : ''}`}
-                    onClick={() => void copy('star', suite.suiteStar)}
+                    className={`ci-copy-btn${copiedId === 'star' ? ' ci-copy-btn--ok' : ''}`}
+                    onClick={() => void copyToClipboard('star', suite.suiteStar)}
                   >
                     <FaCopy />
-                    <span>{copyId === 'star' ? 'Copied!' : 'Copy'}</span>
+                    <span>{copiedId === 'star' ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
                 <div className='ci-code'>
                   {suite.suiteStar.split('\n').map((line, i) => (
                     <div key={i} className='ci-code__line'>
                       <span className='ci-code__num'>{String(i + 1).padStart(3, ' ')}</span>
-                      <code className='ci-code__text'>{renderStarLine(line)}</code>
+                      <code className='ci-code__text'>{renderStarlarkLine(line)}</code>
                     </div>
                   ))}
                 </div>
@@ -206,11 +199,11 @@ export function CatalogInspectModal({ item, suite, starred, loading, error, favo
                   <span className='ci-folder-role'>{visibleSourceFile.language}</span>
                   <button
                     type='button'
-                    className={`ci-copy-btn${copyId === visibleSourceFile.path ? ' ci-copy-btn--ok' : ''}`}
-                    onClick={() => void copy(visibleSourceFile.path, visibleSourceFile.content)}
+                    className={`ci-copy-btn${copiedId === visibleSourceFile.path ? ' ci-copy-btn--ok' : ''}`}
+                    onClick={() => void copyToClipboard(visibleSourceFile.path, visibleSourceFile.content)}
                   >
                     <FaCopy />
-                    <span>{copyId === visibleSourceFile.path ? 'Copied!' : 'Copy'}</span>
+                    <span>{copiedId === visibleSourceFile.path ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
                 {error && (
@@ -239,19 +232,19 @@ export function CatalogInspectModal({ item, suite, starred, loading, error, favo
               <div className='ci-footer'>
                 <button
                   type='button'
-                  className={`ci-cmd-btn${copyId === 'pull' ? ' ci-cmd-btn--ok' : ''}`}
-                  onClick={() => void copy('pull', pullCommand)}
+                  className={`ci-cmd-btn${copiedId === 'pull' ? ' ci-cmd-btn--ok' : ''}`}
+                  onClick={() => void copyToClipboard('pull', pullCommand)}
                 >
                   <FaCopy />
-                  <span>{copyId === 'pull' ? 'Copied!' : 'Copy pull command'}</span>
+                  <span>{copiedId === 'pull' ? 'Copied!' : 'Copy pull command'}</span>
                 </button>
                 <button
                   type='button'
-                  className={`ci-cmd-btn ci-cmd-btn--ghost${copyId === 'fork' ? ' ci-cmd-btn--ok' : ''}`}
-                  onClick={() => void copy('fork', forkCommand)}
+                  className={`ci-cmd-btn ci-cmd-btn--ghost${copiedId === 'fork' ? ' ci-cmd-btn--ok' : ''}`}
+                  onClick={() => void copyToClipboard('fork', forkCommand)}
                 >
                   <FaDownload />
-                  <span>{copyId === 'fork' ? 'Copied!' : 'Fork'}</span>
+                  <span>{copiedId === 'fork' ? 'Copied!' : 'Fork'}</span>
                 </button>
                 {visibleModules.length > 0 && (
                   <div className='ci-modules'>
@@ -270,67 +263,6 @@ export function CatalogInspectModal({ item, suite, starred, loading, error, favo
     </div>,
     document.body,
   )
-}
-
-function renderStarLine(line: string): ReactNode[] {
-  const ci = line.indexOf('#')
-  const code = ci >= 0 ? line.slice(0, ci) : line
-  const comment = ci >= 0 ? line.slice(ci) : ''
-  const out: ReactNode[] = []
-  const pat = /"[^"]*"|\b(load|service|mock|task|test|traffic|suite)\b|@[a-zA-Z0-9/_-]+/g
-  let cur = 0
-  for (const m of code.matchAll(pat)) {
-    const v = m[0]
-    const s = m.index ?? 0
-    if (s > cur) out.push(code.slice(cur, s))
-    const cls = v.startsWith('"') ? 'ci-tok ci-tok--str' : v.startsWith('@') ? 'ci-tok ci-tok--mod' : 'ci-tok ci-tok--kw'
-    out.push(<span key={`${s}-${v}`} className={cls}>{v}</span>)
-    cur = s + v.length
-  }
-  if (cur < code.length) out.push(code.slice(cur))
-  if (comment) out.push(<span key='cmt' className='ci-tok ci-tok--cmt'>{comment}</span>)
-  return out
-}
-
-function renderSourceLine(line: string, language: string): ReactNode[] {
-  const trimmedLanguage = language.trim().toLowerCase()
-  if (trimmedLanguage === 'yaml' || trimmedLanguage === 'python' || trimmedLanguage === 'bash' || trimmedLanguage === 'rego') {
-    const commentIndex = line.indexOf('#')
-    const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line
-    const comment = commentIndex >= 0 ? line.slice(commentIndex) : ''
-    const fragments = highlightCodeTokens(code)
-    if (comment) {
-      fragments.push(<span key={`comment-${line}`} className='ci-tok ci-tok--cmt'>{comment}</span>)
-    }
-    return fragments
-  }
-  return highlightCodeTokens(line)
-}
-
-function highlightCodeTokens(line: string): ReactNode[] {
-  const fragments: ReactNode[] = []
-  const pattern = /"[^"]*"|'[^']*'|\b(message|service|rpc|package|import|const|let|type|interface|export|default|allow|if|true|false|null)\b|@[a-zA-Z0-9/_-]+/g
-  let cursor = 0
-
-  for (const match of line.matchAll(pattern)) {
-    const value = match[0]
-    const start = match.index ?? 0
-    if (start > cursor) {
-      fragments.push(line.slice(cursor, start))
-    }
-    const className = value.startsWith('"') || value.startsWith("'")
-      ? 'ci-tok ci-tok--str'
-      : value.startsWith('@')
-        ? 'ci-tok ci-tok--mod'
-        : 'ci-tok ci-tok--kw'
-    fragments.push(<span key={`${start}-${value}`} className={className}>{value}</span>)
-    cursor = start + value.length
-  }
-
-  if (cursor < line.length) {
-    fragments.push(line.slice(cursor))
-  }
-  return fragments
 }
 
 function buildRegistryPreviewFile(item: CatalogPackage, error: string): { path: string; language: string; content: string } {

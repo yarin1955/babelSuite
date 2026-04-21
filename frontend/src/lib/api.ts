@@ -1,4 +1,4 @@
-import { request } from './api/client'
+import { buildApiPath, request } from './api/client'
 import type { AuthResponse } from './api/types'
 
 export { ApiError, clearSession, getSession, saveSession } from './api/client'
@@ -727,7 +727,7 @@ export async function listExecutionLaunchSuites() {
 }
 
 export async function resolveExecutionRef(ref: string) {
-  return request<ExecutionLaunchSuite>(`/api/v1/executions/resolve-ref?ref=${encodeURIComponent(ref)}`)
+  return request<ExecutionLaunchSuite>(buildApiPath('/api/v1/executions/resolve-ref', { ref }))
 }
 
 export async function listExecutions() {

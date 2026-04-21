@@ -127,11 +127,11 @@ export default function General() {
                   value={opt.value}
                   checked={draft.mode === opt.value}
                   onChange={() => setDraft({ ...draft, mode: opt.value })}
-                  style={{ accentColor: '#1f7ea8', marginRight: 8 }}
+                  className='bs-radio'
                 />
                 {opt.label}
               </div>
-              <div className='bs-settings-panel__control' style={{ color: '#5d7082', fontSize: '0.9rem' }}>
+              <div className='bs-settings-panel__control bs-settings-panel__description'>
                 {opt.desc}
               </div>
             </div>

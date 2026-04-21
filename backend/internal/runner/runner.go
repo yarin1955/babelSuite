@@ -51,6 +51,9 @@ type StepSpec struct {
 	Evaluation       *suites.StepEvaluation
 	OnFailure        []string
 	ArtifactExports  []ArtifactExport
+	// OnArtifact is called once per collected artifact file, with its container path and raw bytes.
+	// May be nil when the backend does not support container-level file collection.
+	OnArtifact func(path string, content []byte)
 	Node             StepNode
 	// GatewayURL is the address of the APISIX sidecar for this execution.
 	// It is set automatically when the suite has a gateway (mock) node.
