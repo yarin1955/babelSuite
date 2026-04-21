@@ -9,8 +9,8 @@ import (
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
-func (s *Service) registerStepArtifacts(executionID string, node topologyNode, status string) {
-	artifacts := materializeExecutionArtifacts(node, status)
+func (s *Service) registerStepArtifacts(executionID string, node topologyNode, status string, collected map[string][]byte) {
+	artifacts := materializeExecutionArtifacts(node, status, collected)
 	if len(artifacts) == 0 {
 		return
 	}
@@ -41,7 +41,7 @@ func (s *Service) registerStepArtifacts(executionID string, node topologyNode, s
 	}
 }
 
-func materializeExecutionArtifacts(node topologyNode, status string) []ExecutionArtifact {
+func materializeExecutionArtifacts(node topologyNode, status string, collected map[string][]byte) []ExecutionArtifact {
 	if len(node.ArtifactExports) == 0 {
 		return nil
 	}
@@ -51,12 +51,12 @@ func materializeExecutionArtifacts(node topologyNode, status string) []Execution
 		if !artifactExportMatchesStatus(export.On, status) {
 			continue
 		}
-		result = append(result, buildExecutionArtifact(node, export, status))
+		result = append(result, buildExecutionArtifact(node, export, status, collected))
 	}
 	return result
 }
 
-func buildExecutionArtifact(node topologyNode, export suites.ArtifactExport, status string) ExecutionArtifact {
+func buildExecutionArtifact(node topologyNode, export suites.ArtifactExport, status string, collected map[string][]byte) ExecutionArtifact {
 	format := normalizeArtifactFormat(export.Format)
 	artifact := ExecutionArtifact{
 		ID:       executionArtifactID(node.ID, export),
@@ -68,13 +68,44 @@ func buildExecutionArtifact(node topologyNode, export suites.ArtifactExport, sta
 		Format:   format,
 	}
 
+	realContent := collected[strings.TrimSpace(export.Path)]
+
 	switch format {
 	case "junit":
-		raw := syntheticJUnitReport(node, status)
-		if summary, err := parseJUnitSummary(raw); err == nil {
-			artifact.TestSummary = summary
+		if len(realContent) > 0 {
+			if summary, err := parseJUnitSummary(realContent); err == nil {
+				artifact.TestSummary = summary
+			}
+			artifact.Content = string(realContent)
+		} else {
+			raw := syntheticJUnitReport(node, status)
+			if summary, err := parseJUnitSummary(raw); err == nil {
+				artifact.TestSummary = summary
+			}
+			artifact.Content = string(raw)
 		}
-		artifact.Content = string(raw)
+	case "ctrf":
+		if len(realContent) > 0 {
+			if summary, err := parseCTRFSummary(realContent); err == nil {
+				artifact.TestSummary = summary
+			}
+			artifact.Content = string(realContent)
+		} else {
+			artifact.TestSummary = &ExecutionTestSummary{}
+		}
+	case "cobertura":
+		if len(realContent) > 0 {
+			if summary, err := parseCoberturaSummary(realContent); err == nil {
+				artifact.CoverageSummary = summary
+			}
+			artifact.Content = string(realContent)
+		} else {
+			artifact.CoverageSummary = &ExecutionCoverageSummary{}
+		}
+	default:
+		if len(realContent) > 0 {
+			artifact.Content = string(realContent)
+		}
 	}
 
 	return artifact

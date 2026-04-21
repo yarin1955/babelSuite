@@ -2,6 +2,7 @@ package execution
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"strconv"
@@ -160,6 +161,81 @@ func parseCoberturaSummary(document []byte) (*ExecutionCoverageSummary, error) {
 		LinesValid:      parseXMLInt(coverage.LinesValid),
 		BranchesCovered: parseXMLInt(coverage.BranchesCovered),
 		BranchesValid:   parseXMLInt(coverage.BranchesValid),
+	}, nil
+}
+
+type ctrfDocument struct {
+	Results struct {
+		Summary struct {
+			Tests   int `json:"tests"`
+			Passed  int `json:"passed"`
+			Failed  int `json:"failed"`
+			Skipped int `json:"skipped"`
+			Pending int `json:"pending"`
+			Other   int `json:"other"`
+			Start   int64 `json:"start"`
+			Stop    int64 `json:"stop"`
+		} `json:"summary"`
+		Tests []struct {
+			Status   string  `json:"status"`
+			Duration float64 `json:"duration"`
+		} `json:"tests"`
+	} `json:"results"`
+}
+
+func parseCTRFSummary(document []byte) (*ExecutionTestSummary, error) {
+	trimmed := bytes.TrimSpace(document)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("empty ctrf document")
+	}
+
+	var doc ctrfDocument
+	if err := json.Unmarshal(trimmed, &doc); err != nil {
+		return nil, err
+	}
+
+	s := doc.Results.Summary
+	total := s.Tests
+	if total == 0 {
+		total = len(doc.Results.Tests)
+	}
+
+	var durationMs float64
+	if s.Start > 0 && s.Stop > s.Start {
+		durationMs = float64(s.Stop - s.Start)
+	} else {
+		for _, t := range doc.Results.Tests {
+			durationMs += t.Duration
+		}
+	}
+
+	errors := s.Other
+	passed := s.Passed
+	failures := s.Failed
+	skipped := s.Skipped + s.Pending
+
+	if total > 0 && passed == 0 && failures == 0 && skipped == 0 {
+		for _, t := range doc.Results.Tests {
+			switch strings.ToLower(t.Status) {
+			case "passed":
+				passed++
+			case "failed":
+				failures++
+			case "skipped", "pending":
+				skipped++
+			default:
+				errors++
+			}
+		}
+	}
+
+	return &ExecutionTestSummary{
+		Total:           total,
+		Passed:          passed,
+		Failures:        failures,
+		Errors:          errors,
+		Skipped:         skipped,
+		DurationSeconds: durationMs / 1000,
 	}, nil
 }
 

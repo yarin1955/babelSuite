@@ -97,7 +97,11 @@ func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line
 }
 
 func stepRequiresContainer(step StepSpec) bool {
-	if step.Node.Image == "" {
+	img := step.Node.Image
+	if img == "" {
+		img = resolveStepImage(step)
+	}
+	if img == "" {
 		return false
 	}
 	switch step.Node.Kind {
