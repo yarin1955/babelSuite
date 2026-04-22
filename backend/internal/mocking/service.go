@@ -12,6 +12,19 @@ import (
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
+var proxyHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if err := validateProxyTarget(req.URL.String()); err != nil {
+			return err
+		}
+		if len(via) >= 5 {
+			return fmt.Errorf("too many redirects")
+		}
+		return nil
+	},
+}
+
 func NewService(suiteService suiteReader) *Service {
 	return &Service{
 		suites:     suiteService,
@@ -251,6 +264,9 @@ func proxyFallback(ctx context.Context, original *http.Request, fallback *suites
 	if target == "" {
 		return errorResult(http.StatusBadGateway, "application/json", `{"error":"Fallback proxy URL is not configured."}`), nil
 	}
+	if err := validateProxyTarget(target); err != nil {
+		return errorResult(http.StatusBadGateway, "application/json", fmt.Sprintf(`{"error":"%s"}`, escapeJSONString(err.Error()))), nil
+	}
 
 	body, _, _, err := readRequestBody(original)
 	if err != nil {
@@ -262,13 +278,13 @@ func proxyFallback(ctx context.Context, original *http.Request, fallback *suites
 		return nil, err
 	}
 	req.Header = original.Header.Clone()
-	response, err := http.DefaultClient.Do(req)
+	response, err := proxyHTTPClient.Do(req)
 	if err != nil {
 		return errorResult(http.StatusBadGateway, "application/json", fmt.Sprintf(`{"error":"%s"}`, escapeJSONString(err.Error()))), nil
 	}
 	defer response.Body.Close()
 
-	responseBody, _ := io.ReadAll(response.Body)
+	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, maxMockRequestBodyBytes))
 	headers := response.Header.Clone()
 	headers.Set("X-Babelsuite-Fallback", "proxy")
 	headers.Set("X-Babelsuite-Runtime-Url", runtimeURL)

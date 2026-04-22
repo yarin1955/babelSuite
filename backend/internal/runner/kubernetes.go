@@ -9,6 +9,7 @@ import (
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -122,6 +123,23 @@ func (k *Kubernetes) runPod(ctx context.Context, client kubernetes.Interface, st
 					Name:  "step",
 					Image: img,
 					Env:   env,
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceMemory: resource.MustParse("64Mi"),
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceMemory: resource.MustParse("512Mi"),
+							corev1.ResourceCPU:    resource.MustParse("1000m"),
+						},
+					},
+					SecurityContext: &corev1.SecurityContext{
+						AllowPrivilegeEscalation: func() *bool { b := false; return &b }(),
+						RunAsNonRoot:             func() *bool { b := true; return &b }(),
+						RunAsUser:                func() *int64 { uid := int64(1000); return &uid }(),
+						Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+						SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+					},
 				},
 			},
 		},

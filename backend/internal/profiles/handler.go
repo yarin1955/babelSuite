@@ -107,7 +107,7 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrProfileNotFound):
 		writeError(w, http.StatusNotFound, "Profile not found.")
 	default:
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusInternalServerError, "Could not process request.")
 	}
 }
 func writeJSON(w http.ResponseWriter, status int, body any) {

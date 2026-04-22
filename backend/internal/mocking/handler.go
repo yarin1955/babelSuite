@@ -12,17 +12,34 @@ import (
 
 type Handler struct {
 	service *Service
+	secret  string
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, secret string) *Handler {
+	return &Handler{service: service, secret: strings.TrimSpace(secret)}
+}
+
+func (h *Handler) mockAuthMiddleware() httpserver.Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if h.secret != "" {
+				bearer := strings.TrimPrefix(strings.TrimSpace(r.Header.Get("Authorization")), "Bearer ")
+				if strings.TrimSpace(bearer) != h.secret {
+					writeError(w, http.StatusUnauthorized, "Mock access requires a valid secret.")
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	httpserver.HandleFunc(mux, "/internal/mock-data/", h.resolveOperation)
-	httpserver.HandleFunc(mux, "/mocks/rest/", h.invokeREST)
-	httpserver.HandleFunc(mux, "POST /mocks/grpc/{suiteId}/{surfaceId}/{operationId}", h.invokeGRPC)
-	httpserver.HandleFunc(mux, "POST /mocks/async/{suiteId}/{surfaceId}/{operationId}", h.invokeAsync)
+	auth := h.mockAuthMiddleware()
+	httpserver.HandleFunc(mux, "/internal/mock-data/", h.resolveOperation, auth)
+	httpserver.HandleFunc(mux, "/mocks/rest/", h.invokeREST, auth)
+	httpserver.HandleFunc(mux, "POST /mocks/grpc/{suiteId}/{surfaceId}/{operationId}", h.invokeGRPC, auth)
+	httpserver.HandleFunc(mux, "POST /mocks/async/{suiteId}/{surfaceId}/{operationId}", h.invokeAsync, auth)
 }
 
 func (h *Handler) resolveOperation(w http.ResponseWriter, r *http.Request) {

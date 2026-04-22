@@ -71,15 +71,17 @@ func main() {
 		}, emit)
 	}))
 
+	agentSecret := strings.TrimSpace(os.Getenv("AGENT_SHARED_SECRET"))
+
 	server := &http.Server{
 		Addr:    withPortPrefix(port),
-		Handler: agent.NewHandler(service),
+		Handler: agent.NewHandler(service, agentSecret),
 	}
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	controlPlane := agent.NewControlPlaneClient(controlPlaneURL, nil)
+	controlPlane := agent.NewControlPlaneClient(controlPlaneURL, nil, agentSecret)
 	if controlPlaneURL != "" {
 		registerCtx, cancel := context.WithTimeout(rootCtx, 5*time.Second)
 		if err := controlPlane.Register(registerCtx, agent.RegisterRequest{

@@ -4,6 +4,7 @@ import "strings"
 
 type Config struct {
 	FrontendURL         string
+	APIBaseURL          string
 	PasswordAuthEnabled bool
 	SignUpEnabled       bool
 	OIDC                OIDCConfig

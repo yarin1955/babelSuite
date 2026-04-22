@@ -179,7 +179,7 @@ func (p *publisher) ensureBlob(repository, digest string, body []byte) error {
 	}
 	defer uploadResp.Body.Close()
 	if uploadResp.StatusCode != http.StatusCreated && uploadResp.StatusCode != http.StatusAccepted {
-		message, _ := io.ReadAll(uploadResp.Body)
+		message, _ := io.ReadAll(io.LimitReader(uploadResp.Body, 64*1024))
 		return fmt.Errorf("blob upload returned %s: %s", uploadResp.Status, strings.TrimSpace(string(message)))
 	}
 	return nil
@@ -199,7 +199,7 @@ func (p *publisher) putManifest(repository, tag string, body []byte) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-		message, _ := io.ReadAll(resp.Body)
+		message, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return fmt.Errorf("manifest upload returned %s: %s", resp.Status, strings.TrimSpace(string(message)))
 	}
 	return nil

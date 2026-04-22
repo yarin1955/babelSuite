@@ -212,7 +212,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, out 
 }
 
 func parseError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
 
 	var envelope errorEnvelope
 	if json.Unmarshal(body, &envelope) == nil && strings.TrimSpace(envelope.Error) != "" {

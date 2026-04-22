@@ -18,15 +18,23 @@ import (
 type HTTPDispatcher struct {
 	baseURL string
 	client  *http.Client
+	secret  string
 }
 
-func NewHTTPDispatcher(baseURL string, client *http.Client) *HTTPDispatcher {
+func NewHTTPDispatcher(baseURL string, client *http.Client, secret string) *HTTPDispatcher {
 	if client == nil {
-		client = &http.Client{Timeout: 0}
+		client = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &HTTPDispatcher{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		client:  client,
+		secret:  secret,
+	}
+}
+
+func (d *HTTPDispatcher) addAuth(r *http.Request) {
+	if d.secret != "" {
+		r.Header.Set("Authorization", "Bearer "+d.secret)
 	}
 }
 
@@ -79,6 +87,7 @@ func (d *HTTPDispatcher) Dispatch(ctx context.Context, request StepRequest, emit
 		return err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
+	d.addAuth(httpRequest)
 
 	response, err := d.client.Do(httpRequest)
 	if err != nil {
@@ -135,6 +144,7 @@ func (d *HTTPDispatcher) cancelJob(jobID string) {
 	if err != nil {
 		return
 	}
+	d.addAuth(request)
 	response, err := d.client.Do(request)
 	if err == nil && response != nil {
 		response.Body.Close()
@@ -151,6 +161,7 @@ func (d *HTTPDispatcher) cleanupJob(jobID string) error {
 	if err != nil {
 		return err
 	}
+	d.addAuth(request)
 	response, err := d.client.Do(request)
 	if err != nil {
 		return err

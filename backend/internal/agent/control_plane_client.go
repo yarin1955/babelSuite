@@ -15,15 +15,23 @@ import (
 type ControlPlaneClient struct {
 	baseURL string
 	client  *http.Client
+	secret  string
 }
 
-func NewControlPlaneClient(baseURL string, client *http.Client) *ControlPlaneClient {
+func NewControlPlaneClient(baseURL string, client *http.Client, secret string) *ControlPlaneClient {
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Second}
 	}
 	return &ControlPlaneClient{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		client:  client,
+		secret:  secret,
+	}
+}
+
+func (c *ControlPlaneClient) addAuth(r *http.Request) {
+	if c.secret != "" {
+		r.Header.Set("Authorization", "Bearer "+c.secret)
 	}
 }
 
@@ -50,6 +58,7 @@ func (c *ControlPlaneClient) ClaimNext(ctx context.Context, agentID string) (*St
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	c.addAuth(request)
 
 	response, err := c.client.Do(request)
 	if err != nil {
@@ -99,6 +108,7 @@ func (c *ControlPlaneClient) Unregister(ctx context.Context, agentID string) err
 	if err != nil {
 		return err
 	}
+	c.addAuth(request)
 	response, err := c.client.Do(request)
 	if err != nil {
 		return err
@@ -129,6 +139,7 @@ func (c *ControlPlaneClient) postJSON(ctx context.Context, url string, payload a
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	c.addAuth(request)
 
 	response, err := c.client.Do(request)
 	if err != nil {
@@ -157,6 +168,7 @@ func (c *ControlPlaneClient) postJSONInto(ctx context.Context, url string, paylo
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	c.addAuth(request)
 
 	response, err := c.client.Do(request)
 	if err != nil {
