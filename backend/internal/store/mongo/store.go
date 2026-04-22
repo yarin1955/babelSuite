@@ -30,7 +30,7 @@ func New(uri, dbName string) (*Store, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := mongo.Connect(options.Client().ApplyURI(uri))
+	client, err := mongo.Connect(options.Client().ApplyURI(uri).SetMonitor(newMongoTracer().monitor()))
 	if err != nil {
 		return nil, err
 	}
