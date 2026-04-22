@@ -16,6 +16,8 @@ import (
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/oauth2"
 )
 
@@ -58,7 +60,10 @@ type OIDCService struct {
 func NewOIDCService(config OIDCConfig) *OIDCService {
 	return &OIDCService{
 		config: config,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 
@@ -110,6 +115,9 @@ func (s *OIDCService) BeginLogin(ctx context.Context, returnURL string, secureCo
 }
 
 func (s *OIDCService) Exchange(ctx context.Context, requestState string, code string, stateCookie *http.Cookie) (*oidcIdentity, string, error) {
+	ctx, span := authMetrics.tracer.Start(ctx, "auth.oidc_exchange")
+	defer span.End()
+
 	if !s.Enabled() {
 		return nil, "", errOIDCDisabled
 	}
@@ -137,6 +145,8 @@ func (s *OIDCService) Exchange(ctx context.Context, requestState string, code st
 
 	token, err := provider.oauthConfig.Exchange(ctx, code, options...)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, "", err
 	}
 

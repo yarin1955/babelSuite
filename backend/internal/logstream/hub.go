@@ -36,6 +36,7 @@ func (h *Hub) Open(executionID string) {
 }
 
 func (h *Hub) Append(executionID string, line Line) {
+	recordAppend(executionID)
 	h.mu.Lock()
 	s := h.ensureStream(executionID)
 	s.list = append(s.list, line)
@@ -87,6 +88,7 @@ func (h *Hub) Subscribe(ctx context.Context, executionID string, since int) (<-c
 	}
 
 	s.subs[sub] = struct{}{}
+	recordSubscribe(executionID, 1)
 
 	go func() {
 		<-ctx.Done()
@@ -96,6 +98,7 @@ func (h *Hub) Subscribe(ctx context.Context, executionID string, since int) (<-c
 		if existing := h.streams[executionID]; existing != nil {
 			delete(existing.subs, sub)
 		}
+		recordSubscribe(executionID, -1)
 	}()
 
 	return sub.ch, nil

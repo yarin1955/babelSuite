@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type ControlPlaneClient struct {
@@ -20,7 +21,10 @@ type ControlPlaneClient struct {
 
 func NewControlPlaneClient(baseURL string, client *http.Client, secret string) *ControlPlaneClient {
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second}
+		client = &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		}
 	}
 	return &ControlPlaneClient{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),

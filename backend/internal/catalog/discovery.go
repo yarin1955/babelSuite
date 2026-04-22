@@ -66,6 +66,7 @@ func (s *Service) discoverRegistry(ctx context.Context, registry platform.OCIReg
 	if err := s.getJSON(ctx, catalogURL, registry, &catalog); err != nil {
 		return nil, err
 	}
+	recordRegistryFetch(ctx, firstNonEmpty(registry.Name, registry.RegistryID, registry.RegistryURL))
 
 	discovered := make([]discoveredRepository, 0, len(catalog.Repositories))
 	for _, repository := range catalog.Repositories {

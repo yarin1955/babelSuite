@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/envloader"
+	"github.com/babelsuite/babelsuite/internal/telemetry"
 )
 
 func main() {
@@ -21,6 +23,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	telemetry.InitDefaultLogger(telemetry.NewLogger(controlPlane.telemetryPipeline))
 
 	addr := envOr("PORT", "8090")
 	if !strings.Contains(addr, ":") {
@@ -46,18 +50,19 @@ func main() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("server shutdown: %v", err)
+			slog.Error("server shutdown", "error", err)
 		}
 	}()
 
-	log.Printf("babelsuite server listening on %s using %s", addr, controlPlane.dbDriver)
+	slog.Info("babelsuite server listening", "addr", addr, "db", controlPlane.dbDriver)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := controlPlane.Close(shutdownCtx); err != nil {
-		log.Printf("control plane shutdown: %v", err)
+		slog.Error("control plane shutdown", "error", err)
 	}
 }

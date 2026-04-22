@@ -39,7 +39,11 @@ func (l *Local) IsAvailable(context.Context) bool {
 	return true
 }
 
-func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line)) error {
+func (l *Local) Run(ctx context.Context, step StepSpec, emit func(logstream.Line)) (err error) {
+	spanCtx, span := startStepSpan(ctx, step)
+	defer func() { finishStepSpan(spanCtx, span, step, err) }()
+	ctx = spanCtx
+
 	capturedLogs := make([]string, 0, 8)
 	emitLine := func(entry logstream.Line) {
 		if text := strings.TrimSpace(entry.Text); text != "" {

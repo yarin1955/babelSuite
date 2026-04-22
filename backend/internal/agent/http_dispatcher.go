@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type HTTPDispatcher struct {
@@ -23,7 +25,10 @@ type HTTPDispatcher struct {
 
 func NewHTTPDispatcher(baseURL string, client *http.Client, secret string) *HTTPDispatcher {
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		}
 	}
 	return &HTTPDispatcher{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
@@ -62,13 +67,18 @@ func (d *HTTPDispatcher) Dispatch(ctx context.Context, request StepRequest, emit
 		return errors.New("remote dispatcher is not configured")
 	}
 
+	spanCtx, span := agentMetrics.tracer.Start(ctx, "agent.dispatch",
+		trace.WithAttributes(jobAttributes(request)...),
+	)
+	defer span.End()
+
 	request.JobID = firstNonEmpty(request.JobID, request.ExecutionID+":"+request.Node.ID)
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
 
-	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	requestCtx, cancelRequest := context.WithCancel(spanCtx)
 	defer cancelRequest()
 
 	done := make(chan struct{})

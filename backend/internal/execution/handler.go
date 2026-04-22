@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/engine"
 	"github.com/babelsuite/babelsuite/internal/httpserver"
@@ -115,6 +119,13 @@ func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
+	executionID := r.PathValue("executionId")
+	_, span := otel.Tracer(executionScope).Start(r.Context(), "execution.stream_events",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("execution.id", executionID)),
+	)
+	defer span.End()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
@@ -175,6 +186,13 @@ func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
+	executionID := r.PathValue("executionId")
+	_, span := otel.Tracer(executionScope).Start(r.Context(), "execution.stream_logs",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("execution.id", executionID)),
+	)
+	defer span.End()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
