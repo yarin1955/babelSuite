@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"github.com/babelsuite/babelsuite/internal/platform"
 )
 
-func (s *Service) discover() (*catalogIndex, error) {
+func (s *Service) discover(ctx context.Context) (*catalogIndex, error) {
 	settings, err := s.settings.Load()
 	if err != nil {
 		return nil, err
@@ -24,7 +25,7 @@ func (s *Service) discover() (*catalogIndex, error) {
 	successes := 0
 
 	for _, registry := range settings.Registries {
-		discovered, err := s.discoverRegistry(registry)
+		discovered, err := s.discoverRegistry(ctx, registry)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", firstNonEmpty(registry.Name, registry.RegistryID, registry.RegistryURL), err))
 			continue
@@ -51,15 +52,18 @@ func (s *Service) discover() (*catalogIndex, error) {
 	return &catalogIndex{packages: packages, byID: byID}, nil
 }
 
-func (s *Service) discoverRegistry(registry platform.OCIRegistry) ([]discoveredRepository, error) {
+func (s *Service) discoverRegistry(ctx context.Context, registry platform.OCIRegistry) ([]discoveredRepository, error) {
 	baseURL, host, err := normalizeRegistryURL(registry.RegistryURL)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateRegistryURL(baseURL); err != nil {
 		return nil, err
 	}
 
 	catalogURL := strings.TrimRight(baseURL, "/") + "/v2/_catalog?n=1000"
 	var catalog catalogResponse
-	if err := s.getJSON(catalogURL, registry, &catalog); err != nil {
+	if err := s.getJSON(ctx, catalogURL, registry, &catalog); err != nil {
 		return nil, err
 	}
 
@@ -72,7 +76,7 @@ func (s *Service) discoverRegistry(registry platform.OCIRegistry) ([]discoveredR
 
 		tagsURL := strings.TrimRight(baseURL, "/") + "/v2/" + encodeRepositoryPath(repository) + "/tags/list"
 		var tags tagsResponse
-		if err := s.getJSON(tagsURL, registry, &tags); err != nil {
+		if err := s.getJSON(ctx, tagsURL, registry, &tags); err != nil {
 			continue
 		}
 		if len(tags.Tags) == 0 {
@@ -91,8 +95,8 @@ func (s *Service) discoverRegistry(registry platform.OCIRegistry) ([]discoveredR
 	return discovered, nil
 }
 
-func (s *Service) getJSON(target string, registry platform.OCIRegistry, out any) error {
-	req, err := http.NewRequest(http.MethodGet, target, nil)
+func (s *Service) getJSON(ctx context.Context, target string, registry platform.OCIRegistry, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return err
 	}

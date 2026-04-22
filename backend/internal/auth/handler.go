@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/domain"
@@ -14,11 +15,67 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const pendingTokenTTL = 90 * time.Second
+
+type pendingEntry struct {
+	token     string
+	expiresAt time.Time
+	createdAt time.Time
+}
+
+type pendingTokenStore struct {
+	mu      sync.Mutex
+	entries map[string]pendingEntry
+}
+
+func newPendingTokenStore() *pendingTokenStore {
+	return &pendingTokenStore{entries: make(map[string]pendingEntry)}
+}
+
+func (p *pendingTokenStore) store(token string, expiresAt time.Time) (string, error) {
+	code, err := randomURLToken(32)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().UTC()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for k, v := range p.entries {
+		if now.After(v.createdAt.Add(pendingTokenTTL)) {
+			delete(p.entries, k)
+		}
+	}
+	p.entries[code] = pendingEntry{token: token, expiresAt: expiresAt, createdAt: now}
+	return code, nil
+}
+
+func (p *pendingTokenStore) consume(code string) (pendingEntry, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	entry, ok := p.entries[code]
+	if !ok {
+		return pendingEntry{}, false
+	}
+	delete(p.entries, code)
+	if time.Now().UTC().After(entry.createdAt.Add(pendingTokenTTL)) {
+		return pendingEntry{}, false
+	}
+	return entry, true
+}
+
 var (
 	emailRE     = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 	slugStripRE = regexp.MustCompile(`[^a-z0-9]+`)
 	spacesRE    = regexp.MustCompile(`\s+`)
+	hasUpperRE  = regexp.MustCompile(`[A-Z]`)
+	hasLowerRE  = regexp.MustCompile(`[a-z]`)
+	hasDigitRE  = regexp.MustCompile(`[0-9]`)
 )
+
+var dummyPasswordHash = func() []byte {
+	h, _ := bcrypt.GenerateFromPassword([]byte(uuid.NewString()), bcrypt.DefaultCost)
+	return h
+}()
 
 type SSOProvider struct {
 	ProviderID  string `json:"providerId"`
@@ -30,10 +87,11 @@ type SSOProvider struct {
 }
 
 type Handler struct {
-	store  store.Store
-	jwt    *JWTService
-	config Config
-	oidc   *OIDCService
+	store   store.Store
+	jwt     *JWTService
+	config  Config
+	oidc    *OIDCService
+	pending *pendingTokenStore
 }
 
 type signUpRequest struct {
@@ -62,27 +120,33 @@ type authResponse struct {
 
 func NewHandler(st store.Store, jwt *JWTService, config Config) *Handler {
 	return &Handler{
-		store:  st,
-		jwt:    jwt,
-		config: config,
-		oidc:   NewOIDCService(config.OIDC),
+		store:   st,
+		jwt:     jwt,
+		config:  config,
+		oidc:    NewOIDCService(config.OIDC),
+		pending: newPendingTokenStore(),
 	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	protected := RequireSession(h.jwt, VerifyOptions{})
+	signInLimit := newIPRateLimiter(10, time.Minute).middleware()
+	signUpLimit := newIPRateLimiter(5, time.Minute).middleware()
 	mux.HandleFunc("GET /api/v1/auth/config", h.getAuthConfig)
-	mux.HandleFunc("POST /api/v1/auth/sign-up", h.signUp)
-	mux.HandleFunc("POST /api/v1/auth/sign-in", h.signIn)
+	mux.Handle("POST /api/v1/auth/sign-up", signUpLimit(http.HandlerFunc(h.signUp)))
+	mux.Handle("POST /api/v1/auth/sign-in", signInLimit(http.HandlerFunc(h.signIn)))
 	mux.Handle("GET /api/v1/auth/me", protected(http.HandlerFunc(h.me)))
+	mux.Handle("POST /api/v1/auth/sign-out", protected(http.HandlerFunc(h.signOut)))
 	mux.HandleFunc("GET /api/v1/auth/sso/providers", h.listSSOProviders)
 	mux.HandleFunc("GET /api/v1/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/v1/auth/oidc/callback", h.oidcCallback)
+	mux.Handle("GET /api/v1/auth/oidc/exchange", signInLimit(http.HandlerFunc(h.oidcTokenExchange)))
 
 	mux.HandleFunc("GET /auth/config", h.getAuthConfig)
-	mux.HandleFunc("POST /auth/register", h.signUp)
-	mux.HandleFunc("POST /auth/login", h.signIn)
+	mux.Handle("POST /auth/register", signUpLimit(http.HandlerFunc(h.signUp)))
+	mux.Handle("POST /auth/login", signInLimit(http.HandlerFunc(h.signIn)))
 	mux.Handle("GET /auth/me", protected(http.HandlerFunc(h.me)))
+	mux.Handle("POST /auth/logout", protected(http.HandlerFunc(h.signOut)))
 	mux.HandleFunc("GET /auth/sso/providers", h.listSSOProviders)
 	mux.HandleFunc("GET /auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /auth/oidc/callback", h.oidcCallback)
@@ -121,6 +185,10 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Password) < 8 {
 		writeError(w, http.StatusBadRequest, "Password must be at least 8 characters.")
+		return
+	}
+	if !hasUpperRE.MatchString(req.Password) || !hasLowerRE.MatchString(req.Password) || !hasDigitRE.MatchString(req.Password) {
+		writeError(w, http.StatusBadRequest, "Password must contain at least one uppercase letter, one lowercase letter, and one number.")
 		return
 	}
 	if _, err := h.store.GetUserByEmail(r.Context(), req.Email); err == nil {
@@ -189,6 +257,7 @@ func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
 	user, err := h.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(req.Password))
 			writeError(w, http.StatusUnauthorized, "Incorrect email or password.")
 			return
 		}
@@ -285,12 +354,51 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	exchangeCode, err := h.pending.store(token, expiresAt)
+	if err != nil {
+		h.redirectOIDCError(w, r, http.StatusInternalServerError, "Could not create your session right now.")
+		return
+	}
+
 	callbackURL := appendFragmentParams(h.config.OIDC.FrontendCallbackURL, map[string]string{
-		"token":      token,
-		"expiresAt":  expiresAt.Format(time.RFC3339),
+		"code":       exchangeCode,
 		"return_url": returnURL,
 	})
 	http.Redirect(w, r, callbackURL, http.StatusFound)
+}
+
+func (h *Handler) oidcTokenExchange(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if code == "" {
+		writeError(w, http.StatusBadRequest, "Code is required.")
+		return
+	}
+	entry, ok := h.pending.consume(code)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Code is invalid or has expired.")
+		return
+	}
+	claims, err := h.jwt.Verify(entry.token)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Session token is invalid.")
+		return
+	}
+	user, err := h.store.GetUserByID(r.Context(), claims.UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load your account.")
+		return
+	}
+	workspace, err := h.store.GetWorkspaceByID(r.Context(), claims.WorkspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load your workspace.")
+		return
+	}
+	writeJSON(w, http.StatusOK, authResponse{
+		Token:     entry.token,
+		User:      user,
+		Workspace: workspace,
+		ExpiresAt: entry.expiresAt,
+	})
 }
 
 func (h *Handler) redirectOIDCError(w http.ResponseWriter, r *http.Request, status int, message string) {
@@ -323,17 +431,28 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	userView.IsAdmin = claims.IsAdmin
 
 	writeJSON(w, http.StatusOK, authResponse{
-		Token:     strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer")),
 		User:      &userView,
 		Workspace: workspace,
 		ExpiresAt: claims.ExpiresAt.Time,
 	})
 }
 
+func (h *Handler) signOut(w http.ResponseWriter, r *http.Request) {
+	bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if bearer != "" {
+		h.jwt.Revoke(bearer)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "signed out"})
+}
+
 func (h *Handler) authConfigResponse(r *http.Request) authConfigResponse {
 	providers := []SSOProvider{}
 	if h.config.OIDCEnabled() {
-		providers = append(providers, h.oidc.Provider(requestBaseURL(r)))
+		baseURL := strings.TrimSpace(h.config.APIBaseURL)
+		if baseURL == "" {
+			baseURL = requestBaseURL(r)
+		}
+		providers = append(providers, h.oidc.Provider(baseURL))
 	}
 
 	return authConfigResponse{

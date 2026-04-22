@@ -83,7 +83,7 @@ func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrProfileNotFound):
 			writeError(w, http.StatusBadRequest, "Selected profile does not belong to this suite.")
 		case errors.Is(err, ErrProfileRuntime):
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, http.StatusBadRequest, "Profile runtime configuration is invalid.")
 		case errors.Is(err, ErrBackendNotFound):
 			writeError(w, http.StatusBadRequest, "Selected backend does not exist.")
 		case errors.Is(err, ErrBackendUnavailable):

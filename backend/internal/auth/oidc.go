@@ -58,7 +58,7 @@ type OIDCService struct {
 func NewOIDCService(config OIDCConfig) *OIDCService {
 	return &OIDCService{
 		config: config,
-		client: http.DefaultClient,
+		client: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 

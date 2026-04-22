@@ -21,9 +21,10 @@ func NewHandler(store Store, jwt *auth.JWTService) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
+	admin := auth.RequireAdmin(h.jwt)
 	httpserver.HandleFunc(mux, "GET /api/v1/platform-settings", h.getSettings, protected)
-	httpserver.HandleFunc(mux, "PUT /api/v1/platform-settings", h.updateSettings, protected)
-	httpserver.HandleFunc(mux, "POST /api/v1/platform-settings/registries/{registryId}/sync", h.syncRegistry, protected)
+	httpserver.HandleFunc(mux, "PUT /api/v1/platform-settings", h.updateSettings, admin)
+	httpserver.HandleFunc(mux, "POST /api/v1/platform-settings/registries/{registryId}/sync", h.syncRegistry, admin)
 }
 
 func (h *Handler) getSettings(w http.ResponseWriter, r *http.Request) {

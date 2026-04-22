@@ -34,6 +34,7 @@ func main() {
 		ReadTimeout:       durationOr("HTTP_READ_TIMEOUT", 30*time.Second),
 		WriteTimeout:      durationOr("HTTP_WRITE_TIMEOUT", 2*time.Minute),
 		IdleTimeout:       durationOr("HTTP_IDLE_TIMEOUT", 2*time.Minute),
+		MaxHeaderBytes:    1 << 14, // 16 KB
 	}
 
 	stop := make(chan os.Signal, 1)

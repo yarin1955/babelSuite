@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -16,8 +17,10 @@ import (
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
+const maxMockRequestBodyBytes = 10 * 1024 * 1024 // 10 MB
+
 func readRequestBody(request *http.Request) (string, any, map[string]any, error) {
-	body, err := io.ReadAll(request.Body)
+	body, err := io.ReadAll(io.LimitReader(request.Body, maxMockRequestBodyBytes))
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -306,4 +309,60 @@ func sortedKeys(input map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func validateProxyTarget(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid proxy URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("proxy URL scheme must be http or https")
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		if isBlockedIP(ip) {
+			return fmt.Errorf("proxy URL must not target a private or reserved address")
+		}
+		return nil
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("proxy URL host could not be resolved: %w", err)
+	}
+	for _, addr := range addrs {
+		if ip := net.ParseIP(addr); ip != nil && isBlockedIP(ip) {
+			return fmt.Errorf("proxy URL resolves to a private or reserved address")
+		}
+	}
+	return nil
+}
+
+var privateIPNets = func() []*net.IPNet {
+	ranges := []string{
+		"0.0.0.0/8", "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+		"169.254.0.0/16", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15",
+		"240.0.0.0/4", "255.255.255.255/32",
+		"::1/128", "fc00::/7", "fe80::/10", "::/128",
+	}
+	nets := make([]*net.IPNet, 0, len(ranges))
+	for _, r := range ranges {
+		if _, n, err := net.ParseCIDR(r); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	return nets
+}()
+
+func isBlockedIP(ip net.IP) bool {
+	for _, n := range privateIPNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPrivateIP(ip net.IP) bool {
+	return isBlockedIP(ip)
 }

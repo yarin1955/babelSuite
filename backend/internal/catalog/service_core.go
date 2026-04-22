@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -18,7 +19,7 @@ func NewService(suites suiteReader, settings registrySettingsReader) *Service {
 }
 
 func (s *Service) ListPackages() ([]Package, error) {
-	index, err := s.discover()
+	index, err := s.discover(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +35,7 @@ func (s *Service) ListPackages() ([]Package, error) {
 }
 
 func (s *Service) GetPackage(id string) (*Package, error) {
-	index, err := s.discover()
+	index, err := s.discover(context.Background())
 	if err != nil {
 		return nil, err
 	}

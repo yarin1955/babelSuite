@@ -25,7 +25,7 @@ func NewRemote(config RemoteConfig) *Remote {
 	backendConfig := normalizeBackendConfig(config.BackendConfig, "remote", "Remote Agent", "remote")
 	dispatcher := config.Dispatcher
 	if dispatcher == nil {
-		dispatcher = agent.NewHTTPDispatcher(config.BaseURL, nil)
+		dispatcher = agent.NewHTTPDispatcher(config.BaseURL, nil, "")
 	}
 	return &Remote{
 		config:     backendConfig,

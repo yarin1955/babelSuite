@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -211,6 +212,71 @@ func effectiveRoute(r *http.Request) string {
 		return "/"
 	}
 	return path
+}
+
+const contentSecurityPolicy = "default-src 'self'; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data: blob:; " +
+	"connect-src 'self' ws: wss:; " +
+	"font-src 'self'; " +
+	"object-src 'none'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'"
+
+func RecoveryMiddleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		if next == nil {
+			next = http.NotFoundHandler()
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("panic: %v\n%s", rec, debug.Stack())
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_, _ = w.Write([]byte(`{"error":"An unexpected error occurred."}`))
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func SecurityHeadersMiddleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		if next == nil {
+			next = http.NotFoundHandler()
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+			w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+			if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+				w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func BodyLimitMiddleware(limit int64) Middleware {
+	return func(next http.Handler) http.Handler {
+		if next == nil {
+			next = http.NotFoundHandler()
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > limit {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func shouldAuditRequest(r *http.Request) bool {

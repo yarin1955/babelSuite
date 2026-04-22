@@ -24,6 +24,20 @@ func RequireSession(jwt *JWTService, options VerifyOptions) func(http.Handler) h
 	return withSession(jwt, options)
 }
 
+func RequireAdmin(jwt *JWTService) func(http.Handler) http.Handler {
+	inner := RequireSession(jwt, VerifyOptions{})
+	return func(next http.Handler) http.Handler {
+		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := SessionFromContext(r.Context())
+			if !ok || !claims.IsAdmin {
+				writeSessionError(w, http.StatusForbidden, "Admin access required.")
+				return
+			}
+			next.ServeHTTP(w, r)
+		}))
+	}
+}
+
 func SessionFromContext(ctx context.Context) (*Claims, bool) {
 	if ctx == nil {
 		return nil, false

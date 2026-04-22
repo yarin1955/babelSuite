@@ -66,9 +66,21 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 
 	frontendURL := envOr("FRONTEND_URL", "http://localhost:5173")
 	apiBaseURL := envOr("PUBLIC_API_URL", envOr("VITE_API_URL", "http://localhost:"+envOr("PORT", "8090")))
-	jwtSvc := auth.NewJWT(envOr("JWT_SECRET", "change-me"))
+	jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	if jwtSecret == "" || jwtSecret == "change-me" {
+		_ = cacheLayer.Close()
+		_ = telemetryPipeline.Shutdown(ctx)
+		_ = primaryStore.Close(ctx)
+		return nil, fmt.Errorf("JWT_SECRET must be set to a secure random value (current value is missing or uses the insecure default)")
+	}
+	jwtSvc := auth.NewJWT(jwtSecret)
+	stateSecret := strings.TrimSpace(os.Getenv("AUTH_STATE_SECRET"))
+	if stateSecret == "" {
+		stateSecret = jwtSecret
+	}
 	authHandler := auth.NewHandler(cachedStore, jwtSvc, auth.Config{
 		FrontendURL:         frontendURL,
+		APIBaseURL:          apiBaseURL,
 		PasswordAuthEnabled: boolEnv("AUTH_PASSWORD_LOGIN_ENABLED", true),
 		SignUpEnabled:       boolEnv("AUTH_SIGNUP_ENABLED", true),
 		OIDC: auth.OIDCConfig{
@@ -83,7 +95,7 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 			Scopes:              splitCSV(envOr("OIDC_SCOPES", "openid,profile,email,groups")),
 			PKCEEnabled:         boolEnv("OIDC_PKCE_ENABLED", true),
 			StateCookieName:     envOr("OIDC_STATE_COOKIE_NAME", "babelsuite_oidc_state"),
-			StateSecret:         []byte(envOr("AUTH_STATE_SECRET", envOr("JWT_SECRET", "change-me"))),
+			StateSecret:         []byte(stateSecret),
 			EmailClaim:          envOr("OIDC_EMAIL_CLAIM", "email"),
 			NameClaim:           envOr("OIDC_NAME_CLAIM", "name"),
 			GroupsClaim:         envOr("OIDC_GROUPS_CLAIM", "groups"),
@@ -115,7 +127,7 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 
 	suiteHandler := suites.NewHandler(profileService, jwtSvc)
 	mockingService := mocking.NewService(suiteService)
-	mockingHandler := mocking.NewHandler(mockingService)
+	mockingHandler := mocking.NewHandler(mockingService, strings.TrimSpace(os.Getenv("MOCK_SHARED_SECRET")))
 	profileHandler := profiles.NewHandler(profileService, jwtSvc)
 	catalogReader := catalog.WithRedis(
 		catalog.NewService(suiteService, platformStore),
@@ -176,7 +188,7 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 	authHandler.Register(mux)
 	catalogHandler.Register(mux)
 	engineHandler.Register(mux)
-	agent.RegisterGateway(mux, agentRegistry, assignmentCoordinator)
+	agent.RegisterGateway(mux, agentRegistry, assignmentCoordinator, strings.TrimSpace(os.Getenv("AGENT_SHARED_SECRET")))
 	profileHandler.Register(mux)
 	suiteHandler.Register(mux)
 	mockingHandler.Register(mux)
@@ -233,13 +245,18 @@ func buildPrimaryStore() (store.Store, string, error) {
 	}
 }
 
+const maxRequestBodyBytes = 10 * 1024 * 1024 // 10 MB
+
 func buildHTTPHandler(frontendURL string, jwt *auth.JWTService, mux http.Handler) http.Handler {
 	metrics := httpserver.NewHTTPMetrics()
 	return httpserver.Chain(
 		mux,
+		httpserver.RecoveryMiddleware(),
+		httpserver.SecurityHeadersMiddleware(),
 		corsMiddleware(frontendURL),
+		httpserver.BodyLimitMiddleware(maxRequestBodyBytes),
 		httpserver.RequestIDMiddleware(),
-		auth.PopulateSession(jwt, auth.VerifyOptions{AllowQueryToken: true}),
+		auth.PopulateSession(jwt, auth.VerifyOptions{}),
 		telemetry.WrapHTTP,
 		httpserver.TraceContextMiddleware(),
 		metrics.Middleware(),
@@ -296,14 +313,16 @@ func corsMiddleware(frontendURL string) httpserver.Middleware {
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if origin != frontendURL {
-				origin = frontendURL
+			if origin != "" {
+				if origin != frontendURL {
+					http.Error(w, "CORS origin not allowed", http.StatusForbidden)
+					return
+				}
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id")
+				w.Header().Set("Vary", "Origin")
 			}
-
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id")
-			w.Header().Set("Vary", "Origin")
 
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)

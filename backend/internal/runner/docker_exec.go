@@ -21,7 +21,9 @@ import (
 
 const (
 	containerArtifactsMount = "/babelsuite-artifacts"
-	maxArtifactBytes        = 10 * 1024 * 1024 // 10 MB per artifact file
+	maxArtifactBytes        = 10 * 1024 * 1024  // 10 MB per artifact file
+	containerMemoryLimit    = 512 * 1024 * 1024 // 512 MB per step container
+	containerPidsLimit      = int64(256)
 )
 
 var (
@@ -99,8 +101,15 @@ func runInDocker(ctx context.Context, step StepSpec, emit func(logstream.Line)) 
 			"babelsuite.kind":      step.Node.Kind,
 		},
 	}
+	pidsLimit := containerPidsLimit
 	hostCfg := &container.HostConfig{
-		AutoRemove: false,
+		AutoRemove:  false,
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges:true"},
+		Resources: container.Resources{
+			Memory:    containerMemoryLimit,
+			PidsLimit: &pidsLimit,
+		},
 	}
 	if hostArtifactDir != "" {
 		hostCfg.Binds = []string{hostArtifactDir + ":" + containerArtifactsMount + ":rw"}
