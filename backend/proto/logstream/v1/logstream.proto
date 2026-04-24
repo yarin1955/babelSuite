@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package babelsuite.logstream.v1;
+
+option go_package = "github.com/babelsuite/babelsuite/gen/proto/go/logstream/v1;logstreamv1";
+
+message Line {
+  string source = 1;
+  string timestamp = 2;
+  string level = 3;
+  string kind = 4;
+  string text = 5;
+}
+
+message Record {
+  int32 id = 1;
+  string execution_id = 2;
+  Line line = 3;
+}

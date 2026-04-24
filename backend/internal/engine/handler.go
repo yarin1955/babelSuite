@@ -23,7 +23,7 @@ func NewHandler(store *Store, jwt *auth.JWTService) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
-	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: false})
 	httpserver.HandleFunc(mux, "GET /api/v1/engine/overview", h.getOverview, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/engine/overview/stream", h.streamOverview, streaming)
 }

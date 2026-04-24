@@ -1,14 +1,16 @@
 import type { ChangeEvent, FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { FaEye, FaEyeSlash } from 'react-icons/fa6'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthField from '../components/AuthField'
 import AuthLayout from '../components/AuthLayout'
 import SSOButtons from '../components/SSOButtons'
 import { ApiError, fallbackAuthConfig, getAuthConfig, saveSession, signIn, type AuthConfig, type SSOProvider } from '../lib/api'
+import { authEventCounter, setUserContext } from '../lib/telemetry'
 
 export default function SignIn() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -47,7 +49,9 @@ export default function SignIn() {
     try {
       const session = await signIn(form)
       saveSession(session)
-      navigate('/')
+      setUserContext(session.user.userId, session.user.workspaceId, session.user.isAdmin)
+      authEventCounter.add(1, { 'auth.method': 'password', 'auth.event': 'sign_in' })
+      navigate(resolveReturnTo(location.search))
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'Cannot reach the authentication service right now.')
     } finally {
@@ -124,4 +128,9 @@ export default function SignIn() {
       )}
     </AuthLayout>
   )
+}
+
+function resolveReturnTo(search: string) {
+  const candidate = new URLSearchParams(search).get('returnTo')?.trim() ?? ''
+  return candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/'
 }

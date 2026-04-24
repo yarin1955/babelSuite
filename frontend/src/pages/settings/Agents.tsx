@@ -9,16 +9,19 @@ import {
   FaServer,
   FaTrash,
 } from 'react-icons/fa6'
+import { create } from '@bufbuild/protobuf'
+import { timestampDate } from '@bufbuild/protobuf/wkt'
 import {
   ApiError,
   getPlatformSettings,
-  listAgents,
   updatePlatformSettings,
   type APISIXSidecarConfig,
   type ExecutionAgent,
   type PlatformSettings,
   type RuntimeAgent,
 } from '../../lib/api'
+import { agentRegistryClient } from '../../lib/connect'
+import { ListAgentsRequestSchema, type Registration } from '../../types/proto/agent/v1/agent_pb'
 import AppShell from '../../components/AppShell'
 import SlidingPanel from '../../components/SlidingPanel'
 import '../PlatformSettings.css'
@@ -68,9 +71,9 @@ export default function Agents() {
 
     const loadRuntime = async () => {
       try {
-        const agents = await listAgents()
+        const response = await agentRegistryClient.list(create(ListAgentsRequestSchema))
         if (!cancelled) {
-          startTransition(() => setRuntimeAgents(agents))
+          startTransition(() => setRuntimeAgents(response.agents.map(registrationToRuntimeAgent)))
         }
       } catch {
       }
@@ -607,6 +610,18 @@ function emptyAgent(index: number): ExecutionAgent {
     targetNamespace: '',
     serviceAccountToken: '',
     apisixSidecar: defaultAPISIXSidecar(),
+  }
+}
+
+function registrationToRuntimeAgent(reg: Registration): RuntimeAgent {
+  return {
+    agentId: reg.agentId,
+    name: reg.name,
+    hostUrl: reg.hostUrl,
+    status: reg.status,
+    capabilities: [...reg.capabilities],
+    registeredAt: reg.registeredAt ? timestampDate(reg.registeredAt).toISOString() : '',
+    lastHeartbeatAt: reg.lastHeartbeatAt ? timestampDate(reg.lastHeartbeatAt).toISOString() : '',
   }
 }
 

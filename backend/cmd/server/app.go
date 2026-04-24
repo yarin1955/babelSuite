@@ -195,6 +195,8 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 	executionHandler.Register(mux)
 	platformHandler.Register(mux)
 	environmentHandler.Register(mux)
+	mux.Handle("POST /api/v1/telemetry/traces", auth.RequireSession(jwtSvc, auth.VerifyOptions{})(telemetry.NewTraceProxyHandler()))
+	mux.Handle("POST /api/v1/telemetry/metrics", auth.RequireSession(jwtSvc, auth.VerifyOptions{})(telemetry.NewMetricsProxyHandler()))
 
 	return &controlPlane{
 		dbDriver:           dbDriver,

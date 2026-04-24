@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { FaRotateRight } from 'react-icons/fa6'
+import { recordUnhandledError } from '../lib/telemetry'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -19,6 +20,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Unhandled frontend error', error, errorInfo)
+    recordUnhandledError(error, errorInfo.componentStack ?? undefined)
   }
 
   render() {

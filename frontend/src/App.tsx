@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import ErrorBoundary from './components/ErrorBoundary'
 import { getSession } from './lib/api'
+import { useRouteTracking } from './hooks/useRouteTracking'
 import AuthCallback from './pages/AuthCallback'
 import Catalog from './pages/Catalog'
 import ForgotPassword from './pages/ForgotPassword'
@@ -20,13 +21,20 @@ import SignUp from './pages/Signup'
 import Suites from './pages/Suites'
 
 function Guard({ children }: { children: ReactNode }) {
-  return getSession() ? <>{children}</> : <Navigate to='/sign-in' replace />
+  const location = useLocation()
+  if (!getSession()) {
+    const returnTo = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/sign-in?returnTo=${returnTo}`} replace />
+  }
+  return <>{children}</>
 }
 
 function AdminGuard({ children }: { children: ReactNode }) {
+  const location = useLocation()
   const session = getSession()
   if (!session) {
-    return <Navigate to='/sign-in' replace />
+    const returnTo = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/sign-in?returnTo=${returnTo}`} replace />
   }
   return session.user.isAdmin ? <>{children}</> : <Navigate to='/' replace />
 }
@@ -35,10 +43,16 @@ function GuestOnly({ children }: { children: ReactNode }) {
   return getSession() ? <Navigate to='/' replace /> : <>{children}</>
 }
 
+function RouteTracker() {
+  useRouteTracking()
+  return null
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <RouteTracker />
         <Routes>
           <Route path='/' element={<Guard><Home /></Guard>} />
           <Route path='/catalog' element={<Guard><Catalog /></Guard>} />

@@ -209,7 +209,8 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"font-src 'self'; " +
 	"object-src 'none'; " +
 	"base-uri 'self'; " +
-	"form-action 'self'"
+	"form-action 'self'; " +
+	"frame-ancestors 'none'"
 
 func RecoveryMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {

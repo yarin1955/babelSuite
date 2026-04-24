@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -12,7 +13,7 @@ func agentHandlerSecretMiddleware(secret string) func(http.Handler) http.Handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if secret != "" {
 				bearer := strings.TrimPrefix(strings.TrimSpace(r.Header.Get("Authorization")), "Bearer ")
-				if strings.TrimSpace(bearer) != secret {
+				if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(bearer)), []byte(secret)) != 1 {
 					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "agent secret required"})
 					return
 				}

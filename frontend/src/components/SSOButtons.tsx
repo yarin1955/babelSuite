@@ -24,7 +24,7 @@ export default function SSOButtons({ providers, onUnavailable }: SSOButtonsProps
           </>
         )
 
-        if (provider.enabled && provider.startUrl) {
+        if (provider.enabled && provider.startUrl && isSafeUrl(provider.startUrl)) {
           const loginUrl = new URL(provider.startUrl)
           loginUrl.searchParams.set('return_url', resolveReturnURL())
 
@@ -54,11 +54,21 @@ export default function SSOButtons({ providers, onUnavailable }: SSOButtonsProps
   )
 }
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function resolveReturnURL() {
   const currentUrl = new URL(window.location.href)
   const explicit = currentUrl.searchParams.get('returnTo')?.trim()
   if (explicit && explicit.startsWith('/') && !explicit.startsWith('//')) {
     return explicit
   }
-  return '/'
+  const path = window.location.pathname + window.location.search
+  return path === '/sign-in' || path === '/sign-up' ? '/' : path
 }

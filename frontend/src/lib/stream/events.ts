@@ -1,6 +1,4 @@
-import {
-  buildAuthenticatedStreamUrl,
-} from '../api/client'
+import { buildStreamUrl, getSession } from '../api/client'
 import type {
   ExecutionLogStreamRecord,
   ExecutionStreamEvent,
@@ -17,12 +15,15 @@ interface ReplayableStreamHandlers<T> {
   onStateChange?: (state: StreamConnectionState) => void
 }
 
+const getToken = () => getSession()?.token
+
 export function openSandboxEventStream(handlers: ReplayableStreamHandlers<SandboxStreamEvent>) {
   return openReplayableEventStream({
     initialCursor: handlers.since ?? 0,
-    createUrl: (cursor) => buildAuthenticatedStreamUrl('/api/v1/sandboxes/events', {
+    createUrl: (cursor) => buildStreamUrl('/api/v1/sandboxes/events', {
       since: cursor > 0 ? cursor : undefined,
     }),
+    getToken,
     onEvent: handlers.onEvent,
     onStateChange: handlers.onStateChange,
     getEventId: (event) => event.id,
@@ -35,9 +36,10 @@ export function openExecutionEventStream(
 ) {
   return openReplayableEventStream({
     initialCursor: handlers.since ?? 0,
-    createUrl: (cursor) => buildAuthenticatedStreamUrl(`/api/v1/executions/${encodeURIComponent(executionId)}/events`, {
+    createUrl: (cursor) => buildStreamUrl(`/api/v1/executions/${encodeURIComponent(executionId)}/events`, {
       since: cursor > 0 ? cursor : undefined,
     }),
+    getToken,
     onEvent: handlers.onEvent,
     onStateChange: handlers.onStateChange,
     getEventId: (event) => event.id,
@@ -50,9 +52,10 @@ export function openExecutionLogStream(
 ) {
   return openReplayableEventStream({
     initialCursor: handlers.since ?? 0,
-    createUrl: (cursor) => buildAuthenticatedStreamUrl(`/api/v1/executions/${encodeURIComponent(executionId)}/logs`, {
+    createUrl: (cursor) => buildStreamUrl(`/api/v1/executions/${encodeURIComponent(executionId)}/logs`, {
       since: cursor > 0 ? cursor : undefined,
     }),
+    getToken,
     onEvent: handlers.onEvent,
     onStateChange: handlers.onStateChange,
     getEventId: (event) => event.id,

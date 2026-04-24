@@ -25,7 +25,7 @@ func NewHandler(manager Manager, jwt *auth.JWTService) *Handler {
 func (h *Handler) Register(mux *http.ServeMux) {
 	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
 	admin := auth.RequireAdmin(h.jwt)
-	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: false})
 	httpserver.HandleFunc(mux, "GET /api/v1/sandboxes", h.listSandboxes, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/sandboxes/events", h.streamEvents, streaming)
 	httpserver.HandleFunc(mux, "POST /api/v1/sandboxes/reap-all", h.reapAll, admin)
