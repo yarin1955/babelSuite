@@ -9,6 +9,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type unsupportedCallError struct{ call string }
+
+func (e *unsupportedCallError) Error() string {
+	return fmt.Sprintf("invalid suite topology: unsupported runtime call %q", e.call)
+}
+func (e *unsupportedCallError) Is(target error) bool { return target == ErrUnsupportedCall }
+
+type missingDependencyError struct{ node, dependency string }
+
+func (e *missingDependencyError) Error() string {
+	return fmt.Sprintf("invalid suite topology: %q depends on missing step %q", e.node, e.dependency)
+}
+func (e *missingDependencyError) Is(target error) bool { return target == ErrMissingDependency }
+
+type topologyLinearCycleError struct{}
+
+func (e *topologyLinearCycleError) Error() string        { return "invalid suite topology: dependency cycle detected" }
+func (e *topologyLinearCycleError) Is(target error) bool { return target == ErrTopologyCycle }
+
 type rawTopologyNode struct {
 	Assignment        string
 	ID                string
@@ -393,32 +412,10 @@ func parseRawTopologyNode(line string) (rawTopologyNode, bool, error) {
 	}
 
 	call := canonicalRuntimeCall(invocation.Call)
-	switch call {
-	case "container":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use service.run instead of container")
-	case "mock":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use service.mock instead of mock")
-	case "service":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use service.run, service.mock, service.wiremock, service.prism, or service.custom instead of service")
-	case "script":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use task.run instead of script")
-	case "task":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use task.run instead of task")
-	case "load":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use an explicit traffic profile like traffic.smoke, traffic.baseline, traffic.stress, traffic.spike, traffic.soak, traffic.scalability, traffic.step, traffic.wave, traffic.staged, traffic.constant_throughput, traffic.constant_pacing, or traffic.open_model instead of load")
-	case "traffic":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use an explicit traffic profile like traffic.smoke, traffic.baseline, traffic.stress, traffic.spike, traffic.soak, traffic.scalability, traffic.step, traffic.wave, traffic.staged, traffic.constant_throughput, traffic.constant_pacing, or traffic.open_model instead of traffic")
-	case "scenario":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use test.run instead of scenario")
-	case "test":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use test.run instead of test")
-	case "suite":
-		return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: use suite.run instead of suite")
-	}
 	kind, ok := topologyKind(call)
 	if !ok {
 		if runtimeNamespace(call) != "" {
-			return rawTopologyNode{}, false, fmt.Errorf("invalid suite topology: unsupported runtime call %q", call)
+			return rawTopologyNode{}, false, &unsupportedCallError{call: call}
 		}
 		return rawTopologyNode{}, false, nil
 	}
@@ -1365,7 +1362,7 @@ func resolveTopology(nodes []TopologyNode) ([]TopologyNode, error) {
 		indegree[node.ID] = len(node.DependsOn)
 		for _, dependency := range node.DependsOn {
 			if _, exists := byID[dependency]; !exists {
-				return nil, fmt.Errorf("invalid suite topology: %q depends on missing step %q", node.ID, dependency)
+				return nil, &missingDependencyError{node: node.ID, dependency: dependency}
 			}
 			dependants[dependency] = append(dependants[dependency], node.ID)
 		}
@@ -1404,7 +1401,7 @@ func resolveTopology(nodes []TopologyNode) ([]TopologyNode, error) {
 	}
 
 	if len(ordered) != len(nodes) {
-		return nil, fmt.Errorf("invalid suite topology: dependency cycle detected")
+		return nil, &topologyLinearCycleError{}
 	}
 
 	return ordered, nil

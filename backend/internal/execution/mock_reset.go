@@ -59,7 +59,7 @@ func resetMockSuiteTargets(suite *suites.Definition, targets []string) ([]string
 		if mockNode == nil {
 			return nil, nil, fmt.Errorf("reset_mocks target %q was not found", target)
 		}
-		if mockNode.Kind != "mock" {
+		if mockNode.Kind != suites.NodeKindMock {
 			return nil, nil, fmt.Errorf("reset_mocks target %q is not a mock node", target)
 		}
 

@@ -2,8 +2,9 @@ package execution
 
 import (
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
 func TestParseSuiteTopologySupportsUnifiedRuntimeEntrypoints(t *testing.T) {
@@ -205,8 +206,8 @@ smoke = scenario.python(file="smoke_test.py", image="python:3.12")`,
 			if !errors.Is(err, ErrInvalidTopology) {
 				t.Fatalf("expected invalid topology error, got %v", err)
 			}
-			if !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("expected legacy alias rejection containing %q, got %v", test.want, err)
+			if !errors.Is(err, suites.ErrUnsupportedCall) {
+				t.Fatalf("expected unsupported call error, got %v", err)
 			}
 		})
 	}
@@ -428,74 +429,8 @@ api = service.run(name="api", after=["db"])`
 	if !errors.Is(err, ErrInvalidTopology) {
 		t.Fatalf("expected invalid topology error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), `depends on missing step "db"`) {
-		t.Fatalf("expected missing dependency details, got %v", err)
-	}
-}
-
-func TestParseSuiteTopologyRejectsBareContainerAlias(t *testing.T) {
-	suiteStar := `load("@babelsuite/runtime", "container")
-
-db = container(name="db")`
-
-	_, err := parseSuiteTopology(suiteStar)
-	if err == nil {
-		t.Fatal("expected invalid topology error")
-	}
-	if !errors.Is(err, ErrInvalidTopology) {
-		t.Fatalf("expected invalid topology error, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "use service.run instead of container") {
-		t.Fatalf("expected bare container guidance, got %v", err)
-	}
-}
-
-func TestParseSuiteTopologyRejectsBareFamilyAliases(t *testing.T) {
-	tests := []struct {
-		name      string
-		suiteStar string
-		want      string
-	}{
-		{name: "mock", suiteStar: `load("@babelsuite/runtime", "mock")
-
-stub = mock()`, want: "use service.mock instead of mock"},
-		{name: "service", suiteStar: `load("@babelsuite/runtime", "service")
-
-svc = service(name="svc")`, want: "instead of service"},
-		{name: "script", suiteStar: `load("@babelsuite/runtime", "script")
-
-seed = script(name="seed")`, want: "use task.run instead of script"},
-		{name: "task", suiteStar: `load("@babelsuite/runtime", "task")
-
-seed = task(name="seed")`, want: "use task.run instead of task"},
-		{name: "traffic", suiteStar: `load("@babelsuite/runtime", "traffic")
-
-perf = traffic(name="perf")`, want: "instead of traffic"},
-		{name: "scenario", suiteStar: `load("@babelsuite/runtime", "scenario")
-
-smoke = scenario(name="smoke")`, want: "use test.run instead of scenario"},
-		{name: "test", suiteStar: `load("@babelsuite/runtime", "test")
-
-smoke = test(name="smoke")`, want: "use test.run instead of test"},
-		{name: "suite", suiteStar: `load("@babelsuite/runtime", "suite")
-
-child = suite(ref="child-suite")`, want: "use suite.run instead of suite"},
-	}
-
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			_, err := parseSuiteTopology(test.suiteStar)
-			if err == nil {
-				t.Fatal("expected invalid topology error")
-			}
-			if !errors.Is(err, ErrInvalidTopology) {
-				t.Fatalf("expected invalid topology error, got %v", err)
-			}
-			if !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("expected guidance containing %q, got %v", test.want, err)
-			}
-		})
+	if !errors.Is(err, suites.ErrMissingDependency) {
+		t.Fatalf("expected missing dependency error, got %v", err)
 	}
 }
 
@@ -512,8 +447,8 @@ db = service.run(name="db", after=["api"])`
 	if !errors.Is(err, ErrInvalidTopology) {
 		t.Fatalf("expected invalid topology error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "dependency cycle detected") {
-		t.Fatalf("expected cycle details, got %v", err)
+	if !errors.Is(err, suites.ErrTopologyCycle) {
+		t.Fatalf("expected topology cycle error, got %v", err)
 	}
 }
 
