@@ -1,9 +1,10 @@
 package execution
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/suites"
@@ -62,6 +63,10 @@ func (e topologyResolutionError) Is(target error) bool {
 	return target == ErrInvalidTopology
 }
 
+func (e topologyResolutionError) Unwrap() error {
+	return e.cause
+}
+
 func resolveTopology(nodes []topologyNode) ([]topologyNode, error) {
 	if len(nodes) == 0 {
 		return nil, nil
@@ -100,10 +105,9 @@ func resolveTopology(nodes []topologyNode) ([]topologyNode, error) {
 	ordered := make([]topologyNode, 0, len(nodes))
 	level := 0
 	for len(ready) > 0 {
-		current := append([]string{}, ready...)
 		nextReady := make([]string, 0)
 
-		for _, id := range current {
+		for _, id := range ready {
 			node := *byID[id]
 			node.Level = level
 			ordered = append(ordered, node)
@@ -132,15 +136,18 @@ func normalizeTopologyDependencies(dependsOn []string) []string {
 	if len(dependsOn) == 0 {
 		return nil
 	}
-
-	seen := make(map[string]struct{}, len(dependsOn))
 	result := make([]string, 0, len(dependsOn))
-	for _, dependency := range dependsOn {
-		if _, exists := seen[dependency]; exists {
-			continue
+	for _, dep := range dependsOn {
+		duplicate := false
+		for _, existing := range result {
+			if existing == dep {
+				duplicate = true
+				break
+			}
 		}
-		seen[dependency] = struct{}{}
-		result = append(result, dependency)
+		if !duplicate {
+			result = append(result, dep)
+		}
 	}
 	return result
 }
@@ -218,9 +225,9 @@ func buildHistoricalEvents(suite *suites.Definition, topology []topologyNode, st
 		events = append(events, ExecutionEvent{
 			ID:        node.ID + "-start",
 			Source:    node.ID,
-			Timestamp: fmt.Sprintf("%02d:%02d", len(events)/60, len(events)%60),
+			Timestamp: formatDuration(time.Duration(len(events)) * 2 * time.Second),
 			Text:      buildStartMessage(node, suite, profile),
-			Status:    "running",
+			Status:    stepStatusRunning,
 			Level:     "info",
 		})
 
@@ -228,9 +235,9 @@ func buildHistoricalEvents(suite *suites.Definition, topology []topologyNode, st
 			events = append(events, ExecutionEvent{
 				ID:        node.ID + "-failed",
 				Source:    node.ID,
-				Timestamp: fmt.Sprintf("%02d:%02d", len(events)/60, len(events)%60),
+				Timestamp: formatDuration(time.Duration(len(events)) * 2 * time.Second),
 				Text:      buildFailureMessage(node, suite),
-				Status:    "failed",
+				Status:    stepStatusFailed,
 				Level:     "error",
 			})
 			break
@@ -239,9 +246,9 @@ func buildHistoricalEvents(suite *suites.Definition, topology []topologyNode, st
 		events = append(events, ExecutionEvent{
 			ID:        node.ID + "-healthy",
 			Source:    node.ID,
-			Timestamp: fmt.Sprintf("%02d:%02d", len(events)/60, len(events)%60),
+			Timestamp: formatDuration(time.Duration(len(events)) * 2 * time.Second),
 			Text:      buildHealthyMessage(node, suite, profile),
-			Status:    "healthy",
+			Status:    stepStatusHealthy,
 			Level:     "info",
 		})
 	}
@@ -250,18 +257,20 @@ func buildHistoricalEvents(suite *suites.Definition, topology []topologyNode, st
 
 func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	item := s.executions[executionID]
 	if item == nil {
+		s.mu.Unlock()
 		return Snapshot{}, false
 	}
 	s.ensureStepStatusLocked(item)
-
 	topology := cloneExecutionTopology(item.record.Suite.Topology)
 	statuses := cloneStepStatuses(item.stepStatus)
+	record := item.record
+	duration := s.durationLocked(item)
+	s.mu.Unlock()
+
 	if len(statuses) == 0 {
-		statuses, _ = buildStepStatus(item.record.Suite.Topology, item.record.Events)
+		statuses, _ = buildStepStatus(record.Suite.Topology, record.Events)
 	}
 
 	steps := make([]StepSnapshot, 0, len(topology))
@@ -274,13 +283,13 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 	for _, node := range topology {
 		status := statuses[node.ID]
 		switch status {
-		case "running":
+		case stepStatusRunning:
 			runningSteps++
-		case "healthy":
+		case stepStatusHealthy:
 			healthySteps++
-		case "failed":
+		case stepStatusFailed:
 			failedSteps++
-		case "skipped":
+		case stepStatusSkipped:
 			skippedSteps++
 		default:
 			pendingSteps++
@@ -302,17 +311,17 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 	}
 
 	return Snapshot{
-		ID:            item.record.ID,
-		SuiteID:       item.record.Suite.ID,
-		SuiteTitle:    item.record.Suite.Title,
-		Profile:       item.record.Profile,
-		BackendID:     item.record.BackendID,
-		Backend:       item.record.Backend,
-		Trigger:       item.record.Trigger,
-		Status:        item.record.Status,
-		Duration:      s.durationLocked(item),
-		StartedAt:     item.record.StartedAt,
-		UpdatedAt:     item.record.UpdatedAt,
+		ID:            record.ID,
+		SuiteID:       record.Suite.ID,
+		SuiteTitle:    record.Suite.Title,
+		Profile:       record.Profile,
+		BackendID:     record.BackendID,
+		Backend:       record.Backend,
+		Trigger:       record.Trigger,
+		Status:        record.Status,
+		Duration:      duration,
+		StartedAt:     record.StartedAt,
+		UpdatedAt:     record.UpdatedAt,
 		TotalSteps:    len(steps),
 		RunningSteps:  runningSteps,
 		HealthySteps:  healthySteps,
@@ -326,18 +335,18 @@ func (s *Service) snapshotExecution(executionID string) (Snapshot, bool) {
 
 func buildStartMessage(node topologyNode, suite *suites.Definition, profile string) string {
 	switch node.Kind {
-	case "mock":
+	case suites.NodeKindMock:
 		return fmt.Sprintf("[%s] Loading mock assets from api/ and mock/ for %s under %s.", node.Name, suite.Title, profile)
-	case "service":
-		if node.Variant == "service.prism" || node.Variant == "service.wiremock" || node.Variant == "service.custom" {
+	case suites.NodeKindService:
+		if isCompatibilityVariant(node.Variant) {
 			return fmt.Sprintf("[%s] Starting compatibility service assets from services/ under the %s profile.", node.Name, profile)
 		}
 		return fmt.Sprintf("[%s] Starting background service infrastructure declared in suite.star under the %s profile.", node.Name, profile)
-	case "task":
+	case suites.NodeKindTask:
 		return fmt.Sprintf("[%s] Executing one-shot task assets from tasks/ before exposing dependent services.", node.Name)
-	case "traffic":
+	case suites.NodeKindTraffic:
 		return fmt.Sprintf("[%s] Starting the traffic harness from traffic/ with the %s profile and collecting throughput thresholds.", node.Name, profile)
-	case "test":
+	case suites.NodeKindTest:
 		return fmt.Sprintf("[%s] Executing verification assets from tests/ with the %s profile.", node.Name, profile)
 	default:
 		return fmt.Sprintf("[%s] Starting workload and waiting for health checks from the parsed suite.star topology.", node.Name)
@@ -346,18 +355,18 @@ func buildStartMessage(node topologyNode, suite *suites.Definition, profile stri
 
 func buildHealthyMessage(node topologyNode, suite *suites.Definition, profile string) string {
 	switch node.Kind {
-	case "mock":
+	case suites.NodeKindMock:
 		return fmt.Sprintf("[%s] Mock surface is healthy. Exchanges from api/ and mock/ are now routable for %s.", node.Name, suite.Title)
-	case "service":
-		if node.Variant == "service.prism" || node.Variant == "service.wiremock" || node.Variant == "service.custom" {
+	case suites.NodeKindService:
+		if isCompatibilityVariant(node.Variant) {
 			return fmt.Sprintf("[%s] Compatibility service is healthy and reachable for downstream checks in the %s profile.", node.Name, profile)
 		}
 		return fmt.Sprintf("[%s] Background service is healthy and reachable for downstream steps in the %s profile.", node.Name, profile)
-	case "task":
+	case suites.NodeKindTask:
 		return fmt.Sprintf("[%s] Task completed successfully. Outputs were registered for the %s execution context.", node.Name, profile)
-	case "traffic":
+	case suites.NodeKindTraffic:
 		return fmt.Sprintf("[%s] Traffic phase completed. Threshold budgets and synthetic-user ramps stayed within the %s profile.", node.Name, profile)
-	case "test":
+	case suites.NodeKindTest:
 		return fmt.Sprintf("[%s] Test phase passed. Contract assertions and payload policies remained green.", node.Name)
 	default:
 		return fmt.Sprintf("[%s] Health check passed. Service is ready for downstream services, traffic phases, and tests.", node.Name)
@@ -365,30 +374,32 @@ func buildHealthyMessage(node topologyNode, suite *suites.Definition, profile st
 }
 
 func buildFailureMessage(node topologyNode, suite *suites.Definition) string {
-	if node.Kind == "test" {
+	switch node.Kind {
+	case suites.NodeKindTest:
 		return fmt.Sprintf("[%s] Assertion failed. Mock exchange drifted from api/ after replay.", node.Name)
-	}
-	if node.Kind == "traffic" {
+	case suites.NodeKindTraffic:
 		return fmt.Sprintf("[%s] Traffic thresholds were exceeded while driving the %s topology under synthetic traffic.", node.Name, suite.Title)
-	}
-	if node.Kind == "service" {
-		if node.Variant == "service.prism" || node.Variant == "service.wiremock" || node.Variant == "service.custom" {
+	case suites.NodeKindService:
+		if isCompatibilityVariant(node.Variant) {
 			return fmt.Sprintf("[%s] Compatibility service exited unexpectedly while supporting the %s topology.", node.Name, suite.Title)
 		}
 		return fmt.Sprintf("[%s] Background service exited unexpectedly while supporting the %s topology.", node.Name, suite.Title)
-	}
-	if node.Kind == "task" {
+	case suites.NodeKindTask:
 		return fmt.Sprintf("[%s] Task exited with a non-zero status while preparing the %s topology.", node.Name, suite.Title)
+	default:
+		return fmt.Sprintf("[%s] Workload exited with a non-zero status while materializing the %s topology.", node.Name, suite.Title)
 	}
-	return fmt.Sprintf("[%s] Workload exited with a non-zero status while materializing the %s topology.", node.Name, suite.Title)
+}
+
+func isCompatibilityVariant(variant string) bool {
+	return variant == suites.VariantServicePrism ||
+		variant == suites.VariantServiceWiremock ||
+		variant == suites.VariantServiceCustom
 }
 
 func buildCommitHash(suiteID, executionID string) string {
-	source := strings.ReplaceAll(suiteID+"-"+executionID, "-", "")
-	if len(source) >= 10 {
-		return source[:10]
-	}
-	return source + strings.Repeat("a", 10-len(source))
+	sum := sha256.Sum256([]byte(suiteID + "-" + executionID))
+	return hex.EncodeToString(sum[:])[:10]
 }
 
 func formatDuration(duration time.Duration) string {

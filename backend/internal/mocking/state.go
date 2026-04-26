@@ -14,6 +14,9 @@ func (s *Service) loadState(key string, config *suites.MockState) map[string]str
 		state = cloneStringMap(config.Defaults)
 	}
 	if strings.TrimSpace(key) == "" {
+		if state == nil {
+			return make(map[string]string)
+		}
 		return state
 	}
 
@@ -21,6 +24,9 @@ func (s *Service) loadState(key string, config *suites.MockState) map[string]str
 	current, ok := s.state[key]
 	s.mu.RUnlock()
 	if !ok {
+		if state == nil {
+			return make(map[string]string)
+		}
 		return state
 	}
 

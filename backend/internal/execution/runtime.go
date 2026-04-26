@@ -581,7 +581,7 @@ func resolveGatewayURL(executionID string, suite *suites.Definition) string {
 		return ""
 	}
 	for _, node := range suite.Topology {
-		if strings.TrimSpace(node.Kind) != "mock" {
+		if node.Kind != suites.NodeKindMock {
 			continue
 		}
 		host := "babel-" + sanitizeContainerID(executionID) + "-" + sanitizeContainerID(node.ID)

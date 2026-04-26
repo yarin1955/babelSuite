@@ -53,7 +53,7 @@ func validateConstraints(constraints []suites.ParameterConstraint, snapshot requ
 			continue
 		}
 		if !expression.MatchString(value) {
-			return errorResult(http.StatusBadRequest, "application/json", fmt.Sprintf(`{"error":"%s"}`, escapeJSONString(fmt.Sprintf("%s parameter %q failed validation.", strings.Title(constraint.Source), constraint.Name))))
+			return errorResult(http.StatusBadRequest, "application/json", fmt.Sprintf(`{"error":"%s"}`, escapeJSONString(fmt.Sprintf("%s parameter %q failed validation.", strings.ToUpper(constraint.Source[:1])+strings.ToLower(constraint.Source[1:]), constraint.Name))))
 		}
 	}
 	return nil

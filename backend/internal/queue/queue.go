@@ -69,6 +69,7 @@ func NewMemory(parent context.Context, workers int) *Memory {
 		go m.worker()
 	}
 	go m.expiryLoop()
+	registerQueueGauge(m)
 	return m
 }
 
@@ -173,6 +174,20 @@ func (m *Memory) Close() {
 	m.cancel()
 }
 
+func (m *Memory) stateTallies() map[State]int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	counts := make(map[State]int64)
+	for _, id := range m.order {
+		item := m.entries[id]
+		if item != nil {
+			counts[item.State]++
+		}
+	}
+	return counts
+}
+
 func (m *Memory) worker() {
 	for {
 		task, ok := m.claim()
@@ -185,7 +200,8 @@ func (m *Memory) worker() {
 			}
 		}
 
-		runCtx, cancel := context.WithCancel(m.ctx)
+		spanCtx, span := startTaskSpan(m.ctx, task)
+		runCtx, cancel := context.WithCancel(spanCtx)
 		m.attachCancel(task.ID, cancel)
 
 		doneCh := make(chan struct{})
@@ -195,6 +211,7 @@ func (m *Memory) worker() {
 
 		close(doneCh)
 		cancel()
+		finishTaskSpan(spanCtx, span, task, err)
 		m.finish(task.ID, err)
 	}
 }
@@ -223,6 +240,7 @@ func (m *Memory) expiryLoop() {
 			m.mu.Unlock()
 
 			for _, id := range expired {
+				queueMetrics.leaseExpiries.Add(context.Background(), 1)
 				m.finish(id, context.DeadlineExceeded)
 			}
 		}

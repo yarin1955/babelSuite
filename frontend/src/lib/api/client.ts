@@ -1,4 +1,5 @@
 import type { AuthResponse } from './types'
+import { apiErrorCounter } from '../telemetry'
 
 type QueryValue = string | number | boolean | null | undefined
 type QueryParams = Record<string, QueryValue | QueryValue[]>
@@ -69,19 +70,18 @@ export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY)
 }
 
-export function buildAuthenticatedStreamUrl(
-  path: string,
-  params: QueryParams = {},
-) {
-  const session = getSession()
-  const url = new URL(`${API_BASE}${path}`)
-
-  appendQueryParams(url.searchParams, params)
-
-  if (session?.token) {
-    url.searchParams.set('token', session.token)
+export function handleUnauthenticated() {
+  const alreadyOnAuth = window.location.pathname.startsWith('/sign-')
+  if (!alreadyOnAuth) {
+    clearSession()
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.replace(`/sign-in?returnTo=${returnTo}`)
   }
+}
 
+export function buildStreamUrl(path: string, params: QueryParams = {}) {
+  const url = new URL(`${API_BASE}${path}`)
+  appendQueryParams(url.searchParams, params)
   return url
 }
 
@@ -115,10 +115,15 @@ export async function request<T>(path: string, init: RequestInit = {}) {
 
     if (!response.ok) {
       const message = extractErrorMessage(path, response, payload)
+      apiErrorCounter.add(1, { 'api.path': path, 'http.status_code': response.status })
+      if (response.status === 401) {
+        handleUnauthenticated()
+      }
       throw new ApiError(message, response.status)
     }
 
     if (typeof payload === 'string') {
+      apiErrorCounter.add(1, { 'api.path': path, 'http.status_code': response.status })
       throw new ApiError(extractUnexpectedSuccessMessage(path, response, payload), response.status)
     }
 

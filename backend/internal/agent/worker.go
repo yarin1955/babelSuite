@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type Worker struct {
@@ -64,16 +66,25 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) runAssignment(ctx context.Context, request StepRequest) {
-	_ = w.controlPlane.ReportState(ctx, request.JobID, StateReport{
+	spanCtx, span := agentMetrics.tracer.Start(ctx, "agent.run_assignment")
+	attrs := jobAttributes(request)
+	span.SetAttributes(attrs...)
+	agentMetrics.jobsStarted.Add(ctx, 1, metric.WithAttributes(attrs...))
+
+	defer func() {
+		span.End()
+	}()
+
+	_ = w.controlPlane.ReportState(spanCtx, request.JobID, StateReport{
 		AgentID: w.agentID,
 		State:   "claimed",
 	})
-	_ = w.controlPlane.ReportState(ctx, request.JobID, StateReport{
+	_ = w.controlPlane.ReportState(spanCtx, request.JobID, StateReport{
 		AgentID: w.agentID,
 		State:   "running",
 	})
 
-	jobCtx, cancel := context.WithCancel(ctx)
+	jobCtx, cancel := context.WithCancel(spanCtx)
 	defer cancel()
 
 	leaseDone := make(chan struct{})
@@ -96,7 +107,7 @@ func (w *Worker) runAssignment(ctx context.Context, request StepRequest) {
 	close(leaseDone)
 
 	if errors.Is(runErr, context.Canceled) || errors.Is(jobCtx.Err(), context.Canceled) {
-		_ = w.controlPlane.ReportState(ctx, request.JobID, StateReport{
+		_ = w.controlPlane.ReportState(spanCtx, request.JobID, StateReport{
 			AgentID: w.agentID,
 			State:   "canceled",
 		})
@@ -105,11 +116,13 @@ func (w *Worker) runAssignment(ctx context.Context, request StepRequest) {
 	completeErr := ""
 	if runErr != nil {
 		completeErr = runErr.Error()
+		span.SetStatus(codes.Error, completeErr)
 	}
 	if runErr == nil && jobCtx.Err() != nil {
 		completeErr = jobCtx.Err().Error()
 	}
-	_ = w.controlPlane.Complete(ctx, request.JobID, CompleteRequest{
+	agentMetrics.jobsFinished.Add(ctx, 1, metric.WithAttributes(attrs...))
+	_ = w.controlPlane.Complete(spanCtx, request.JobID, CompleteRequest{
 		AgentID: w.agentID,
 		Error:   completeErr,
 	})

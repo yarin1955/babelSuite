@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func NewService(suites suiteReader, settings registrySettingsReader) *Service {
@@ -13,7 +15,8 @@ func NewService(suites suiteReader, settings registrySettingsReader) *Service {
 		suites:   suites,
 		settings: settings,
 		client: &http.Client{
-			Timeout: 4 * time.Second,
+			Timeout:   4 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
 }

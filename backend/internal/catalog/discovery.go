@@ -57,8 +57,10 @@ func (s *Service) discoverRegistry(ctx context.Context, registry platform.OCIReg
 	if err != nil {
 		return nil, err
 	}
-	if err := validateRegistryURL(baseURL); err != nil {
-		return nil, err
+	if !registry.AllowLocalNetwork {
+		if err := validateRegistryURL(baseURL); err != nil {
+			return nil, err
+		}
 	}
 
 	catalogURL := strings.TrimRight(baseURL, "/") + "/v2/_catalog?n=1000"
@@ -66,6 +68,7 @@ func (s *Service) discoverRegistry(ctx context.Context, registry platform.OCIReg
 	if err := s.getJSON(ctx, catalogURL, registry, &catalog); err != nil {
 		return nil, err
 	}
+	recordRegistryFetch(ctx, firstNonEmpty(registry.Name, registry.RegistryID, registry.RegistryURL))
 
 	discovered := make([]discoveredRepository, 0, len(catalog.Repositories))
 	for _, repository := range catalog.Repositories {

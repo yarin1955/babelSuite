@@ -1,0 +1,57 @@
+name: Feature Request
+description: Propose a new feature or enhancement for BabelSuite
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please search [existing issues](https://github.com/babelsuite/babelsuite/issues) and [discussions](https://github.com/babelsuite/babelsuite/discussions) to see if your idea has already been raised.
+        For large proposals, consider opening a [discussion](https://github.com/babelsuite/babelsuite/discussions) first.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Suite authoring / Starlark runtime
+        - Execution engine / backends
+        - Service mocking
+        - Catalog / OCI registry
+        - Profile system
+        - Agent / remote workers
+        - Frontend / UI
+        - CLI (babelctl)
+        - Authentication / security
+        - Telemetry / observability
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What are you trying to do that is currently difficult or impossible?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your proposed solution. Include API shapes, config fields, or UI interactions if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider and why did you rule them out?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, mockups, or examples that would help explain the request.

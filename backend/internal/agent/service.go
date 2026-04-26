@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
 )
@@ -44,8 +46,14 @@ func (s *Service) Stream(ctx context.Context, request StepRequest, emit func(Str
 		return
 	}
 
+	attrs := jobAttributes(request)
+	spanCtx, span := agentMetrics.tracer.Start(ctx, "agent.stream",
+		trace.WithAttributes(attrs...),
+	)
+	defer span.End()
+
 	request.JobID = firstNonEmpty(request.JobID, request.ExecutionID+":"+request.Node.ID, uuid.NewString())
-	jobCtx, cancel := context.WithCancel(ctx)
+	jobCtx, cancel := context.WithCancel(spanCtx)
 	s.registerJob(request.JobID, cancel)
 	defer s.unregisterJob(request.JobID)
 
@@ -55,6 +63,7 @@ func (s *Service) Stream(ctx context.Context, request StepRequest, emit func(Str
 		emit(StreamMessage{Type: "log", JobID: request.JobID, Line: &lineCopy})
 	})
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		emit(StreamMessage{Type: "done", JobID: request.JobID, Error: err.Error()})
 		return
 	}

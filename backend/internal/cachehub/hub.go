@@ -71,18 +71,25 @@ func (h *Hub) ReadJSON(ctx context.Context, key string, target any) (bool, error
 		return false, nil
 	}
 
-	payload, err := h.client.Get(ctx, h.compose(key)).Bytes()
+	spanCtx, span := startCacheSpan(ctx, "get")
+	defer span.End()
+
+	payload, err := h.client.Get(spanCtx, h.compose(key)).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
+			recordCacheGet(spanCtx, false)
 			return false, nil
 		}
+		endCacheSpan(span, err)
 		return false, err
 	}
 
 	if err := json.Unmarshal(payload, target); err != nil {
-		_ = h.client.Del(ctx, h.compose(key)).Err()
+		_ = h.client.Del(spanCtx, h.compose(key)).Err()
+		endCacheSpan(span, err)
 		return false, err
 	}
+	recordCacheGet(spanCtx, true)
 	return true, nil
 }
 
@@ -91,18 +98,27 @@ func (h *Hub) WriteJSON(ctx context.Context, key string, value any, ttl time.Dur
 		return nil
 	}
 
+	spanCtx, span := startCacheSpan(ctx, "set")
 	payload, err := json.Marshal(value)
 	if err != nil {
+		endCacheSpan(span, err)
 		return err
 	}
-	return h.client.Set(ctx, h.compose(key), payload, ttl).Err()
+	err = h.client.Set(spanCtx, h.compose(key), payload, ttl).Err()
+	endCacheSpan(span, err)
+	recordCacheSet(spanCtx)
+	return err
 }
 
 func (h *Hub) Remove(ctx context.Context, key string) error {
 	if !h.Enabled() {
 		return nil
 	}
-	return h.client.Del(ctx, h.compose(key)).Err()
+	spanCtx, span := startCacheSpan(ctx, "del")
+	err := h.client.Del(spanCtx, h.compose(key)).Err()
+	endCacheSpan(span, err)
+	recordCacheDel(spanCtx)
+	return err
 }
 
 func (h *Hub) ScopeStamp(ctx context.Context, scope string) string {

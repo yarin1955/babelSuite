@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -23,13 +23,13 @@ func Seed(ctx context.Context, st store.Store, email, password string) {
 	if _, err := st.GetUserByEmail(ctx, email); err == nil {
 		return
 	} else if !errors.Is(err, store.ErrNotFound) {
-		log.Printf("seed: check email: %v", err)
+		slog.Error("seed: check email", "error", err)
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Printf("seed: hash password: %v", err)
+		slog.Error("seed: hash password", "error", err)
 		return
 	}
 
@@ -40,7 +40,7 @@ func Seed(ctx context.Context, st store.Store, email, password string) {
 
 	workspace, err := createSeedWorkspace(ctx, st, baseUsername)
 	if err != nil {
-		log.Printf("seed: create workspace: %v", err)
+		slog.Error("seed: create workspace", "error", err)
 		return
 	}
 
@@ -65,15 +65,15 @@ func Seed(ctx context.Context, st store.Store, email, password string) {
 			if errors.Is(err, store.ErrDuplicate) {
 				continue
 			}
-			log.Printf("seed: create user: %v", err)
+			slog.Error("seed: create user", "error", err)
 			return
 		}
 
-		log.Printf("seed: admin account %q created", email)
+		slog.Info("seed: admin account created", "email", email)
 		return
 	}
 
-	log.Printf("seed: create user: %v", store.ErrDuplicate)
+	slog.Error("seed: create user", "error", store.ErrDuplicate)
 }
 
 func createSeedWorkspace(ctx context.Context, st store.Store, username string) (*domain.Workspace, error) {

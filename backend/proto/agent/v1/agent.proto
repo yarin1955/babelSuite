@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package babelsuite.agent.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "logstream/v1/logstream.proto";
+
+option go_package = "github.com/babelsuite/babelsuite/gen/proto/go/agent/v1;agentv1";
+
+enum AssignmentStatus {
+  ASSIGNMENT_STATUS_UNSPECIFIED = 0;
+  ASSIGNMENT_STATUS_PENDING = 1;
+  ASSIGNMENT_STATUS_RUNNING = 2;
+  ASSIGNMENT_STATUS_SUCCEEDED = 3;
+  ASSIGNMENT_STATUS_FAILED = 4;
+  ASSIGNMENT_STATUS_CANCELED = 5;
+}
+
+message StepNode {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+  string variant = 4;
+  repeated string depends_on = 5;
+}
+
+message ArtifactExport {
+  string path = 1;
+  string name = 2;
+  string on = 3;
+  string format = 4;
+}
+
+message LoadThreshold {
+  string metric = 1;
+  string op = 2;
+  double value = 3;
+  string sampler = 4;
+}
+
+message LoadWait {
+  string mode = 1;
+  double seconds = 2;
+  double min_seconds = 3;
+  double max_seconds = 4;
+}
+
+message LoadRequest {
+  string method = 1;
+  string path = 2;
+  string name = 3;
+  map<string, string> headers = 4;
+  string body = 5;
+  repeated LoadThreshold checks = 6;
+}
+
+message LoadTask {
+  string id = 1;
+  string name = 2;
+  int32 weight = 3;
+  LoadRequest request = 4;
+  repeated LoadThreshold checks = 5;
+}
+
+message LoadUser {
+  string id = 1;
+  string name = 2;
+  int32 weight = 3;
+  LoadWait wait = 4;
+  repeated LoadTask tasks = 5;
+}
+
+message LoadStage {
+  google.protobuf.Duration duration = 1;
+  int32 users = 2;
+  double spawn_rate = 3;
+  bool stop = 4;
+}
+
+message LoadSpec {
+  string variant = 1;
+  string plan_path = 2;
+  string target = 3;
+  double requests_per_second = 4;
+  double arrival_rate = 5;
+  repeated LoadUser users = 6;
+  repeated LoadStage stages = 7;
+  repeated LoadThreshold thresholds = 8;
+}
+
+message StepEvaluation {
+  optional int32 expect_exit = 1;
+  repeated string expect_logs = 2;
+  repeated string fail_on_logs = 3;
+}
+
+message StepRequest {
+  string job_id = 1;
+  string execution_id = 2;
+  string suite_id = 3;
+  string suite_title = 4;
+  string suite_repository = 5;
+  string profile = 6;
+  string runtime_profile = 7;
+  map<string, string> env = 8;
+  map<string, string> headers = 9;
+  string trigger = 10;
+  string backend_id = 11;
+  string backend_kind = 12;
+  string backend_label = 13;
+  string source_suite_id = 14;
+  string source_suite_title = 15;
+  string source_repository = 16;
+  string source_version = 17;
+  string resolved_ref = 18;
+  string digest = 19;
+  string dependency_alias = 20;
+  int32 step_index = 21;
+  int32 total_steps = 22;
+  google.protobuf.Duration lease_ttl = 23;
+  LoadSpec load = 24;
+  StepEvaluation evaluation = 25;
+  repeated string on_failure = 26;
+  repeated ArtifactExport artifact_exports = 27;
+  StepNode node = 28;
+}
+
+message ClaimRequest {
+  string agent_id = 1;
+}
+
+message ClaimResponse {
+  StepRequest assignment = 1;
+  bool has_assignment = 2;
+  int32 poll_after_millis = 3;
+}
+
+message LeaseRequest {
+  string job_id = 1;
+  string agent_id = 2;
+}
+
+message LeaseResponse {
+  AssignmentStatus status = 1;
+  bool cancel_requested = 2;
+}
+
+message StateReport {
+  string job_id = 1;
+  string agent_id = 2;
+  string state = 3;
+  string message = 4;
+}
+
+message LogReport {
+  string job_id = 1;
+  string agent_id = 2;
+  babelsuite.logstream.v1.Line line = 3;
+}
+
+message CompleteRequest {
+  string job_id = 1;
+  string agent_id = 2;
+  string error = 3;
+}
+
+message RegisterRequest {
+  string agent_id = 1;
+  string name = 2;
+  string host_url = 3;
+  repeated string capabilities = 4;
+}
+
+message Registration {
+  string agent_id = 1;
+  string name = 2;
+  string host_url = 3;
+  string status = 4;
+  repeated string capabilities = 5;
+  google.protobuf.Timestamp registered_at = 6;
+  google.protobuf.Timestamp last_heartbeat_at = 7;
+}
+
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+message ListAgentsRequest {}
+
+message ListAgentsResponse {
+  repeated Registration agents = 1;
+}
+
+service AgentControlService {
+  rpc ClaimNext(ClaimRequest) returns (ClaimResponse);
+  rpc ExtendLease(LeaseRequest) returns (LeaseResponse);
+  rpc ReportState(StateReport) returns (google.protobuf.Empty);
+  rpc ReportLog(LogReport) returns (google.protobuf.Empty);
+  rpc Complete(CompleteRequest) returns (google.protobuf.Empty);
+}
+
+service AgentRegistryService {
+  rpc Register(RegisterRequest) returns (Registration);
+  rpc Heartbeat(HeartbeatRequest) returns (Registration);
+  rpc Unregister(HeartbeatRequest) returns (google.protobuf.Empty);
+  rpc List(ListAgentsRequest) returns (ListAgentsResponse);
+}

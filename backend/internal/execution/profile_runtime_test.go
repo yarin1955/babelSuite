@@ -20,6 +20,9 @@ import (
 func TestRunNodeInjectsManagedProfileSecretsAndOverridesIntoBackend(t *testing.T) {
 	t.Setenv(demofs.EnableEnvVar, "false")
 	t.Setenv("BABELSUITE_VAULT_TOKEN", "vault-token")
+	oldNets := vaultBlockedNets
+	vaultBlockedNets = nil
+	t.Cleanup(func() { vaultBlockedNets = oldNets })
 
 	vaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/kv/platform/service/api" {
@@ -277,6 +280,9 @@ func TestRunNodeInjectsWorkspaceProfileInlineSecretRefsIntoBackend(t *testing.T)
 	t.Setenv(demofs.EnableEnvVar, "false")
 	t.Setenv("BABELSUITE_VAULT_TOKEN", "vault-token")
 	configureExecutionExamplesRoot(t)
+	oldNets := vaultBlockedNets
+	vaultBlockedNets = nil
+	t.Cleanup(func() { vaultBlockedNets = oldNets })
 
 	vaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/kv/payment-suite/staging-db-password" {
@@ -395,6 +401,7 @@ func TestResolveExecutionRuntimeOverlaySkipsWorkspaceVaultRefsWhenPlatformDefaul
 
 	profileService := profiles.NewService(suites.NewService(), profiles.NewMemoryStore())
 	settings := platform.DefaultSettings()
+	settings.Secrets.Provider = "none"
 	service := NewServiceWithPlatform(profileService, stubPlatformSource{settings: &settings})
 	defer service.Close()
 

@@ -21,7 +21,8 @@ type suiteReader interface {
 }
 
 type Service struct {
-	suites suiteReader
+	suites  suiteReader
+	signals *mockingSignals
 
 	mu         sync.RWMutex
 	state      map[string]map[string]string

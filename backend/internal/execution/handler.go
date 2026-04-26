@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/engine"
 	"github.com/babelsuite/babelsuite/internal/httpserver"
@@ -26,7 +30,7 @@ func NewHandler(service *Service, engineStore *engine.Store, jwt *auth.JWTServic
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
-	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: false})
 	httpserver.HandleFunc(mux, "GET /api/v1/executions/launch-suites", h.listLaunchSuites, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/executions/resolve-ref", h.resolveRef, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/executions/overview", h.getOverview, protected)
@@ -69,13 +73,18 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
+	ctx, span := otel.Tracer(executionScope).Start(r.Context(), "execution.create",
+		trace.WithSpanKind(trace.SpanKindServer),
+	)
+	defer span.End()
+
 	var request CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "Execution payload is invalid.")
 		return
 	}
 
-	execution, err := h.service.CreateExecution(r.Context(), request)
+	execution, err := h.service.CreateExecution(ctx, request)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrSuiteNotFound):
@@ -100,6 +109,12 @@ func (h *Handler) createExecution(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer(executionScope).Start(r.Context(), "execution.get",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("execution.id", r.PathValue("executionId"))),
+	)
+	defer span.End()
+
 	execution, err := h.service.GetExecution(r.PathValue("executionId"))
 	if err != nil {
 		if errors.Is(err, ErrExecutionNotFound) {
@@ -115,6 +130,13 @@ func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
+	executionID := r.PathValue("executionId")
+	_, span := otel.Tracer(executionScope).Start(r.Context(), "execution.stream_events",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("execution.id", executionID)),
+	)
+	defer span.End()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")
@@ -175,6 +197,13 @@ func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
+	executionID := r.PathValue("executionId")
+	_, span := otel.Tracer(executionScope).Start(r.Context(), "execution.stream_logs",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("execution.id", executionID)),
+	)
+	defer span.End()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")

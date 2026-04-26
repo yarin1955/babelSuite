@@ -30,8 +30,10 @@ func (r *cachedReader) ListPackages() ([]Package, error) {
 
 	var cached []Package
 	if ok, err := r.hub.ReadJSON(ctx, key, &cached); err == nil && ok {
+		recordCacheHit(ctx, "list_packages")
 		return clonePackages(cached), nil
 	}
+	recordCacheMiss(ctx, "list_packages")
 
 	packages, err := r.base.ListPackages()
 	if err != nil {
@@ -47,10 +49,12 @@ func (r *cachedReader) GetPackage(id string) (*Package, error) {
 
 	var cached Package
 	if ok, err := r.hub.ReadJSON(ctx, key, &cached); err == nil && ok {
+		recordCacheHit(ctx, "get_package")
 		cached.Tags = append([]string{}, cached.Tags...)
 		cached.Modules = append([]string{}, cached.Modules...)
 		return &cached, nil
 	}
+	recordCacheMiss(ctx, "get_package")
 
 	item, err := r.base.GetPackage(id)
 	if err != nil {

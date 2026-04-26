@@ -59,16 +59,17 @@ type APISIXSidecarConfig struct {
 }
 
 type OCIRegistry struct {
-	RegistryID      string     `json:"registryId" yaml:"registryId"`
-	Name            string     `json:"name" yaml:"name"`
-	Provider        string     `json:"provider" yaml:"provider"`
-	RegistryURL     string     `json:"registryUrl" yaml:"registryUrl"`
-	Username        string     `json:"username" yaml:"username"`
-	Secret          string     `json:"secret" yaml:"secret"`
-	RepositoryScope string     `json:"repositoryScope" yaml:"repositoryScope"`
-	Region          string     `json:"region" yaml:"region"`
-	SyncStatus      string     `json:"syncStatus" yaml:"syncStatus"`
-	LastSyncedAt    *time.Time `json:"lastSyncedAt,omitempty" yaml:"lastSyncedAt,omitempty"`
+	RegistryID        string     `json:"registryId" yaml:"registryId"`
+	Name              string     `json:"name" yaml:"name"`
+	Provider          string     `json:"provider" yaml:"provider"`
+	RegistryURL       string     `json:"registryUrl" yaml:"registryUrl"`
+	Username          string     `json:"username" yaml:"username"`
+	Secret            string     `json:"secret" yaml:"secret"`
+	RepositoryScope   string     `json:"repositoryScope" yaml:"repositoryScope"`
+	Region            string     `json:"region" yaml:"region"`
+	AllowLocalNetwork bool       `json:"allowLocalNetwork" yaml:"allowLocalNetwork"`
+	SyncStatus        string     `json:"syncStatus" yaml:"syncStatus"`
+	LastSyncedAt      *time.Time `json:"lastSyncedAt,omitempty" yaml:"lastSyncedAt,omitempty"`
 }
 
 type SecretsConfig struct {

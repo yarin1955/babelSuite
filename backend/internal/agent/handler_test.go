@@ -39,10 +39,10 @@ func (o *captureObserver) AssignmentLog(_ StepRequest, line logstream.Line) {
 func TestGatewayRegistersAndHeartbeatsWorkers(t *testing.T) {
 	registry := NewRegistry(nil)
 	coordinator := NewCoordinator(registry, nil)
-	server := httptest.NewServer(NewGateway(registry, coordinator))
+	server := httptest.NewServer(NewGateway(registry, coordinator, ""))
 	defer server.Close()
 
-	client := NewControlPlaneClient(server.URL, server.Client())
+	client := NewControlPlaneClient(server.URL, server.Client(), "")
 	if err := client.Register(context.Background(), RegisterRequest{
 		AgentID:      "worker-1",
 		Name:         "Worker",
@@ -79,10 +79,10 @@ func TestControlPlaneClientClaimsReportsAndCompletesAssignments(t *testing.T) {
 	registry := NewRegistry(nil)
 	observer := &captureObserver{}
 	coordinator := NewCoordinator(registry, observer)
-	server := httptest.NewServer(NewGateway(registry, coordinator))
+	server := httptest.NewServer(NewGateway(registry, coordinator, ""))
 	defer server.Close()
 
-	client := NewControlPlaneClient(server.URL, server.Client())
+	client := NewControlPlaneClient(server.URL, server.Client(), "")
 	if err := client.Register(context.Background(), RegisterRequest{
 		AgentID: "worker-1",
 		Name:    "Worker",

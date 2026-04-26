@@ -2,6 +2,7 @@ import { startTransition, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import { ApiError, resolveSessionFromToken, saveSession } from '../lib/api'
+import { authEventCounter, setUserContext } from '../lib/telemetry'
 
 export default function AuthCallback() {
   const location = useLocation()
@@ -37,6 +38,8 @@ export default function AuthCallback() {
         }
 
         saveSession(session)
+        setUserContext(session.user.userId, session.user.workspaceId, session.user.isAdmin)
+        authEventCounter.add(1, { 'auth.method': 'sso', 'auth.event': 'sign_in' })
         startTransition(() => {
           navigate(returnUrl, { replace: true })
         })

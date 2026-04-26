@@ -28,6 +28,7 @@ var proxyHTTPClient = &http.Client{
 func NewService(suiteService suiteReader) *Service {
 	return &Service{
 		suites:     suiteService,
+		signals:    newMockingSignals(),
 		state:      make(map[string]map[string]string),
 		suiteState: make(map[string]map[string]struct{}),
 	}
@@ -124,6 +125,13 @@ func findOperationByID(suite suites.Definition, surfaceID, operationID string) (
 }
 
 func (s *Service) resolve(ctx context.Context, suite *suites.Definition, surface suites.APISurface, operation suites.APIOperation, pathParams map[string]string, request *http.Request, adapter string) (*Result, error) {
+	spanCtx, span := s.signals.start(ctx, suite.ID, surface.ID, operation.ID, adapter)
+	result, err := s.resolveInner(spanCtx, suite, surface, operation, pathParams, request, adapter)
+	s.signals.finish(spanCtx, span, result, err)
+	return result, err
+}
+
+func (s *Service) resolveInner(ctx context.Context, suite *suites.Definition, surface suites.APISurface, operation suites.APIOperation, pathParams map[string]string, request *http.Request, adapter string) (*Result, error) {
 	requestBody, bodyJSON, bodyObject, err := readRequestBody(request)
 	if err != nil {
 		return withOperationMetadata(errorResult(http.StatusBadRequest, "application/json", fmt.Sprintf(`{"error":"%s"}`, escapeJSONString("Could not read request body."))), operation, adapter), nil

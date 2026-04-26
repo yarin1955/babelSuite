@@ -11,7 +11,7 @@ import (
 
 func isKnownStepStatus(status string) bool {
 	switch strings.TrimSpace(status) {
-	case "pending", "running", "healthy", "failed", "skipped":
+	case stepStatusPending, stepStatusRunning, stepStatusHealthy, stepStatusFailed, stepStatusSkipped:
 		return true
 	default:
 		return false
@@ -20,7 +20,7 @@ func isKnownStepStatus(status string) bool {
 
 func isTerminalStepStatus(status string) bool {
 	switch strings.TrimSpace(status) {
-	case "healthy", "failed", "skipped":
+	case stepStatusHealthy, stepStatusFailed, stepStatusSkipped:
 		return true
 	default:
 		return false
@@ -30,7 +30,7 @@ func isTerminalStepStatus(status string) bool {
 func buildStepStatus(topology []suites.TopologyNode, events []ExecutionEvent) (map[string]string, int) {
 	statuses := make(map[string]string, len(topology))
 	for _, node := range topology {
-		statuses[node.ID] = "pending"
+		statuses[node.ID] = stepStatusPending
 	}
 
 	for _, event := range events {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/babelsuite/babelsuite/internal/logstream"
 )
@@ -63,6 +64,7 @@ func NewCoordinator(registry RegistryReader, observer AssignmentObserver) *Coord
 		assignments: make(map[string]*assignmentEntry),
 	}
 	go c.expiryLoop()
+	registerCoordinatorGauge(c)
 	return c
 }
 
@@ -280,10 +282,22 @@ func (c *Coordinator) expiryLoop() {
 			entry.status = AssignmentFailed
 			entry.err = context.DeadlineExceeded
 			close(entry.done)
+			agentMetrics.leaseExpiries.Add(context.Background(), 1, metric.WithAttributes(jobAttributes(entry.request)...))
 		}
 		c.mu.Unlock()
 		c.persistAssignments()
 	}
+}
+
+func (c *Coordinator) statusTallies() map[string]int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	counts := make(map[string]int64)
+	for _, entry := range c.assignments {
+		counts[string(entry.status)]++
+	}
+	return counts
 }
 
 func firstNonEmptyValue(values ...string) string {

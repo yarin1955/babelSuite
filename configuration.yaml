@@ -59,6 +59,7 @@ registries:
     secret: ""
     repositoryScope: "*"
     region: ""
+    allowLocalNetwork: true
     syncStatus: Indexed
 secrets:
   provider: vault

@@ -41,6 +41,7 @@ func (h *Hub[T]) Open(key string) {
 }
 
 func (h *Hub[T]) Append(key string, payload T) Record[T] {
+	recordESAppend(key)
 	h.mu.Lock()
 	itemStream := h.ensureStream(key)
 	itemStream.list = append(itemStream.list, payload)
@@ -91,6 +92,7 @@ func (h *Hub[T]) Subscribe(ctx context.Context, key string, since int) (<-chan R
 	}
 
 	itemStream.subs[sub] = struct{}{}
+	recordESSubscribe(key, 1)
 
 	go func() {
 		<-ctx.Done()
@@ -100,6 +102,7 @@ func (h *Hub[T]) Subscribe(ctx context.Context, key string, since int) (<-chan R
 		if existing := h.streams[key]; existing != nil {
 			delete(existing.subs, sub)
 		}
+		recordESSubscribe(key, -1)
 	}()
 
 	return sub.ch, nil

@@ -8,6 +8,8 @@ import (
 
 	"github.com/babelsuite/babelsuite/internal/auth"
 	"github.com/babelsuite/babelsuite/internal/httpserver"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Handler struct {
@@ -21,7 +23,7 @@ func NewHandler(store *Store, jwt *auth.JWTService) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	protected := auth.RequireSession(h.jwt, auth.VerifyOptions{})
-	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: true})
+	streaming := auth.RequireSession(h.jwt, auth.VerifyOptions{AllowQueryToken: false})
 	httpserver.HandleFunc(mux, "GET /api/v1/engine/overview", h.getOverview, protected)
 	httpserver.HandleFunc(mux, "GET /api/v1/engine/overview/stream", h.streamOverview, streaming)
 }
@@ -31,6 +33,11 @@ func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamOverview(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("github.com/babelsuite/babelsuite/internal/engine").Start(r.Context(), "engine.stream_overview",
+		trace.WithSpanKind(trace.SpanKindServer),
+	)
+	defer span.End()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "Streaming is not supported.")

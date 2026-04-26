@@ -14,6 +14,14 @@ import (
 	"github.com/babelsuite/babelsuite/internal/suites"
 )
 
+const (
+	stepStatusPending = "pending"
+	stepStatusRunning = "running"
+	stepStatusHealthy = "healthy"
+	stepStatusFailed  = "failed"
+	stepStatusSkipped = "skipped"
+)
+
 var (
 	ErrSuiteNotFound      = errors.New("suite not found")
 	ErrProfileNotFound    = errors.New("profile not found")

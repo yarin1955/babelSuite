@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,10 +16,18 @@ import (
 	"github.com/babelsuite/babelsuite/internal/logstream"
 	"github.com/babelsuite/babelsuite/internal/runner"
 	"github.com/babelsuite/babelsuite/internal/suites"
+	"github.com/babelsuite/babelsuite/internal/telemetry"
 )
 
 func main() {
 	envloader.Load(".env", "../.env", "../../.env")
+
+	telPipeline, err := telemetry.Start(context.Background())
+	if err != nil {
+		log.Printf("telemetry: %v", err)
+	}
+	telemetry.InitDefaultLogger(telemetry.NewLogger(telPipeline))
+	defer telPipeline.Shutdown(context.Background())
 
 	agentID := firstNonEmpty(strings.TrimSpace(os.Getenv("AGENT_ID")), hostnameOr("worker"))
 	agentName := firstNonEmpty(strings.TrimSpace(os.Getenv("AGENT_NAME")), "BabelSuite Worker")
@@ -90,7 +99,7 @@ func main() {
 			HostURL:      publicURL,
 			Capabilities: []string{"service", "task", "test", "traffic", "suite"},
 		}); err != nil {
-			log.Printf("agent register failed: %v", err)
+			slog.Error("agent register failed", "error", err)
 		}
 		cancel()
 
@@ -98,14 +107,14 @@ func main() {
 		worker := agent.NewWorker(agentID, pollInterval, controlPlane, service)
 		go func() {
 			if err := worker.Run(rootCtx); err != nil && err != context.Canceled {
-				log.Printf("agent worker loop stopped: %v", err)
+				slog.Error("agent worker loop stopped", "error", err)
 			}
 		}()
 		defer func() {
 			unregisterCtx, unregisterCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer unregisterCancel()
 			if err := controlPlane.Unregister(unregisterCtx, agentID); err != nil {
-				log.Printf("agent unregister failed: %v", err)
+				slog.Error("agent unregister failed", "error", err)
 			}
 		}()
 	}
@@ -117,9 +126,10 @@ func main() {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("babelsuite agent listening on %s", server.Addr)
+	slog.Info("babelsuite agent listening", "addr", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+		slog.Error("agent server error", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -134,7 +144,7 @@ func heartbeatLoop(ctx context.Context, client *agent.ControlPlaneClient, agentI
 		case <-ticker.C:
 			heartbeatCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if err := client.Heartbeat(heartbeatCtx, agentID); err != nil {
-				log.Printf("agent heartbeat failed: %v", err)
+				slog.Error("agent heartbeat failed", "error", err)
 			}
 			cancel()
 		}

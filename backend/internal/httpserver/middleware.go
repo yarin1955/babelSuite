@@ -1,8 +1,7 @@
 package httpserver
 
 import (
-	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -24,18 +23,6 @@ type statusRecorder struct {
 	bytes  int
 }
 
-type auditRecord struct {
-	Type        string `json:"type"`
-	RequestID   string `json:"requestId,omitempty"`
-	Method      string `json:"method"`
-	Route       string `json:"route,omitempty"`
-	Path        string `json:"path"`
-	Status      int    `json:"status"`
-	DurationMS  int64  `json:"durationMs"`
-	RemoteAddr  string `json:"remoteAddr,omitempty"`
-	UserID      string `json:"userId,omitempty"`
-	WorkspaceID string `json:"workspaceId,omitempty"`
-}
 
 type HTTPMetrics struct {
 	requests  metric.Int64Counter
@@ -111,12 +98,8 @@ func TraceContextMiddleware() Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			span := trace.SpanFromContext(r.Context())
 			if span.IsRecording() {
-				requestID := RequestIDFromContext(r.Context())
-				if requestID != "" {
+				if requestID := RequestIDFromContext(r.Context()); requestID != "" {
 					span.SetAttributes(attribute.String("http.request_id", requestID))
-				}
-				if pattern := effectiveRoute(r); pattern != "" {
-					span.SetAttributes(attribute.String("http.route", pattern))
 				}
 				if claims, ok := auth.SessionFromContext(r.Context()); ok {
 					span.SetAttributes(
@@ -125,6 +108,14 @@ func TraceContextMiddleware() Middleware {
 						attribute.Bool("enduser.admin", claims.IsAdmin),
 					)
 				}
+				// Defer route annotation until after the mux has matched the pattern
+				// so span names are "METHOD /path/{param}" rather than raw URLs.
+				defer func() {
+					if pattern := effectiveRoute(r); pattern != "" {
+						span.SetName(r.Method + " " + pattern)
+						span.SetAttributes(attribute.String("http.route", pattern))
+					}
+				}()
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -145,27 +136,24 @@ func AuditMiddleware() Middleware {
 				return
 			}
 
-			record := auditRecord{
-				Type:       "http.audit",
-				RequestID:  RequestIDFromContext(r.Context()),
-				Method:     r.Method,
-				Route:      effectiveRoute(r),
-				Path:       r.URL.Path,
-				Status:     recorder.status,
-				DurationMS: time.Since(startedAt).Milliseconds(),
-				RemoteAddr: strings.TrimSpace(r.RemoteAddr),
+			attrs := []slog.Attr{
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.Int("status", recorder.status),
+				slog.Int64("durationMs", time.Since(startedAt).Milliseconds()),
+				slog.String("remoteAddr", strings.TrimSpace(r.RemoteAddr)),
+			}
+			if id := RequestIDFromContext(r.Context()); id != "" {
+				attrs = append(attrs, slog.String("requestId", id))
+			}
+			if route := effectiveRoute(r); route != "" {
+				attrs = append(attrs, slog.String("route", route))
 			}
 			if claims, ok := auth.SessionFromContext(r.Context()); ok {
-				record.UserID = claims.UserID
-				record.WorkspaceID = claims.WorkspaceID
+				attrs = append(attrs, slog.String("userId", claims.UserID))
+				attrs = append(attrs, slog.String("workspaceId", claims.WorkspaceID))
 			}
-
-			payload, err := json.Marshal(record)
-			if err != nil {
-				log.Printf("http audit marshal: %v", err)
-				return
-			}
-			log.Printf("%s", payload)
+			slog.LogAttrs(r.Context(), slog.LevelInfo, "http.request", attrs...)
 		})
 	}
 }
@@ -221,7 +209,8 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"font-src 'self'; " +
 	"object-src 'none'; " +
 	"base-uri 'self'; " +
-	"form-action 'self'"
+	"form-action 'self'; " +
+	"frame-ancestors 'none'"
 
 func RecoveryMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
@@ -231,7 +220,10 @@ func RecoveryMiddleware() Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Printf("panic: %v\n%s", rec, debug.Stack())
+					slog.ErrorContext(r.Context(), "handler panic",
+						slog.Any("error", rec),
+						slog.String("stack", string(debug.Stack())),
+					)
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
 					_, _ = w.Write([]byte(`{"error":"An unexpected error occurred."}`))

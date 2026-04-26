@@ -1,10 +1,15 @@
 package agent
 
 import (
+	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
+	"connectrpc.com/connect"
+	"github.com/babelsuite/babelsuite/gen/proto/go/agent/v1/agentv1connect"
 	"github.com/babelsuite/babelsuite/internal/httpserver"
 )
 
@@ -19,7 +24,7 @@ func agentSecretMiddleware(secret string) httpserver.Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if secret != "" {
 				bearer := strings.TrimPrefix(strings.TrimSpace(r.Header.Get("Authorization")), "Bearer ")
-				if strings.TrimSpace(bearer) != secret {
+				if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(bearer)), []byte(secret)) != 1 {
 					writeGatewayJSON(w, http.StatusUnauthorized, map[string]string{"error": "agent secret required"})
 					return
 				}
@@ -35,6 +40,18 @@ func RegisterGateway(mux *http.ServeMux, registry *Registry, coordinator *Coordi
 	}
 
 	auth := agentSecretMiddleware(secret)
+
+	controlPath, controlHandler := agentv1connect.NewAgentControlServiceHandler(
+		&controlServiceServer{coordinator: coordinator},
+		connect.WithInterceptors(agentAuthInterceptor(secret)),
+	)
+	mux.Handle(controlPath, controlHandler)
+
+	registryPath, registryHandler := agentv1connect.NewAgentRegistryServiceHandler(
+		&registryServiceServer{registry: registry},
+		connect.WithInterceptors(agentAuthInterceptor(secret)),
+	)
+	mux.Handle(registryPath, registryHandler)
 	httpserver.HandleFunc(mux, "GET /api/v1/agents", func(w http.ResponseWriter, _ *http.Request) {
 		if registry == nil {
 			writeGatewayJSON(w, http.StatusOK, map[string]any{"agents": []Registration{}})
@@ -160,4 +177,18 @@ func writeGatewayJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+func agentAuthInterceptor(secret string) connect.UnaryInterceptorFunc {
+	return func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			if secret != "" {
+				bearer := strings.TrimPrefix(strings.TrimSpace(req.Header().Get("Authorization")), "Bearer ")
+				if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(bearer)), []byte(secret)) != 1 {
+					return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("agent secret required"))
+				}
+			}
+			return next(ctx, req)
+		}
+	}
 }

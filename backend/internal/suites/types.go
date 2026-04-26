@@ -2,7 +2,35 @@ package suites
 
 import "errors"
 
-var ErrNotFound = errors.New("suite not found")
+var (
+	ErrNotFound          = errors.New("suite not found")
+	ErrAlreadyExists     = errors.New("suite already exists")
+	ErrUnsupportedCall   = errors.New("unsupported runtime call")
+	ErrMissingDependency = errors.New("missing topology dependency")
+	ErrTopologyCycle     = errors.New("topology dependency cycle")
+)
+
+type RegisterRequest struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Owner       string `json:"owner,omitempty"`
+	SuiteStar   string `json:"suiteStar"`
+}
+
+const (
+	NodeKindMock    = "mock"
+	NodeKindService = "service"
+	NodeKindTask    = "task"
+	NodeKindTraffic = "traffic"
+	NodeKindTest    = "test"
+	NodeKindSuite   = "suite"
+
+	VariantServiceMock     = "service.mock"
+	VariantServicePrism    = "service.prism"
+	VariantServiceWiremock = "service.wiremock"
+	VariantServiceCustom   = "service.custom"
+)
 
 type ProfileOption struct {
 	FileName    string `json:"fileName"`

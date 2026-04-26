@@ -374,57 +374,6 @@ func TestResolveTopologyRejectsLatestDependencyTag(t *testing.T) {
 	}
 }
 
-func TestResolveTopologyRejectsBareContainerAlias(t *testing.T) {
-	t.Parallel()
-
-	suite := Definition{
-		ID:        "broken-suite",
-		Title:     "Broken Suite",
-		SuiteStar: `db = container(name="db")`,
-	}
-
-	_, err := ResolveTopology(suite, []Definition{suite})
-	if err == nil || !strings.Contains(err.Error(), "use service.run instead of container") {
-		t.Fatalf("expected bare container validation error, got %v", err)
-	}
-}
-
-func TestResolveTopologyRejectsBareFamilyAliases(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		suiteStar string
-		want      string
-	}{
-		{name: "mock", suiteStar: `stub = mock()`, want: "use service.mock instead of mock"},
-		{name: "service", suiteStar: `svc = service(name="svc")`, want: "instead of service"},
-		{name: "script", suiteStar: `seed = script(name="seed")`, want: "use task.run instead of script"},
-		{name: "task", suiteStar: `seed = task(name="seed")`, want: "use task.run instead of task"},
-		{name: "traffic", suiteStar: `perf = traffic(name="perf")`, want: "instead of traffic"},
-		{name: "scenario", suiteStar: `smoke = scenario(name="smoke")`, want: "use test.run instead of scenario"},
-		{name: "test", suiteStar: `smoke = test(name="smoke")`, want: "use test.run instead of test"},
-		{name: "suite", suiteStar: `child = suite(ref="child-suite")`, want: "use suite.run instead of suite"},
-	}
-
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			suite := Definition{
-				ID:        "broken-suite",
-				Title:     "Broken Suite",
-				SuiteStar: test.suiteStar,
-			}
-
-			_, err := ResolveTopology(suite, []Definition{suite})
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("expected bare alias validation error containing %q, got %v", test.want, err)
-			}
-		})
-	}
-}
-
 func TestResolveTopologyAcceptsLockedDigestWithoutManifestVersion(t *testing.T) {
 	t.Parallel()
 

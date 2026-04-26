@@ -195,6 +195,8 @@ func newControlPlane(ctx context.Context) (*controlPlane, error) {
 	executionHandler.Register(mux)
 	platformHandler.Register(mux)
 	environmentHandler.Register(mux)
+	mux.Handle("POST /api/v1/telemetry/traces", auth.RequireSession(jwtSvc, auth.VerifyOptions{})(telemetry.NewTraceProxyHandler()))
+	mux.Handle("POST /api/v1/telemetry/metrics", auth.RequireSession(jwtSvc, auth.VerifyOptions{})(telemetry.NewMetricsProxyHandler()))
 
 	return &controlPlane{
 		dbDriver:           dbDriver,
@@ -320,7 +322,7 @@ func corsMiddleware(frontendURL string) httpserver.Middleware {
 				}
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id, Traceparent, Tracestate, Baggage, Cache-Control, Last-Event-ID")
 				w.Header().Set("Vary", "Origin")
 			}
 

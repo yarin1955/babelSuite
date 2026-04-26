@@ -12,6 +12,8 @@ import (
 	"github.com/babelsuite/babelsuite/internal/domain"
 	"github.com/babelsuite/babelsuite/internal/store"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -161,6 +163,14 @@ func (h *Handler) listSSOProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
+	ctx, span := authMetrics.tracer.Start(r.Context(), "auth.sign_up")
+	defer span.End()
+	r = r.WithContext(ctx)
+	success := false
+	defer func() {
+		authMetrics.signUps.Add(ctx, 1, metric.WithAttributes(resultAttr(success)))
+	}()
+
 	if !h.config.SignUpEnabled {
 		writeError(w, http.StatusForbidden, "Local sign-up is disabled.")
 		return
@@ -228,6 +238,7 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	success = true
 	writeJSON(w, http.StatusCreated, authResponse{
 		Token:     token,
 		User:      user,
@@ -237,6 +248,14 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
+	ctx, span := authMetrics.tracer.Start(r.Context(), "auth.sign_in")
+	defer span.End()
+	r = r.WithContext(ctx)
+	success := false
+	defer func() {
+		authMetrics.signIns.Add(ctx, 1, metric.WithAttributes(resultAttr(success)))
+	}()
+
 	if !h.config.PasswordAuthEnabled {
 		writeError(w, http.StatusForbidden, "Local password sign-in is disabled.")
 		return
@@ -265,6 +284,7 @@ func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PassHash), []byte(req.Password)); err != nil {
+		span.SetStatus(codes.Error, "invalid credentials")
 		writeError(w, http.StatusUnauthorized, "Incorrect email or password.")
 		return
 	}
@@ -281,6 +301,7 @@ func (h *Handler) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	success = true
 	writeJSON(w, http.StatusOK, authResponse{
 		Token:     token,
 		User:      user,
