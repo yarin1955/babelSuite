@@ -289,7 +289,7 @@ func TestSOAPMockRendersXMLResponses(t *testing.T) {
 
 func TestResolverEndpointReturnsNormalizedEnvelope(t *testing.T) {
 	service := NewService(suites.NewService())
-	handler := NewHandler(service)
+	handler := NewHandler(service, "")
 	mux := http.NewServeMux()
 	handler.Register(mux)
 
@@ -363,7 +363,7 @@ func TestResolverEndpointPreservesPathParamsForRESTOperations(t *testing.T) {
 		t.Fatal("expected generated return id")
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, "")
 	mux := http.NewServeMux()
 	handler.Register(mux)
 

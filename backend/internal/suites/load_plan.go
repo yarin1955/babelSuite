@@ -434,13 +434,19 @@ func parseLoadThreshold(arguments string) (LoadThreshold, error) {
 }
 
 func parseLoadStage(arguments string) (LoadStage, error) {
-	durationValue := firstNonEmpty(topologyNamedStringArgument(arguments, "duration"), parsePositionalStringArgument(arguments, 0))
+	durationValue := firstNonEmpty(
+		topologyNamedStringArgument(arguments, "duration"),
+		parsePositionalStringArgument(arguments, 0),
+	)
 	if durationValue == "" {
 		return LoadStage{}, fmt.Errorf("invalid suite topology: traffic.stage requires duration")
 	}
 	duration, err := time.ParseDuration(durationValue)
 	if err != nil {
 		return LoadStage{}, fmt.Errorf("invalid suite topology: invalid traffic stage duration %q", durationValue)
+	}
+	if duration <= 0 {
+		return LoadStage{}, fmt.Errorf("invalid suite topology: traffic stage duration must be positive, got %q", durationValue)
 	}
 	return LoadStage{
 		Duration:  duration,
@@ -455,7 +461,6 @@ func parseLoadStages(value string, contextState loadPlanContext) ([]LoadStage, e
 	if trimmed == "" {
 		return nil, nil
 	}
-
 	invocation, ok, err := parseTopologyInvocation(trimmed)
 	if err != nil {
 		return nil, err
@@ -463,7 +468,6 @@ func parseLoadStages(value string, contextState loadPlanContext) ([]LoadStage, e
 	if !ok || canonicalTrafficCall(invocation.Call) != "traffic.stages" {
 		return nil, fmt.Errorf("invalid suite topology: traffic.plan shape must use traffic.stages(...)")
 	}
-
 	inner, err := bracketContents(strings.TrimSpace(invocation.Args))
 	if err != nil {
 		return nil, err

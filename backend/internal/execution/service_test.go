@@ -81,10 +81,10 @@ func TestCreateExecutionUsesExplicitRemoteBackend(t *testing.T) {
 	coordinator := agent.NewCoordinator(registry, service)
 	service.ConfigureRemoteWorkers(registry, coordinator)
 
-	controlPlane := httptest.NewServer(agent.NewGateway(registry, coordinator))
-	defer controlPlane.Close()
+	server := httptest.NewServer(agent.NewGateway(registry, coordinator, ""))
+	defer server.Close()
 
-	client := agent.NewControlPlaneClient(controlPlane.URL, controlPlane.Client())
+	client := agent.NewControlPlaneClient(server.URL, server.Client(), "")
 	if err := client.Register(context.Background(), agent.RegisterRequest{
 		AgentID: "remote-agent",
 		Name:    "Remote Worker",
@@ -237,6 +237,10 @@ func (s staticSuiteSource) Get(id string) (*suites.Definition, error) {
 		return nil, suites.ErrNotFound
 	}
 	return &item, nil
+}
+
+func (s staticSuiteSource) Resolve(ref string) (*suites.Definition, error) {
+	return s.Get(ref)
 }
 
 func TestCreateExecutionRejectsProfileFromAnotherSuite(t *testing.T) {

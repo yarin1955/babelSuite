@@ -12,6 +12,10 @@ import (
 )
 
 func TestListPackagesUsesConfiguredRegistryContents(t *testing.T) {
+	oldNets := registryBlockedNets
+	registryBlockedNets = nil
+	t.Cleanup(func() { registryBlockedNets = oldNets })
+	
 	server := registryServer(t, map[string][]string{
 		"core-platform/payment-suite": {"latest", "v2.4.1", "v2.4.0"},
 		"qa/unmanaged-browser-suite":  {"latest", "v0.1.0"},
@@ -76,6 +80,10 @@ func TestListPackagesUsesConfiguredRegistryContents(t *testing.T) {
 }
 
 func TestGetPackageReturnsRegistryBackedSuite(t *testing.T) {
+	oldNets := registryBlockedNets
+	registryBlockedNets = nil
+	t.Cleanup(func() { registryBlockedNets = oldNets })
+	
 	server := registryServer(t, map[string][]string{
 		"core-platform/payment-suite": {"latest", "v2.4.1"},
 	})

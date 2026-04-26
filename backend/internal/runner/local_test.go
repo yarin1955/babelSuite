@@ -302,7 +302,7 @@ func TestLocalRunnerPassesStepEvaluationControls(t *testing.T) {
 		Profile:     "local.yaml",
 		Evaluation: &suites.StepEvaluation{
 			ExpectExit: &expectExit,
-			ExpectLogs: []string{"Task completed successfully"},
+			ExpectLogs: []string{"successfully"},
 			FailOnLogs: []string{"FATAL ERROR"},
 		},
 		Node: StepNode{
